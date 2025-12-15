@@ -60,7 +60,7 @@ const userID = getStableUserID();
 const storageKey = getStableStorageKey();
 const server = import.meta.env.VITE_PUBLIC_SERVER ?? "http://localhost:4848";
 const auth = encodedJWT;
-const getQueriesURL = "http://localhost:4000/api/zero/get-queries";
+const getQueriesURL = import.meta.env.VITE_ZERO_GET_QUERIES_URL ?? "http://localhost:4001/api/zero/get-queries";
 
 function AppContent() {
   const z = useZero<Schema>();

@@ -8,8 +8,8 @@ if (process.env.NODE_ENV === "development") {
 
 export default defineConfig({
   server: {
-    port: 3003,
-    proxy: { "/api": "http://localhost:4000" },
+    port: 3001,
+    proxy: { "/api": "http://localhost:4001" },
   },
   build: {
     target: "es2022",

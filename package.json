@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev:db-up": "bash -c 'RUNTIME=$(./scripts/detect-container-runtime.sh) && $RUNTIME compose --env-file .env -f ./docker/docker-compose.yml up'",
-    "dev:zero-cache": "bunx zero-cache-dev -p src/schema.ts",
-    "dev:api": "bun run --watch api/server.ts",
+    "dev:zero-cache": "bash -c 'set -a && source .env && set +a && bunx zero-cache-dev -p src/schema.ts'",
+    "dev:api": "bash -c 'set -a && source .env && set +a && bun run --watch api/server.ts'",
     "dev:ui": "bunx vite",
     "dev": "concurrently -n api,ui,zero -c cyan,magenta,yellow \"bun run dev:api\" \"bun run dev:ui\" \"bun run dev:zero-cache\"",
     "dev:all": "bun run dev:db-up & sleep 3 && bun run dev",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@nivo/bar": "^0.99.0",
     "@nivo/core": "^0.99.0",
+    "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",

@@ -1,4 +1,4 @@
-import { pgTable, text, doublePrecision, varchar, decimal, timestamp, uuid, bigint, check } from "drizzle-orm/pg-core";
+import { pgTable, text, doublePrecision, varchar, decimal, timestamp, uuid, bigint, check, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const counters = pgTable("counters", {
@@ -67,4 +67,17 @@ export const cusipQuarterInvestorActivity = pgTable("cusip_quarter_investor_acti
   numReduce: bigint("num_reduce", { mode: "number" }),
   numClose: bigint("num_close", { mode: "number" }),
   numHold: bigint("num_hold", { mode: "number" }),
+});
+
+export const cusipQuarterInvestorActivityDetail = pgTable("cusip_quarter_investor_activity_detail", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  cusip: varchar("cusip"),
+  ticker: varchar("ticker"),
+  quarter: varchar("quarter"),
+  cik: bigint("cik", { mode: "number" }),
+  didOpen: boolean("did_open"),
+  didAdd: boolean("did_add"),
+  didReduce: boolean("did_reduce"),
+  didClose: boolean("did_close"),
+  didHold: boolean("did_hold"),
 });

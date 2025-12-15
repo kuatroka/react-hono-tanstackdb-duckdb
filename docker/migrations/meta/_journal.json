@@ -22,6 +22,13 @@
       "when": 1764719876886,
       "tag": "0002_oval_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1764883533362,
+      "tag": "0003_curvy_khan",
+      "breakpoints": true
     }
   ]
 }

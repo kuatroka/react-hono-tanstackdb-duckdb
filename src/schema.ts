@@ -123,6 +123,21 @@ const cusipQuarterInvestorActivity = table("cusip_quarter_investor_activity")
   })
   .primaryKey("id");
 
+const cusipQuarterInvestorActivityDetail = table("cusip_quarter_investor_activity_detail")
+  .columns({
+    id: number(),
+    cusip: string(),
+    ticker: string(),
+    quarter: string(),
+    cik: number(),
+    didOpen: boolean().from("did_open"),
+    didAdd: boolean().from("did_add"),
+    didReduce: boolean().from("did_reduce"),
+    didClose: boolean().from("did_close"),
+    didHold: boolean().from("did_hold"),
+  })
+  .primaryKey("id");
+
 const messageRelationships = relationships(message, ({ one }) => ({
   sender: one({
     sourceField: ["senderID"],
@@ -137,7 +152,7 @@ const messageRelationships = relationships(message, ({ one }) => ({
 }));
 
 export const schema = createSchema({
-  tables: [user, medium, message, counter, valueQuarter, entity, userCounter, searches, asset, superinvestor, cusipQuarterInvestorActivity],
+  tables: [user, medium, message, counter, valueQuarter, entity, userCounter, searches, asset, superinvestor, cusipQuarterInvestorActivity, cusipQuarterInvestorActivityDetail],
   relationships: [messageRelationships],
 });
 
@@ -155,6 +170,7 @@ export type Search = Row<typeof schema.tables.searches>;
 export type Asset = Row<typeof schema.tables.assets>;
 export type Superinvestor = Row<typeof schema.tables.superinvestors>;
 export type CusipQuarterInvestorActivity = Row<typeof schema.tables.cusip_quarter_investor_activity>;
+export type CusipQuarterInvestorActivityDetail = Row<typeof schema.tables.cusip_quarter_investor_activity_detail>;
 
 // The contents of your decoded JWT.
 type AuthData = {
@@ -244,6 +260,11 @@ export const permissions = definePermissions<AuthData, Schema>(schema, () => {
       },
     },
     cusip_quarter_investor_activity: {
+      row: {
+        select: ANYONE_CAN,
+      },
+    },
+    cusip_quarter_investor_activity_detail: {
       row: {
         select: ANYONE_CAN,
       },

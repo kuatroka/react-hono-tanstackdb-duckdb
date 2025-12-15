@@ -238,13 +238,11 @@ If you get "address already in use" errors for ports 4849 or 4848, kill the stuc
 ```bash
 # Kill processes using Zero Cache ports
 lsof -ti:4849 | xargs kill -9
-lsof -ti:4848 | xargs kill -9
 ```
 
 **Check what's running on ports:**
 ```bash
 lsof -i :4849
-lsof -i :4848
 ```
 
 ## Database Migrations
