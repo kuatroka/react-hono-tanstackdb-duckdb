@@ -2,6 +2,7 @@ services:
   zstart_postgres:
     image: mooncakelabs/pg_mooncake:latest
     shm_size: 1g
+    user: postgres
     restart: always
     healthcheck:
       test: 'pg_isready -U user --dbname=postgres'
@@ -16,6 +17,10 @@ services:
       POSTGRES_PASSWORD: password
       DUCKDB_FORCE_EXECUTION: ${DUCKDB_FORCE_EXECUTION:-off}
     volumes:
-      - /Users/yo_macbook/Documents/pgdata:/var/lib/postgresql
+      - zstart_pgdata:/var/lib/postgresql
       - /Users/yo_macbook/Documents/app_data:/app_data:ro
       - ./init/01-setup-extensions.sql:/docker-entrypoint-initdb.d/01-setup-extensions.sql:ro
+
+volumes:
+  zstart_pgdata:
+    driver: local

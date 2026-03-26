@@ -64,6 +64,13 @@
       "when": 1774539771712,
       "tag": "0008_move_shared_tables_to_namespaces",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774564145761,
+      "tag": "0009_create_zero_app_publication",
+      "breakpoints": true
     }
   ]
 }
