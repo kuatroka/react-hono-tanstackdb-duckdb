@@ -20,13 +20,6 @@ services:
       - zstart_pgdata:/var/lib/postgresql
       - /Users/yo_macbook/Documents/app_data:/app_data:ro
       - ./init/01-setup-extensions.sql:/docker-entrypoint-initdb.d/01-setup-extensions.sql:ro
-      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
-      - ./migrations/02_add_counter_quarters.sql:/docker-entrypoint-initdb.d/03-migration-counters.sql:ro
-      - ./migrations/03_add_entities.sql:/docker-entrypoint-initdb.d/04-migration-entities.sql:ro
-      - ./migrations/04_rollback_full_text_search.sql:/docker-entrypoint-initdb.d/05-migration-rollback.sql:ro
-      - ./migrations/05_add_user_counters.sql:/docker-entrypoint-initdb.d/06-migration-user-counters.sql:ro
-      - ./migrations/06_add_searches.sql:/docker-entrypoint-initdb.d/07-migration-searches.sql:ro
-      - ./migrations/07_add_superinvestors_assets_periods.sql:/docker-entrypoint-initdb.d/08-migration-superinvestors.sql:ro
 
 volumes:
   zstart_pgdata:

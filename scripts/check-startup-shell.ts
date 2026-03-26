@@ -1,4 +1,5 @@
 import { chromium } from "@playwright/test";
+import { assessStartupShell } from "./check-startup-shell-lib";
 
 const url = process.argv[2] ?? "http://localhost:3001/assets";
 const waitMs = Number.parseInt(process.argv[3] ?? "4000", 10);
@@ -61,16 +62,10 @@ try {
     };
   });
 
-  const pass = Boolean(
-    result.root &&
-      result.root.visibility !== "hidden" &&
-      result.navVisible &&
-      result.hasMeaningfulText,
-  );
+  const assessment = assessStartupShell({ result, consoleErrors, pageErrors });
+  console.log(JSON.stringify({ pass: assessment.pass, result, consoleErrors, pageErrors, blockingErrors: assessment.blockingErrors }, null, 2));
 
-  console.log(JSON.stringify({ pass, result, consoleErrors, pageErrors }, null, 2));
-
-  if (!pass) {
+  if (!assessment.pass) {
     process.exitCode = 1;
   }
 } finally {
