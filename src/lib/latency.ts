@@ -14,9 +14,16 @@ export function useLatencyMs({
 
   useEffect(() => {
     if (!enabled) return;
+    // If the data is already ready when the key changes, this is a warm cache hit.
+    // In that case, report 0ms instead of measuring local render time.
+    if (isReady) {
+      setMs(0);
+      startRef.current = null;
+      return;
+    }
     startRef.current = performance.now();
     setMs(null);
-  }, [resetKey, enabled]);
+  }, [resetKey, enabled, isReady]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -40,15 +40,29 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1774600000000,
-      "tag": "0005_move_shared_tables_to_namespaces",
+      "when": 1766005289120,
+      "tag": "0004_numerous_naoko",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
-      "when": 1774601000000,
-      "tag": "0006_create_zero_app_publication",
+      "when": 1766005289121,
+      "tag": "0005_restore_cusip_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1767217259318,
+      "tag": "0006_tense_living_mummy",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774539771712,
+      "tag": "0008_move_shared_tables_to_namespaces",
       "breakpoints": true
     }
   ]

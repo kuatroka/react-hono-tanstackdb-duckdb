@@ -188,6 +188,13 @@ This single command runs three services concurrently with color-coded output:
 - **UI Server** (magenta) - Vite dev server for React at `http://localhost:3001`
 - **Zero Cache** (yellow) - Zero sync cache server at `http://localhost:4848`
 
+### Local Dev Ports
+
+- `3001` for Vite UI
+- `4001` for API server
+- `4848` for Zero cache
+- `4849` for Zero change-streamer
+
 ### Verified Local Runtime Contract
 
 The current working local setup uses:
@@ -241,6 +248,43 @@ To remove all database volumes and Zero replica files:
 bun run dev:clean
 ```
 
+To reset only local Zero replica/runtime state:
+
+```bash
+bun run zero:reset
+```
+
+### Which command do I run?
+
+- **Normal local development:** `bun run dev`
+  - This is the default command.
+  - It starts API, UI, and Zero together.
+  - Zero preflight already runs automatically inside `dev:zero-cache`.
+- **Test the Zero preflight guard itself:** `bun run test:zero-preflight`
+  - Use this when editing `scripts/zero-preflight.mjs` or related Zero startup logic.
+  - This does not start the app.
+- **Zero is acting strange locally:** `bun run zero:reset`
+  - This clears the local Zero replica and fingerprint state.
+  - Then restart with `bun run dev`.
+
+### Zero Runtime Safety
+
+This repo now runs a Zero preflight before `dev:zero-cache` starts.
+
+It fingerprints the local Zero runtime using:
+- `@rocicorp/zero` version
+- `@rocicorp/zero-sqlite3` version
+- active Node version
+- platform/arch
+
+If that fingerprint changes, the preflight automatically wipes the local SQLite replica at `ZERO_REPLICA_FILE` before Zero starts. This prevents stale local replicas from being reused across Zero upgrades, native module changes, or Node runtime drift.
+
+Important:
+- Wiping the local Zero replica is safe in development.
+- The preflight does **not** wipe Postgres data.
+- Zero should run on a supported Node version. For this repo, prefer Node 24.x.
+- If you intentionally want a fresh local Zero state, run `bun run zero:reset`.
+
 ### Troubleshooting
 
 **Port Conflicts:**
@@ -261,16 +305,16 @@ lsof -i :4849
 
 This project uses [Drizzle ORM](https://orm.drizzle.team/) for schema management.
 
-**1. Modify Schema**  
+**1. Modify Schema**
 Edit `src/db/schema.ts` (Drizzle) and `src/schema.ts` (Zero client schema) to add/change tables or columns.
 
-**2. Generate Migration**  
+**2. Generate Migration**
 Create SQL migration files from your schema changes:
 ```bash
 bun run db:generate
 ```
 
-**3. Apply Migration (Zero-downtime)**  
+**3. Apply Migration (Zero-downtime)**
 Apply changes to the running PostgreSQL database:
 ```bash
 bun run db:migrate
@@ -278,7 +322,7 @@ bun run db:migrate
 
 This uses `ALTER TABLE` statements that are safe to run while the app, Zero cache, and UI are online. Existing data is preserved.
 
-**4. Refresh Zero cache schema (recommended)**  
+**4. Refresh Zero cache schema (recommended)**
 When you add new tables/columns that Zero should sync:
 - If running `bun run dev` (concurrently), stop and restart it, or
 - If running `bun run dev:zero-cache` separately, restart just the Zero cache process.
@@ -311,15 +355,15 @@ This command runs a 30-second load test with 100 concurrent connections.
 
 Look for these key metrics in the output:
 
-- **Requests/sec**: 
+- **Requests/sec**:
   - ✅ **20,000+ req/sec** - Excellent (Bun is working great)
   - ⚠️ **< 10,000 req/sec** - May indicate performance issues
 
-- **Latency avg**: 
+- **Latency avg**:
   - ✅ **< 10ms** - Great performance
   - ⚠️ **> 50ms** - May need optimization
 
-- **Latency p99**: 
+- **Latency p99**:
   - ✅ **< 50ms** - Consistent performance
   - ⚠️ **> 200ms** - High tail latency, investigate bottlenecks
 

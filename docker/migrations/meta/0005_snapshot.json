@@ -1,38 +1,12 @@
 {
-  "id": "6a1786f8-7ef9-47c7-8461-63aa2607d5ad",
-  "prevId": "0a95e7e5-6bcd-48e5-a511-a31877c73d9c",
+  "id": "7e8b4d4c-6b7a-4bb2-9d80-2e2aa9ae82d2",
+  "prevId": "cef81d9e-a9e1-498b-916b-fdebfd7589ca",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "app_state.user_counters": {
-      "name": "user_counters",
-      "schema": "app_state",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "serving.assets": {
+    "public.assets": {
       "name": "assets",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -59,7 +33,29 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_assets_asset_name": {
+          "name": "idx_assets_asset_name",
+          "columns": [
+            {
+              "expression": "asset_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -67,9 +63,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.counters": {
+    "public.counters": {
       "name": "counters",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -84,7 +80,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_counters_id": {
+          "name": "idx_counters_id",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -92,9 +104,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.cusip_quarter_investor_activity": {
+    "public.cusip_quarter_investor_activity": {
       "name": "cusip_quarter_investor_activity",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -159,9 +171,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.cusip_quarter_investor_activity_detail": {
+    "public.cusip_quarter_investor_activity_detail": {
       "name": "cusip_quarter_investor_activity_detail",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -232,9 +244,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.entities": {
+    "public.entities": {
       "name": "entities",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -275,7 +287,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_entities_category": {
+          "name": "idx_entities_category",
+          "columns": [
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_entities_name": {
+          "name": "idx_entities_name",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -288,9 +331,154 @@
       },
       "isRLSEnabled": false
     },
-    "serving.periods": {
+    "public.medium": {
+      "name": "medium",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_medium_name": {
+          "name": "idx_medium_name",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.message": {
+      "name": "message",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "medium_id": {
+          "name": "medium_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_message_timestamp": {
+          "name": "idx_message_timestamp",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "message_sender_id_user_id_fk": {
+          "name": "message_sender_id_user_id_fk",
+          "tableFrom": "message",
+          "tableTo": "user",
+          "columnsFrom": [
+            "sender_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "message_medium_id_medium_id_fk": {
+          "name": "message_medium_id_medium_id_fk",
+          "tableFrom": "message",
+          "tableTo": "medium",
+          "columnsFrom": [
+            "medium_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.periods": {
       "name": "periods",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -311,19 +499,19 @@
       "uniqueConstraints": {
         "periods_period_unique": {
           "name": "periods_period_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "period"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.searches": {
+    "public.searches": {
       "name": "searches",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -356,7 +544,53 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_searches_category": {
+          "name": "idx_searches_category",
+          "columns": [
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_searches_name": {
+          "name": "idx_searches_name",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_searches_code": {
+          "name": "idx_searches_code",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -369,9 +603,9 @@
       },
       "isRLSEnabled": false
     },
-    "serving.superinvestors": {
+    "public.superinvestors": {
       "name": "superinvestors",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -404,7 +638,29 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_superinvestors_cik_name": {
+          "name": "idx_superinvestors_cik_name",
+          "columns": [
+            {
+              "expression": "cik_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -412,9 +668,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "serving.value_quarters": {
+    "public.user": {
+      "name": "user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "partner": {
+          "name": "partner",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_user_name": {
+          "name": "idx_user_name",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_counters": {
+      "name": "user_counters",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "idx_user_counters_user_id": {
+          "name": "idx_user_counters_user_id",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.value_quarters": {
       "name": "value_quarters",
-      "schema": "serving",
+      "schema": "",
       "columns": {
         "quarter": {
           "name": "quarter",
@@ -429,7 +780,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_value_quarters_quarter": {
+          "name": "idx_value_quarters_quarter",
+          "columns": [
+            {
+              "expression": "quarter",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -440,10 +807,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

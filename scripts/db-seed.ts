@@ -55,9 +55,21 @@ async function main() {
     { id: "ttx7NCmyac", name: "SMS" },
   ];
 
-  await db.insert(user).values(users).onConflictDoNothing({ target: user.id });
-  await db.insert(medium).values(mediums).onConflictDoNothing({ target: medium.id });
-  await db.insert(counters).values({ id: "main", value: 0 }).onConflictDoNothing({ target: counters.id });
+  await db
+    .insert(user)
+    .values(users)
+    .onConflictDoNothing({ target: user.id });
+
+  await db
+    .insert(medium)
+    .values(mediums)
+    .onConflictDoNothing({ target: medium.id });
+
+  await db
+    .insert(counters)
+    .values({ id: "main", value: 0 })
+    .onConflictDoNothing({ target: counters.id });
+
   await db
     .insert(userCounters)
     .values(users.map((u) => ({ userId: u.id, value: 0 })))
@@ -67,10 +79,9 @@ async function main() {
   const quarters: { quarter: string; value: number }[] = [];
   for (let year = 1999; year <= 2025; year++) {
     for (let q = 1; q <= 4; q++) {
-      quarters.push({
-        quarter: `${year}Q${q}`,
-        value: randFloat(randQuarters, 1.0, 500000000000.0),
-      });
+      const quarter = `${year}Q${q}`;
+      const value = randFloat(randQuarters, 1.0, 500000000000.0);
+      quarters.push({ quarter, value });
     }
   }
 
@@ -120,11 +131,12 @@ async function main() {
     for (let i = 1; i <= 500; i++) {
       const sector = sectors[randInt(randEntities, 0, sectors.length - 1)];
       const companies = randInt(randEntities, 5, 50);
+      const value = (1000000 + randEntities() * 499000000).toFixed(2);
       entityRows.push({
         name: `Investor ${i}`,
         category: "investor",
         description: `Investment firm focused on ${sector}. Portfolio includes ${companies} companies with strong growth potential and market leadership.`,
-        value: (1000000 + randEntities() * 499000000).toFixed(2),
+        value,
       });
     }
 
@@ -132,11 +144,12 @@ async function main() {
       const type = types[randInt(randEntities, 0, types.length - 1)];
       const sector = sectors[randInt(randEntities, 0, sectors.length - 1)];
       const year = randInt(randEntities, 1990, 2024);
+      const value = (100000 + randEntities() * 99900000).toFixed(2);
       entityRows.push({
         name: `Asset ${i}`,
         category: "asset",
         description: `${type} asset in ${sector} sector. Established in ${year} with consistent performance and strong fundamentals.`,
-        value: (100000 + randEntities() * 99900000).toFixed(2),
+        value,
       });
     }
 

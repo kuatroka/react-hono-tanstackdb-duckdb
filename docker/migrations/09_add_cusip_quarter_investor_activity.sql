@@ -1,4 +1,4 @@
-CREATE TABLE cusip_quarter_investor_activity (
+CREATE TABLE IF NOT EXISTS cusip_quarter_investor_activity (
     id         BIGINT,
     cusip      VARCHAR,
     ticker     VARCHAR,
@@ -9,3 +9,17 @@ CREATE TABLE cusip_quarter_investor_activity (
     num_close  BIGINT,
     num_hold   BIGINT
 );
+
+ALTER TABLE cusip_quarter_investor_activity ALTER COLUMN id SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE contype = 'p'
+      AND conrelid = 'public.cusip_quarter_investor_activity'::regclass
+  ) THEN
+    EXECUTE 'ALTER TABLE cusip_quarter_investor_activity ADD PRIMARY KEY (id)';
+  END IF;
+END $$;

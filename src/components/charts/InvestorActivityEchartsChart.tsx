@@ -12,7 +12,7 @@ interface InvestorActivityEchartsChartProps {
   latencySource?: string;
 }
 
-type TooltipParam = {
+ type TooltipParam = {
   seriesName?: string;
   value?: number | string;
   axisValueLabel?: string;

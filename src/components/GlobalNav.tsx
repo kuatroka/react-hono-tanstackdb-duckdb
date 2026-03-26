@@ -6,7 +6,7 @@ export function GlobalNav() {
   const location = useLocation();
 
   return (
-    <nav className="bg-background border-b border-border shadow-sm">
+    <nav className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between gap-4 h-16">
           <div className="flex items-center gap-4 sm:gap-8 flex-shrink-0">
@@ -14,14 +14,14 @@ export function GlobalNav() {
               to="/"
               className={`text-lg sm:text-xl font-bold text-foreground hover:text-muted-foreground hover:underline underline-offset-4 transition-colors cursor-pointer outline-none ${location.pathname === '/' ? 'underline' : ''}`}
             >
-              fintellectus
+              fintellectus (Zero)
             </Link>
           </div>
-          
+
           <div className="flex-1 flex justify-center max-w-md">
             <GlobalSearch />
           </div>
-          
+
           <div className="flex items-center gap-4 flex-shrink-0">
             <Link
               to="/assets"

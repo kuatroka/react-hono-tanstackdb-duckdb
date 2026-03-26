@@ -4,26 +4,25 @@ import { useQuery } from '@rocicorp/zero/react';
 import { LatencyBadge } from '@/components/LatencyBadge';
 import { useLatencyMs } from '@/lib/latency';
 import { queries } from '@/zero/queries';
-import { InvestorActivityChart } from '@/components/charts/InvestorActivityChart';
+import { PRELOAD_TTL } from '@/zero-preload';
 import { InvestorActivityUplotChart } from '@/components/charts/InvestorActivityUplotChart';
-import { InvestorActivityNivoChart } from '@/components/charts/InvestorActivityNivoChart';
 import { InvestorActivityEchartsChart } from '@/components/charts/InvestorActivityEchartsChart';
 
 export function AssetDetailPage({ onReady }: { onReady: () => void }) {
   const { code, cusip } = useParams();
-  
+
   // Determine if we have a valid cusip (not "_" placeholder)
   const hasCusip = cusip && cusip !== "_";
 
   // Query asset: prefer by symbol+cusip if cusip is available, otherwise by symbol only
   const [rowsBySymbolAndCusip, resultBySymbolAndCusip] = useQuery(
     queries.assetBySymbolAndCusip(code || '', cusip || ''),
-    { enabled: Boolean(code) && Boolean(hasCusip) }
+    { enabled: Boolean(code) && Boolean(hasCusip), ttl: PRELOAD_TTL }
   );
 
   const [rowsBySymbol, resultBySymbol] = useQuery(
     queries.assetBySymbol(code || ''),
-    { enabled: Boolean(code) && !hasCusip }
+    { enabled: Boolean(code) && !hasCusip, ttl: PRELOAD_TTL }
   );
 
   // Use the appropriate result based on whether we have a cusip
@@ -41,12 +40,12 @@ export function AssetDetailPage({ onReady }: { onReady: () => void }) {
   // Query investor activity: prefer by cusip if available, otherwise by ticker
   const [activityByCusip, activityByCusipResult] = useQuery(
     queries.investorActivityByCusip(cusip || ''),
-    { enabled: Boolean(hasCusip) }
+    { enabled: Boolean(hasCusip), ttl: PRELOAD_TTL }
   );
 
   const [activityByTicker, activityByTickerResult] = useQuery(
     queries.investorActivityByTicker(code || ''),
-    { enabled: Boolean(code) && !hasCusip }
+    { enabled: Boolean(code) && !hasCusip, ttl: PRELOAD_TTL }
   );
 
   const activityRows = hasCusip ? (activityByCusip ?? []) : (activityByTicker ?? []);
@@ -100,9 +99,7 @@ export function AssetDetailPage({ onReady }: { onReady: () => void }) {
 
       {/* Full-width chart section */}
       <div className="mt-8 space-y-10 w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] px-4 sm:px-6 lg:px-8">
-        <InvestorActivityChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
         <InvestorActivityUplotChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
-        <InvestorActivityNivoChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
         <InvestorActivityEchartsChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
       </div>
     </>

@@ -4,13 +4,14 @@ import { useQuery } from '@rocicorp/zero/react';
 import { LatencyBadge } from '@/components/LatencyBadge';
 import { useLatencyMs } from '@/lib/latency';
 import { queries } from '@/zero/queries';
+import { PRELOAD_TTL } from '@/zero-preload';
 
 export function SuperinvestorDetailPage({ onReady }: { onReady: () => void }) {
   const { cik } = useParams();
 
   const [rows, result] = useQuery(
     queries.superinvestorByCik(cik || ''),
-    { enabled: Boolean(cik) }
+    { enabled: Boolean(cik), ttl: PRELOAD_TTL }
   );
 
   const record = rows?.[0];
