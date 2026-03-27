@@ -12,7 +12,10 @@
 - When I report a bug, don't start by trying to fix it. Instead, use red/green TDD approach. Start by writing a test that reproduces the bug. Then, try to fix the bug and prove it with a passing test.
 
 ## Testing
-Review, analyse, fix and self test. When testing, use agent-browser tool. Make sure to interact with the app on different routes. Especially the one where the error is produced. Use UI components like search box (make sure they work, produce result, search works), tables and charts are visible and with data. use red/green TDD approach. Only when originally failed tests pass and there are not server or browser console errors, then declare the issue fixed.
+Review, analyse, fix and self test. Use agent-browser tool to test UI. Interact with the app on different routes. Especially the one where the error is produced. Use UI components like search box (produces result list, search works and clicks navigate to correct page with no errors), tables and charts are visible and with data. Use red/green TDD approach. Declare the issue fixed only when the originally failed tests pass and there are no:
+- no browser console errors in the automated browser checks
+- no page errors in the automated browser checks
+- no server errors in the fresh verification runs
 
 
 ## Which command do I run?
