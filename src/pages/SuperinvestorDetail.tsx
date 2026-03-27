@@ -1,17 +1,20 @@
 import { useParams, Link } from '@tanstack/react-router';
 import { useLiveQuery } from '@tanstack/react-db';
 import { useContentReady } from '@/hooks/useContentReady';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
-import { superinvestorsCollection, fetchCikQuarterlyData, type CikQuarterlyData } from '@/collections';
+import {
+  superinvestorsCollection,
+  cikQuarterlyCollection,
+  fetchCikQuarterlyData,
+} from '@/collections';
 import { CikValueLineChart } from '@/components/charts/CikValueLineChart';
 
 export function SuperinvestorDetailPage() {
   const { cik } = useParams({ strict: false }) as { cik?: string };
   const { onReady } = useContentReady();
   const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
-  const [chartData, setChartData] = useState<CikQuarterlyData[]>([]);
   const [chartQueryTimeMs, setChartQueryTimeMs] = useState<number | null>(null);
   const [chartDataSource, setChartDataSource] = useState<DataFlow>('unknown');
   const [chartLoading, setChartLoading] = useState(false);
@@ -20,6 +23,9 @@ export function SuperinvestorDetailPage() {
   // Data is preloaded on app init and persisted to IndexedDB
   const { data: superinvestorsData, isLoading } = useLiveQuery(
     (q) => q.from({ superinvestors: superinvestorsCollection }),
+  );
+  const { data: cikQuarterlyData } = useLiveQuery(
+    (q) => q.from({ rows: cikQuarterlyCollection }),
   );
 
   // Find the specific superinvestor record
@@ -39,8 +45,7 @@ export function SuperinvestorDetailPage() {
     setChartLoading(true);
 
     fetchCikQuarterlyData(cik)
-      .then(({ rows, queryTimeMs: elapsed, source }) => {
-        setChartData(rows);
+      .then(({ queryTimeMs: elapsed, source }) => {
         setChartQueryTimeMs(elapsed);
         // Map source to DataFlow type for latency badge
         const dataFlow: DataFlow = source === 'api' ? 'tsdb-api'
@@ -50,7 +55,6 @@ export function SuperinvestorDetailPage() {
       })
       .catch((err) => {
         console.error('[SuperinvestorDetail] Failed to fetch quarterly data:', err);
-        setChartData([]);
         setChartQueryTimeMs(null);
         setChartDataSource('unknown');
       })
@@ -58,6 +62,13 @@ export function SuperinvestorDetailPage() {
         setChartLoading(false);
       });
   }, [cik]);
+
+  const chartData = useMemo(() => {
+    if (!cikQuarterlyData || !cik) return [];
+    return cikQuarterlyData
+      .filter((row) => row.cik === cik)
+      .sort((left, right) => left.quarter.localeCompare(right.quarter));
+  }, [cikQuarterlyData, cik]);
 
   // Signal ready when data is available (from cache or server)
   const readyCalledRef = useRef(false);

@@ -1,16 +1,25 @@
-## Tech Stack and javascript runtime
-- Use bun for package manager and js runtime. Never use node.js - https://bun.com/llms-rules.txt
-- bun - https://bun.sh/llms.txt
+## The project
+It's a web app with **DuckDB** as main analytics DB work with **TanStack DB** on the frontend to make the UI interactions as immediate as possible. Performance is the number one priority.
+
+## Bug fixing guidelines
+- When I report a bug, don't start by trying to fix it. Instead, use red/green TDD approach. Start by writing a test that reproduces the bug. Then, try to fix the bug and prove it with a passing test.
+
+## Testing
+Review, analyse, fix and self test. Use agent-browser tool to test UI. Interact with the app on different routes. Especially the one where the error is produced. Use UI components like search box (produces result list, search works and clicks navigate to correct page with no errors), tables and charts are visible and with data. Use red/green TDD approach. Declare the issue fixed only when the originally failed tests pass and there are no:
+- no browser console errors in the automated browser checks
+- no page errors in the automated browser checks
+- no server errors in the fresh verification runs
+
+
+## Tech Stack and javascript runtime 
+- **bun** as package manager, js runtime, bundler and test runner. Never use node.js 
+- **bun** rules url - https://bun.com/llms-rules.txt
+- **bun** docs - https://bun.sh/llms.txt
+- **bun** docs full - https://bun.sh/llms-full.txt
 
 ## Drizzle ORM for schema management and migrations
 - Drizzle llm docs - https://orm.drizzle.team/llms.txt
 - Drizzle llm docs Full - https://orm.drizzle.team/llms-full.txt
-
-## The project
-
-It's a web app with **DuckDB** as main analytics DB work with **TanStack DB** on the frontend to make the UI interactions as immediate as possible. Performance is the number one priority.
-
-
 
 ## Analytics and main DB is Duckdb
 1. Duckdb docs - https://duckdb.org/llms.txt
@@ -18,14 +27,9 @@ It's a web app with **DuckDB** as main analytics DB work with **TanStack DB** on
 3. Transaction and Master data in **parquet** files in the directory **APP_DATA_PATH** in .env
 4. **TanStack DB** for a reactive, client-first store for API data with collections, live queries and optimistic mutations that keep UI reactive. It's used in conjuntion with Dexie.js and IndexedDB
 
-This project uses **drizzle-orm** for schema generation only for the **Postgres**.
-
-## JS runtime and package management
-- **bun**
-- bun docs - https://bun.sh/llms.txt
-- bun docs full - https://bun.sh/llms-full.txt
-
 ## Backend Server - **hono** 
+- **hono** docs - https://hono.dev/llms.txt
+- **hono** full docs - https://hono.dev/llms-full.txt
 
 ### Key Commands
 ```bash

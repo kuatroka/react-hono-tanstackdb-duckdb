@@ -1,4 +1,6 @@
 .sst
+.worktrees
+index.compiled.css
 
 # Logs
 logs

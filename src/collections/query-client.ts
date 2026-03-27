@@ -13,7 +13,14 @@
 import { QueryClient } from '@tanstack/query-core'
 import { experimental_createQueryPersister } from '@tanstack/query-persist-client-core'
 import { createDexieStorage } from '@/lib/dexie-persister'
-import { getDb, type SearchIndexEntry, type CikQuarterlyEntry, type DrilldownEntry } from '@/lib/dexie-db'
+import {
+    getDb,
+    type SearchIndexEntry,
+    type CikQuarterlyEntry,
+    type DrilldownEntry,
+    type AssetActivityEntry,
+    type InvestorFlowEntry,
+} from '@/lib/dexie-db'
 
 // Create the persister using Dexie storage
 // Each query is persisted separately (not the whole client)
@@ -354,5 +361,172 @@ export async function clearPersistedDrilldownData(): Promise<void> {
         console.log('[Drilldown] Cleared from IndexedDB')
     } catch (error) {
         console.error('[Drilldown] Failed to clear:', error)
+    }
+}
+
+// ============================================================
+// ASSET ACTIVITY PERSISTENCE (using Dexie assetActivity table)
+// ============================================================
+
+export interface PersistedAssetActivityData {
+    key: string
+    rows: Array<{
+        id: string
+        assetKey: string
+        ticker: string
+        cusip: string | null
+        quarter: string
+        numOpen: number
+        numAdd: number
+        numReduce: number
+        numClose: number
+        numHold: number
+        opened: number
+        closed: number
+    }>
+    metadata?: {
+        persistedAt?: number
+    }
+}
+
+export async function persistAssetActivityData(key: string, rows: PersistedAssetActivityData['rows']): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry: AssetActivityEntry = {
+            key,
+            rows,
+            persistedAt: Date.now(),
+        }
+        await db.assetActivity.put(entry)
+        console.log(`[AssetActivity] Persisted ${rows.length} rows for ${key} to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+    } catch (error) {
+        console.error('[AssetActivity] Failed to persist:', error)
+    }
+}
+
+export async function loadPersistedAssetActivityData(key: string): Promise<PersistedAssetActivityData | null> {
+    if (typeof window === 'undefined') return null
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry = await db.assetActivity.get(key)
+
+        if (!entry) {
+            return null
+        }
+
+        const age = Date.now() - entry.persistedAt
+        const maxAge = 1000 * 60 * 60 * 24
+        if (age > maxAge) {
+            await db.assetActivity.delete(key)
+            return null
+        }
+
+        console.log(`[AssetActivity] Loaded ${entry.rows.length} rows for ${key} from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        return {
+            key: entry.key,
+            rows: entry.rows,
+            metadata: {
+                persistedAt: entry.persistedAt,
+            },
+        }
+    } catch (error) {
+        console.error('[AssetActivity] Failed to load from IndexedDB:', error)
+        return null
+    }
+}
+
+export async function clearPersistedAssetActivityData(key: string): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const db = getDb()
+        await db.assetActivity.delete(key)
+    } catch (error) {
+        console.error('[AssetActivity] Failed to clear:', error)
+    }
+}
+
+// ============================================================
+// INVESTOR FLOW PERSISTENCE (using Dexie investorFlow table)
+// ============================================================
+
+export interface PersistedInvestorFlowData {
+    ticker: string
+    rows: Array<{
+        id: string
+        ticker: string
+        quarter: string
+        inflow: number
+        outflow: number
+    }>
+    metadata?: {
+        persistedAt?: number
+    }
+}
+
+export async function persistInvestorFlowData(ticker: string, rows: PersistedInvestorFlowData['rows']): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry: InvestorFlowEntry = {
+            ticker,
+            rows,
+            persistedAt: Date.now(),
+        }
+        await db.investorFlow.put(entry)
+        console.log(`[InvestorFlow] Persisted ${rows.length} rows for ${ticker} to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+    } catch (error) {
+        console.error('[InvestorFlow] Failed to persist:', error)
+    }
+}
+
+export async function loadPersistedInvestorFlowData(ticker: string): Promise<PersistedInvestorFlowData | null> {
+    if (typeof window === 'undefined') return null
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry = await db.investorFlow.get(ticker)
+
+        if (!entry) {
+            return null
+        }
+
+        const age = Date.now() - entry.persistedAt
+        const maxAge = 1000 * 60 * 60 * 24
+        if (age > maxAge) {
+            await db.investorFlow.delete(ticker)
+            return null
+        }
+
+        console.log(`[InvestorFlow] Loaded ${entry.rows.length} rows for ${ticker} from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        return {
+            ticker: entry.ticker,
+            rows: entry.rows,
+            metadata: {
+                persistedAt: entry.persistedAt,
+            },
+        }
+    } catch (error) {
+        console.error('[InvestorFlow] Failed to load from IndexedDB:', error)
+        return null
+    }
+}
+
+export async function clearPersistedInvestorFlowData(ticker: string): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const db = getDb()
+        await db.investorFlow.delete(ticker)
+    } catch (error) {
+        console.error('[InvestorFlow] Failed to clear:', error)
     }
 }

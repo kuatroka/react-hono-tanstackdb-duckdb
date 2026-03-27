@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev:db-up": "bash -c 'RUNTIME=$(./scripts/detect-container-runtime.sh) && $RUNTIME compose --env-file .env -f ./docker/docker-compose.yml up'",
-    "dev:api": "bun run --watch api/server.ts",
-    "dev:ui": "bunx vite",
-    "dev": "concurrently -n api,ui -c cyan,magenta \"bun run dev:api\" \"bun run dev:ui\"",
+    "dev:api": "bun --hot api/server.ts",
+    "dev:ui": "bun run dev:css",
+    "dev:css": "bun scripts/build-css.ts --watch",
+    "dev": "concurrently -n css,app -c magenta,cyan \"bun run dev:css\" \"bun run dev:api\"",
     "dev:all": "bun run dev:db-up & sleep 3 && bun run dev",
     "dev:db-down": "bash -c 'RUNTIME=$(./scripts/detect-container-runtime.sh) && $RUNTIME compose --env-file .env -f ./docker/docker-compose.yml down'",
     "db:generate": "drizzle-kit generate",
@@ -18,8 +19,14 @@
     "benchmark:charts": "bun scripts/run-chart-benchmark.ts",
     "benchmark:duckdb": "bun scripts/benchmark-duckdb-native.ts",
     "benchmark:all": "bash scripts/run-all-benchmarks.sh",
-    "build": "bun run tsc -b && bunx vite build",
-    "lint": "bunx eslint ."
+    "build:css": "bun scripts/build-css.ts",
+    "build:html": "bun build ./index.html --outdir ./dist && bun scripts/fix-built-html.ts",
+    "build": "bun run build:css && bun run build:html",
+    "preview": "bun run build && bun run start",
+    "preview:prod": "bun run preview",
+    "start": "NODE_ENV=production bun api/server.ts",
+    "lint": "bunx eslint .",
+    "test": "bun test"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.4.3-r.1",

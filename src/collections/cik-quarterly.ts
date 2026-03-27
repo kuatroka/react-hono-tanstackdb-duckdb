@@ -5,11 +5,14 @@
  * Data is stored per-CIK and persisted across page refreshes.
  */
 
+import { createCollection } from '@tanstack/db'
+import { queryCollectionOptions } from '@tanstack/query-db-collection'
 import {
     persistCikQuarterlyData,
     loadPersistedCikQuarterlyData,
     clearPersistedCikQuarterlyData,
 } from './query-client'
+import { queryClient } from './query-client'
 
 export interface CikQuarterlyData {
     id: string  // cik-quarter
@@ -21,8 +24,25 @@ export interface CikQuarterlyData {
     numAssets: number
 }
 
-// In-memory cache for fetched CIK data (session cache)
-const cikDataCache = new Map<string, CikQuarterlyData[]>()
+interface CikQuarterlyApiRow {
+    cik?: string | number | null
+    quarter?: string | null
+    quarterEndDate?: string | null
+    totalValue?: number | null
+    totalValuePrcChg?: number | null
+    numAssets?: number | null
+}
+
+export const cikQuarterlyCollection = createCollection(
+    queryCollectionOptions<CikQuarterlyData>({
+        queryKey: ['cik-quarterly-local'],
+        queryFn: async () => [],
+        queryClient,
+        getKey: (item) => item.id,
+        enabled: false,
+        staleTime: Infinity,
+    })
+)
 
 // In-flight fetches to prevent duplicate requests (covers both IndexedDB and API)
 const inFlightFetches = new Map<string, Promise<{
@@ -39,11 +59,21 @@ export const cikQuarterlyTiming = {
     lastCik: null as string | null,
 }
 
+function getAllCikQuarterlyRows(): CikQuarterlyData[] {
+    return Array.from(cikQuarterlyCollection.entries()).map(([, value]) => value)
+}
+
+function getRowsForCik(cik: string): CikQuarterlyData[] {
+    return getAllCikQuarterlyRows()
+        .filter((row) => row.cik === cik)
+        .sort((left, right) => left.quarter.localeCompare(right.quarter))
+}
+
 /**
  * Check if data for a specific CIK exists in the memory cache.
  */
 export function hasFetchedCikData(cik: string): boolean {
-    return cikDataCache.has(cik)
+    return getRowsForCik(cik).length > 0
 }
 
 /**
@@ -51,7 +81,8 @@ export function hasFetchedCikData(cik: string): boolean {
  * Returns null if not in memory cache.
  */
 export function getCikQuarterlyDataFromCache(cik: string): CikQuarterlyData[] | null {
-    return cikDataCache.get(cik) ?? null
+    const rows = getRowsForCik(cik)
+    return rows.length > 0 ? rows : null
 }
 
 /**
@@ -70,8 +101,8 @@ export async function fetchCikQuarterlyData(
     source: 'memory' | 'indexeddb' | 'api'
 }> {
     // 1. Check memory cache first (instant)
-    const cached = cikDataCache.get(cik)
-    if (cached) {
+    const cached = getRowsForCik(cik)
+    if (cached.length > 0) {
         return {
             rows: cached,
             queryTimeMs: 0,
@@ -103,8 +134,7 @@ export async function fetchCikQuarterlyData(
         // Try IndexedDB first
         const persisted = await loadPersistedCikQuarterlyData(cik)
         if (persisted && persisted.rows.length > 0) {
-            // Found in IndexedDB - restore to memory cache
-            cikDataCache.set(cik, persisted.rows)
+            cikQuarterlyCollection.utils.writeUpsert(persisted.rows)
 
             const elapsedMs = Math.round(performance.now() - startTime)
             cikQuarterlyTiming.lastFetchEndedAt = performance.now()
@@ -122,9 +152,9 @@ export async function fetchCikQuarterlyData(
         if (!res.ok) {
             throw new Error('Failed to fetch CIK quarterly data')
         }
-        const data = await res.json()
+        const data = await res.json() as CikQuarterlyApiRow[]
 
-        const rows: CikQuarterlyData[] = data.map((row: any) => ({
+        const rows: CikQuarterlyData[] = data.map((row) => ({
             id: `${row.cik}-${row.quarter}`,
             cik: String(row.cik),
             quarter: String(row.quarter),
@@ -134,8 +164,7 @@ export async function fetchCikQuarterlyData(
             numAssets: Number(row.numAssets) || 0,
         }))
 
-        // Cache in memory
-        cikDataCache.set(cik, rows)
+        cikQuarterlyCollection.utils.writeUpsert(rows)
 
         // Persist to IndexedDB (async, don't block)
         persistCikQuarterlyData(cik, rows).catch(err =>
@@ -189,5 +218,8 @@ export async function invalidateCikQuarterlyData(cik: string): Promise<void> {
  * Does not clear IndexedDB (call invalidateCikQuarterlyData for that).
  */
 export function clearAllCikQuarterlyData(): void {
-    cikDataCache.clear()
+    const ids = getAllCikQuarterlyRows().map((row) => row.id)
+    if (ids.length > 0) {
+        cikQuarterlyCollection.utils.writeDelete(ids)
+    }
 }

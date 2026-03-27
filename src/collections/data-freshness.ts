@@ -14,6 +14,8 @@
 
 import { invalidateDatabase } from '@/lib/dexie-db'
 import { clearAllCikQuarterlyData } from './cik-quarterly'
+import { clearAllAssetActivityData } from './asset-activity'
+import { clearAllInvestorFlowData } from './investor-flow'
 import { queryClient } from './query-client'
 
 const STORAGE_KEY = 'app-data-version'
@@ -73,6 +75,8 @@ export async function invalidateAllCaches(): Promise<void> {
 
     // 2. Clear CIK quarterly memory cache
     clearAllCikQuarterlyData()
+    clearAllAssetActivityData()
+    clearAllInvestorFlowData()
     console.log('[DataFreshness] Memory caches cleared')
 
     // 3. Invalidate Dexie database (close → delete → reopen)

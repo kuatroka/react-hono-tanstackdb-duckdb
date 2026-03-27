@@ -1,15 +1,15 @@
 
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
-    LineChart,
     Line,
+    LineChart,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     Legend,
-    ResponsiveContainer,
 } from "recharts";
 import {
     Card,
@@ -27,9 +27,40 @@ interface InvestorFlowChartProps {
 }
 
 export function InvestorFlowChart({ data, ticker, latencyBadge }: InvestorFlowChartProps) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const updateSize = () => {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            if (width > 0 && height > 0) {
+                setChartSize((current) => {
+                    if (current?.width === width && current?.height === height) {
+                        return current;
+                    }
+                    return { width, height };
+                });
+            }
+        };
+
+        updateSize();
+
+        const observer = new ResizeObserver(() => {
+            updateSize();
+        });
+
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
+
     if (data.length === 0) {
         return (
-            <Card>
+            <Card className="min-w-0">
                 <CardHeader>
                     <CardTitle>Investor Flow for {ticker}</CardTitle>
                     <CardDescription>No flow data available</CardDescription>
@@ -39,7 +70,7 @@ export function InvestorFlowChart({ data, ticker, latencyBadge }: InvestorFlowCh
     }
 
     return (
-        <Card>
+        <Card className="min-w-0">
             <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2">
                     <span>Investor Flow for {ticker}</span>
@@ -49,10 +80,12 @@ export function InvestorFlowChart({ data, ticker, latencyBadge }: InvestorFlowCh
                     Inflow and Outflow per quarter
                 </CardDescription>
             </CardHeader>
-            <CardContent>
-                <div className="h-[400px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+            <CardContent className="min-w-0">
+                <div ref={containerRef} className="h-[400px] w-full min-w-0">
+                    {chartSize ? (
                         <LineChart
+                            width={chartSize.width}
+                            height={chartSize.height}
                             data={[...data]}
                             margin={{
                                 top: 5,
@@ -101,7 +134,7 @@ export function InvestorFlowChart({ data, ticker, latencyBadge }: InvestorFlowCh
                                 activeDot={{ r: 6 }}
                             />
                         </LineChart>
-                    </ResponsiveContainer>
+                    ) : null}
                 </div>
             </CardContent>
         </Card>

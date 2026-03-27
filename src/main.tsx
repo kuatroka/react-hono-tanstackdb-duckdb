@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "../app/router";
-import "./index.css";
 import "uplot/dist/uPlot.min.css";
 
 const container = document.getElementById("root");

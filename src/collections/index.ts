@@ -15,7 +15,24 @@ export {
 export type { Asset, Superinvestor, SearchResult } from './instances'
 export { type InvestorDetail, investorDrilldownCollection } from './investor-details'
 export {
+    type AssetActivityData,
+    assetActivityCollection,
+    fetchAssetActivityData,
+    getAssetActivityFromCollection,
+    loadAssetActivityFromIndexedDB,
+    clearAllAssetActivityData,
+} from './asset-activity'
+export {
+    type InvestorFlowData,
+    investorFlowCollection,
+    fetchInvestorFlowData,
+    getInvestorFlowFromCollection,
+    loadInvestorFlowFromIndexedDB,
+    clearAllInvestorFlowData,
+} from './investor-flow'
+export {
     type CikQuarterlyData,
+    cikQuarterlyCollection,
     fetchCikQuarterlyData,
     getCikQuarterlyDataFromCache,
     hasFetchedCikData,

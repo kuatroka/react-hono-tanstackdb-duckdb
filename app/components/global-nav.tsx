@@ -7,7 +7,7 @@ export function GlobalNav() {
   const location = useLocation();
 
   return (
-    <nav className="bg-background border-b border-border shadow-sm">
+    <nav className="sticky top-0 z-40 bg-background/95 border-b border-border shadow-sm backdrop-blur">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between gap-4 h-16">
           <div className="flex items-center gap-4 sm:gap-8 flex-shrink-0">
@@ -15,7 +15,7 @@ export function GlobalNav() {
               to="/"
               className={`text-lg sm:text-xl font-bold text-foreground hover:text-muted-foreground hover:underline underline-offset-4 transition-colors cursor-pointer outline-none ${location.pathname === "/" ? "underline" : ""}`}
             >
-              fintellectus
+              fintellectus (Tanstack DB)
             </Link>
           </div>
 

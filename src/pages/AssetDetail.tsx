@@ -1,18 +1,21 @@
 import { useParams, Link } from '@tanstack/react-router';
 import { useLiveQuery } from '@tanstack/react-db';
-import { useQuery } from '@tanstack/react-query';
 
 import { InvestorActivityUplotChart } from '@/components/charts/InvestorActivityUplotChart';
 import { InvestorActivityEchartsChart } from '@/components/charts/InvestorActivityEchartsChart';
 import { InvestorFlowChart } from '@/components/charts/InvestorFlowChart';
 import { InvestorActivityDrilldownTable } from '@/components/InvestorActivityDrilldownTable';
-import { LatencyBadge } from '@/components/LatencyBadge';
+import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
 import { useContentReady } from '@/hooks/useContentReady';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { assetsCollection } from '@/collections';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  assetsCollection,
+  assetActivityCollection,
+  investorFlowCollection,
+  fetchAssetActivityData,
+  fetchInvestorFlowData,
+} from '@/collections';
 import { backgroundLoadAllDrilldownData, fetchDrilldownBothActions } from '@/collections/investor-details';
-
-import { type CusipQuarterInvestorActivity, type InvestorFlow } from '@/schema';
 
 type InvestorActivityAction = 'open' | 'close';
 
@@ -51,76 +54,101 @@ export function AssetDetailPage() {
     }
   }, [record, isAssetsLoading, assetsData, onReady]);
 
-  // Query investor activity from DuckDB
-  const activityFetchStartRef = useRef<number | null>(null);
   const [activityQueryTimeMs, setActivityQueryTimeMs] = useState<number | null>(null);
-  const { data: activityData, isLoading: isActivityLoading, isFetching: isActivityFetching } = useQuery({
-    queryKey: ['investor-activity', hasCusip ? cusip : code],
-    queryFn: async () => {
-      activityFetchStartRef.current = performance.now();
-      const res = await fetch(`/api/all-assets-activity?${hasCusip ? `cusip=${cusip}` : `ticker=${code}`}`);
-      if (!res.ok) throw new Error('Failed to fetch investor activity');
-      const data = await res.json();
-      return (data.rows || []) as CusipQuarterInvestorActivity[];
-    },
-    enabled: Boolean(code),
-    staleTime: 5 * 60 * 1000,
-  });
+  const [activityDataSource, setActivityDataSource] = useState<DataFlow>('unknown');
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const { data: activityCollectionData } = useLiveQuery(
+    (q) => q.from({ rows: assetActivityCollection }),
+  );
 
-  // Track latency: if we started a fetch, measure it; otherwise it's cached (0ms)
-  useEffect(() => {
-    if (activityData && !isActivityFetching) {
-      if (activityFetchStartRef.current !== null) {
-        setActivityQueryTimeMs(Math.round(performance.now() - activityFetchStartRef.current));
-        activityFetchStartRef.current = null;
-      } else {
-        setActivityQueryTimeMs(0); // Data from cache, no network call
-      }
-    }
-  }, [activityData, isActivityFetching]);
-
-  // Query investor flow from DuckDB
-  const flowFetchStartRef = useRef<number | null>(null);
+  // Query investor flow for this asset
   const [flowQueryTimeMs, setFlowQueryTimeMs] = useState<number | null>(null);
-  const { data: flowData, isLoading: isFlowLoading, isFetching: isFlowFetching } = useQuery({
-    queryKey: ['investor-flow', code],
-    queryFn: async () => {
-      flowFetchStartRef.current = performance.now();
-      const url = `/api/investor-flow?ticker=${code}`;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          const text = await res.text();
-          console.warn(`[InvestorFlow] ${url} returned ${res.status}: ${text}`);
-          return [] as InvestorFlow[];
-        }
-        const data = await res.json();
-        const rows = (data.rows || []) as InvestorFlow[];
-        console.debug(`[InvestorFlow] fetched ${rows.length} rows for ${code}`, rows.slice(0, 3));
-        return rows;
-      } catch (err) {
-        console.warn(`[InvestorFlow] failed for ${url}:`, err);
-        return [] as InvestorFlow[];
-      }
-    },
-    enabled: Boolean(code),
-    staleTime: 5 * 60 * 1000,
-  });
+  const [flowDataSource, setFlowDataSource] = useState<DataFlow>('unknown');
+  const [isFlowLoading, setIsFlowLoading] = useState(false);
+  const { data: flowCollectionData } = useLiveQuery(
+    (q) => q.from({ rows: investorFlowCollection }),
+  );
 
-  // Track latency: if we started a fetch, measure it; otherwise it's cached (0ms)
   useEffect(() => {
-    if (flowData && !isFlowFetching) {
-      if (flowFetchStartRef.current !== null) {
-        setFlowQueryTimeMs(Math.round(performance.now() - flowFetchStartRef.current));
-        flowFetchStartRef.current = null;
-      } else {
-        setFlowQueryTimeMs(0); // Data from cache, no network call
-      }
-    }
-  }, [flowData, isFlowFetching]);
+    if (!code) return;
 
-  const activityRows = activityData ?? [];
-  const flowRows = flowData ?? [];
+    let cancelled = false;
+    setIsActivityLoading(true);
+
+    fetchAssetActivityData(code, hasCusip ? cusip : null)
+      .then(({ queryTimeMs, source }) => {
+        if (cancelled) return;
+        setActivityQueryTimeMs(queryTimeMs);
+        setActivityDataSource(
+          source === 'api' ? 'tsdb-api' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory',
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[AssetDetail] Failed to load asset activity:', error);
+        setActivityQueryTimeMs(null);
+        setActivityDataSource('unknown');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsActivityLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code, cusip, hasCusip]);
+
+  useEffect(() => {
+    if (!code) return;
+
+    let cancelled = false;
+    setIsFlowLoading(true);
+
+    fetchInvestorFlowData(code)
+      .then(({ queryTimeMs, source }) => {
+        if (cancelled) return;
+        setFlowQueryTimeMs(queryTimeMs);
+        setFlowDataSource(
+          source === 'api' ? 'tsdb-api' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory',
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[AssetDetail] Failed to load investor flow:', error);
+        setFlowQueryTimeMs(null);
+        setFlowDataSource('unknown');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsFlowLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  const activityRows = useMemo(() => {
+    if (!activityCollectionData) return [];
+    return activityCollectionData
+      .filter((row) => (
+        hasCusip
+          ? row.ticker === code && row.cusip === cusip
+          : row.ticker === code
+      ))
+      .sort((left, right) => left.quarter.localeCompare(right.quarter));
+  }, [activityCollectionData, code, cusip, hasCusip]);
+
+  const flowRows = useMemo(() => {
+    if (!flowCollectionData || !code) return [];
+    const normalizedCode = code.trim().toUpperCase();
+    return flowCollectionData
+      .filter((row) => row.ticker === normalizedCode)
+      .sort((left, right) => left.quarter.localeCompare(right.quarter));
+  }, [flowCollectionData, code]);
 
   const [selection, setSelection] = useState<InvestorActivitySelection | null>(null);
   const [hoverSelection, setHoverSelection] = useState<InvestorActivitySelection | null>(null);
@@ -280,8 +308,7 @@ export function AssetDetailPage() {
 
   if (!code) return <div className="p-6">Missing asset code.</div>;
 
-  // Show loading while assets are loading OR while we have no data yet
-  // (Dexie collections may return empty array initially before IndexedDB loads)
+  // Show loading while assets are loading or while IndexedDB-backed collection hydrates
   if (isAssetsLoading || (assetsData?.length === 0)) {
     return <div className="p-6">Loading…</div>;
   }
@@ -331,7 +358,7 @@ export function AssetDetailPage() {
                 latencyBadge={
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-muted-foreground">data</span>
-                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityQueryTimeMs === 0 ? "rq-memory" : "rq-api"} />
+                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityDataSource} />
                   </div>
                 }
               />
@@ -344,7 +371,7 @@ export function AssetDetailPage() {
                 latencyBadge={
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-muted-foreground">data</span>
-                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityQueryTimeMs === 0 ? "rq-memory" : "rq-api"} />
+                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityDataSource} />
                   </div>
                 }
               />
@@ -360,7 +387,7 @@ export function AssetDetailPage() {
                 <InvestorFlowChart
                   data={flowRows}
                   ticker={record.asset}
-                  latencyBadge={<LatencyBadge latencyMs={flowQueryTimeMs ?? undefined} source={flowQueryTimeMs === 0 ? "rq-memory" : "rq-api"} />}
+                  latencyBadge={<LatencyBadge latencyMs={flowQueryTimeMs ?? undefined} source={flowDataSource} />}
                 />
               )}
             </div>

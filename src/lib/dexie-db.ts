@@ -82,6 +82,37 @@ export interface DrilldownEntry {
     }
 }
 
+export interface AssetActivityEntry {
+    key: string
+    rows: Array<{
+        id: string
+        assetKey: string
+        ticker: string
+        cusip: string | null
+        quarter: string
+        numOpen: number
+        numAdd: number
+        numReduce: number
+        numClose: number
+        numHold: number
+        opened: number
+        closed: number
+    }>
+    persistedAt: number
+}
+
+export interface InvestorFlowEntry {
+    ticker: string
+    rows: Array<{
+        id: string
+        ticker: string
+        quarter: string
+        inflow: number
+        outflow: number
+    }>
+    persistedAt: number
+}
+
 /**
  * App cache database extending Dexie
  */
@@ -90,6 +121,8 @@ export class AppCacheDB extends Dexie {
     searchIndex!: Table<SearchIndexEntry, string>
     cikQuarterly!: Table<CikQuarterlyEntry, string>
     drilldown!: Table<DrilldownEntry, string>
+    assetActivity!: Table<AssetActivityEntry, string>
+    investorFlow!: Table<InvestorFlowEntry, string>
 
     constructor() {
         super('app-cache')
@@ -98,6 +131,14 @@ export class AppCacheDB extends Dexie {
             searchIndex: 'key',
             cikQuarterly: 'cik',
             drilldown: 'key'
+        })
+        this.version(2).stores({
+            queryCache: 'key',
+            searchIndex: 'key',
+            cikQuarterly: 'cik',
+            drilldown: 'key',
+            assetActivity: 'key',
+            investorFlow: 'ticker',
         })
     }
 }

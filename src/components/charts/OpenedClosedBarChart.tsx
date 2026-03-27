@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
-import ReactEChartsCore from "echarts-for-react/lib/core";
+import { useMemo, useRef, useEffect, useState } from "react";
 import * as echarts from "echarts/core";
 import { BarChart } from "echarts/charts";
 import {
@@ -24,34 +23,6 @@ echarts.use([
   LegacyGridContainLabel,
 ]);
 
-// Patch echarts-for-react unmount to be resilient in React 18 StrictMode double-invoke
-const proto = (ReactEChartsCore as any)?.prototype;
-if (proto && !proto.__strictPatched) {
-  const originalUnmount = proto.componentWillUnmount;
-  proto.componentWillUnmount = function (...args: any[]) {
-    try {
-      if (this.resizeObserver && typeof this.resizeObserver.disconnect === "function") {
-        this.resizeObserver.disconnect();
-      }
-    } catch (err) {
-      // ignore StrictMode double-dispose
-    }
-    try {
-      if (this.echartsInstance && typeof this.echartsInstance.isDisposed === "function") {
-        if (!this.echartsInstance.isDisposed()) {
-          this.echartsInstance.dispose();
-        }
-      } else if (this.echartsInstance) {
-        this.echartsInstance.dispose();
-      }
-    } catch (err) {
-      // ignore
-    }
-    return originalUnmount?.apply(this, args);
-  };
-  proto.__strictPatched = true;
-}
-
 interface OpenedClosedBarChartProps {
   /** Array of quarterly data points with opened/closed counts */
   data: readonly QuarterlyActivityPoint[];
@@ -69,6 +40,17 @@ interface OpenedClosedBarChartProps {
   unitLabel?: string;
   /** Optional latency badge */
   latencyBadge?: React.ReactNode;
+}
+
+interface OpenedClosedChartEvent {
+  name?: string;
+  seriesName?: string;
+}
+
+interface OpenedClosedTooltipParam {
+  axisValueLabel?: string;
+  seriesName?: string;
+  value?: number | string | null;
 }
 
 /**
@@ -90,7 +72,37 @@ export function OpenedClosedBarChart({
   unitLabel = "positions",
   latencyBadge,
 }: OpenedClosedBarChartProps) {
-  const chartRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<echarts.EChartsType | null>(null);
+  const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateSize = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      if (width > 0 && height > 0) {
+        setChartSize((current) => {
+          if (current?.width === width && current?.height === height) {
+            return current;
+          }
+          return { width, height };
+        });
+      }
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const chartData = useMemo(() => {
     return data.map((item) => ({
@@ -125,7 +137,7 @@ export function OpenedClosedBarChart({
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        formatter: (params: any[]) => {
+        formatter: (params: OpenedClosedTooltipParam[]) => {
           const lines = params.map((p) => {
             const label = p.seriesName;
             const value = Math.abs(Number(p.value));
@@ -215,10 +227,28 @@ export function OpenedClosedBarChart({
   }, [chartData, unitLabel]);
 
   useEffect(() => {
-    const chartInstance = chartRef.current?.getEchartsInstance();
-    if (!chartInstance) return;
+    const container = containerRef.current;
+    if (!container || !option || !chartSize) return;
 
-    const clickHandler = (params: any) => {
+    const chartInstance =
+      echarts.getInstanceByDom(container) ??
+      echarts.init(container, undefined, {
+        renderer: "canvas",
+        width: chartSize.width,
+        height: chartSize.height,
+      });
+
+    chartRef.current = chartInstance;
+    chartInstance.resize({
+      width: chartSize.width,
+      height: chartSize.height,
+    });
+    chartInstance.setOption(option, {
+      notMerge: false,
+      lazyUpdate: false,
+    });
+
+    const clickHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarClick || !params.name || !params.seriesName) return;
 
       const quarter = params.name as string;
@@ -227,7 +257,7 @@ export function OpenedClosedBarChart({
       onBarClick({ quarter, action });
     };
 
-    const hoverHandler = (params: any) => {
+    const hoverHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarHover || !params.name || !params.seriesName) return;
 
       const quarter = params.name as string;
@@ -257,16 +287,30 @@ export function OpenedClosedBarChart({
         // ignore
       }
     };
-  }, [onBarClick, onBarHover, onBarLeave, option]);
+  }, [chartSize, onBarClick, onBarHover, onBarLeave, option]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (chartRef.current && !chartRef.current.isDisposed()) {
+          chartRef.current.dispose();
+        }
+      } catch {
+        // ignore
+      } finally {
+        chartRef.current = null;
+      }
+    };
+  }, []);
 
   if (data.length === 0) {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>{title}</CardTitle>
           {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <div className="h-[400px] flex items-center justify-center text-muted-foreground">
             No activity data available
           </div>
@@ -278,7 +322,7 @@ export function OpenedClosedBarChart({
   if (!option) return null;
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span>{title}</span>
@@ -286,16 +330,8 @@ export function OpenedClosedBarChart({
         </CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent className="h-[450px] w-full">
-        <ReactEChartsCore
-          ref={chartRef}
-          echarts={echarts}
-          option={option}
-          notMerge={false}
-          lazyUpdate={false}
-          style={{ height: "100%", width: "100%" }}
-          opts={{ renderer: "canvas" }}
-        />
+      <CardContent className="h-[450px] w-full min-w-0">
+        <div ref={containerRef} className="h-full w-full min-w-0" />
       </CardContent>
     </Card>
   );
