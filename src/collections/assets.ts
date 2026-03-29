@@ -9,6 +9,22 @@ export interface Asset {
     cusip: string | null
 }
 
+export async function fetchAssetRecord(code: string, cusip?: string | null): Promise<Asset | null> {
+    const encodedCode = encodeURIComponent(code)
+    const encodedCusip = cusip ? `/${encodeURIComponent(cusip)}` : ''
+    const response = await fetch(`/api/assets/${encodedCode}${encodedCusip}`)
+
+    if (response.status === 404) {
+        return null
+    }
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch asset')
+    }
+
+    return await response.json() as Asset
+}
+
 // Factory function to create assets collection with queryClient
 // Uses 'progressive' sync mode: loads query subset first, syncs full dataset in background
 // Best for ~40K rows - instant first paint + sub-millisecond queries after sync

@@ -31,9 +31,16 @@ export type DataFlow =
 export type LatencySource = DataFlow;
 
 export interface LatencyBadgeProps {
+  /** @deprecated Use dataLoadMs instead */
   latencyMs?: number | null;
+  /** Time to load data from source (IndexedDB, API, or memory) */
+  dataLoadMs?: number | null;
+  /** Time to render the component after data is ready */
+  renderMs?: number | null;
   source?: DataFlow;
   className?: string;
+  /** Layout variant: "inline" (single line) or "split" (two separate badges) */
+  variant?: "inline" | "split";
 }
 
 function formatLatency(latencyMs: number) {
@@ -89,34 +96,42 @@ function getSourceCategory(source: DataFlow): "local" | "cache" | "api" | "unkno
   }
 }
 
-export function LatencyBadge({ latencyMs, source = "unknown", className }: LatencyBadgeProps) {
-  if (latencyMs == null || Number.isNaN(latencyMs)) return null;
-
+function SingleLatencyBadge({ 
+  latencyMs, 
+  source = "unknown", 
+  label, 
+  className 
+}: { 
+  latencyMs: number; 
+  source?: DataFlow; 
+  label?: string;
+  className?: string;
+}) {
   const tone = getLatencyTone(latencyMs);
   const category = getSourceCategory(source);
 
   const toneClasses =
     tone === "good"
-      ? "ring-emerald-500/30"
+      ? "ring-emerald-500/30 border-emerald-200/50"
       : tone === "warn"
-        ? "ring-amber-500/30"
-        : "ring-rose-500/30";
+        ? "ring-amber-500/30 border-amber-200/50"
+        : "ring-rose-500/30 border-rose-200/50";
 
   // Color by category: local (violet), cache (emerald), api (sky)
   const sourceClasses =
     category === "local"
-      ? "bg-violet-50 text-violet-700 border-violet-200"
+      ? "text-violet-700 dark:text-violet-400"
       : category === "cache"
-        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        ? "text-emerald-700 dark:text-emerald-400"
         : category === "api"
-          ? "bg-sky-50 text-sky-700 border-sky-200"
-          : "bg-muted text-muted-foreground border-border";
+          ? "text-sky-700 dark:text-sky-400"
+          : "text-muted-foreground";
 
   return (
     <Badge
       variant="outline"
       className={cn(
-        "text-[10px] px-1.5 py-0.5 font-medium border inline-flex items-center gap-1",
+        "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
         "ring-1",
         toneClasses,
         sourceClasses,
@@ -124,7 +139,107 @@ export function LatencyBadge({ latencyMs, source = "unknown", className }: Laten
       )}
     >
       <span>{formatLatency(latencyMs)}</span>
-      <span className="opacity-70">({labelForSource(source)})</span>
+      {label && <span className="opacity-90">({label})</span>}
+    </Badge>
+  );
+}
+
+export function LatencyBadge({ 
+  latencyMs, 
+  dataLoadMs, 
+  renderMs, 
+  source = "unknown", 
+  className,
+  variant = "inline",
+}: LatencyBadgeProps) {
+  // Backward compatibility: if latencyMs is provided but dataLoadMs is not, use latencyMs as dataLoadMs
+  const resolvedDataLoadMs = dataLoadMs ?? latencyMs;
+  
+  // If no timing data at all, return null
+  if ((resolvedDataLoadMs == null || Number.isNaN(resolvedDataLoadMs)) && 
+      (renderMs == null || Number.isNaN(renderMs))) {
+    return null;
+  }
+
+  // If only data load time is provided (legacy mode), render single badge
+  if ((renderMs == null || Number.isNaN(renderMs)) && resolvedDataLoadMs != null) {
+    return (
+      <SingleLatencyBadge 
+        latencyMs={resolvedDataLoadMs} 
+        source={source} 
+        label={labelForSource(source)}
+        className={className} 
+      />
+    );
+  }
+
+  // Split variant: two separate badges
+  if (variant === "split") {
+    return (
+      <div className={cn("inline-flex items-center gap-1", className)}>
+        {resolvedDataLoadMs != null && !Number.isNaN(resolvedDataLoadMs) && (
+          <SingleLatencyBadge 
+            latencyMs={resolvedDataLoadMs} 
+            source={source} 
+            label="data"
+          />
+        )}
+        {renderMs != null && !Number.isNaN(renderMs) && (
+          <SingleLatencyBadge 
+            latencyMs={renderMs} 
+            source="tsdb-memory"
+            label="render"
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Inline variant (default): single badge with both timings
+  const totalMs = (resolvedDataLoadMs ?? 0) + (renderMs ?? 0);
+  const tone = getLatencyTone(totalMs);
+  const category = getSourceCategory(source);
+
+  const toneClasses =
+    tone === "good"
+      ? "ring-emerald-500/30 border-emerald-200/50"
+      : tone === "warn"
+        ? "ring-amber-500/30 border-amber-200/50"
+        : "ring-rose-500/30 border-rose-200/50";
+
+  const sourceClasses =
+    category === "local"
+      ? "text-violet-700 dark:text-violet-400"
+      : category === "cache"
+        ? "text-emerald-700 dark:text-emerald-400"
+        : category === "api"
+          ? "text-sky-700 dark:text-sky-400"
+          : "text-muted-foreground";
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
+        "ring-1",
+        toneClasses,
+        className
+      )}
+    >
+      <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
+        <span className="opacity-90">data:</span>
+        <span>{resolvedDataLoadMs != null ? formatLatency(resolvedDataLoadMs) : "—"}</span>
+      </span>
+      <span className="opacity-40 text-muted-foreground">|</span>
+      <span
+        data-latency-part="render"
+        className="inline-flex items-center gap-1 text-[goldenrod]"
+      >
+        <span className="opacity-90">render:</span>
+        <span>{renderMs != null ? formatLatency(renderMs) : "—"}</span>
+      </span>
+      <span className="opacity-40 text-muted-foreground">|</span>
+      <span className={cn("opacity-90", sourceClasses)}>{labelForSource(source)}</span>
     </Badge>
   );
 }

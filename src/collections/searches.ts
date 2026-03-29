@@ -29,6 +29,7 @@ export interface SyncState {
 }
 
 let syncState: SyncState = { status: 'idle' }
+let fullDumpSyncEnabled = false
 
 export function getSyncState(): SyncState {
     return syncState
@@ -38,8 +39,27 @@ export function setSyncState(state: SyncState) {
     syncState = state
 }
 
-// Fetch all search data using cursor-based pagination
+// Fetch all search data using cursor-based pagination.
+// Waits for the pre-computed index load attempt first so we can skip
+// the expensive 57-page fetch when the Dexie index is available.
 async function fetchAllSearches(): Promise<SearchResult[]> {
+    if (!fullDumpSyncEnabled) {
+        return []
+    }
+
+    // Gate: let the pre-computed index load finish before we decide.
+    // Without this, the useLiveQuery subscription triggers this queryFn
+    // before loadPrecomputedIndex has had time to read from Dexie.
+    if (indexLoadPromise) {
+        try { await indexLoadPromise } catch { /* fallback to full dump */ }
+    }
+
+    if (isSearchIndexReady()) {
+        console.log('[SearchSync] Pre-computed index ready, skipping full-dump fetch')
+        setSyncState({ status: 'complete', lastSyncTime: Date.now(), totalRows: 0 })
+        return []
+    }
+
     setSyncState({ status: 'syncing' })
     
     const allItems: SearchResult[] = []
@@ -100,7 +120,10 @@ export async function preloadSearches(): Promise<void> {
         console.log('[SearchSync] Already loaded, skipping preload')
         return
     }
-    
+
+    fullDumpSyncEnabled = true
+    sharedQueryClient.removeQueries({ queryKey: ['searches'] })
+
     // Trigger the queryFn by accessing the collection
     await searchesCollection.preload()
 }
@@ -192,9 +215,9 @@ export async function loadPrecomputedIndex(): Promise<void> {
         } catch (error) {
             console.error('[SearchIndex] Failed to load:', error)
             searchIndex = null
-        } finally {
-            indexLoadPromise = null
         }
+        // NOTE: we intentionally do NOT clear indexLoadPromise here.
+        // fetchAllSearches awaits it to gate the expensive full-dump.
     })()
     
     return indexLoadPromise

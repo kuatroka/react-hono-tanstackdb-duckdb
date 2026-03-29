@@ -11,6 +11,8 @@ interface InvestorActivityEchartsChartProps {
   onBarHover?: (selection: { quarter: string; action: "open" | "close" }) => void;
   onBarLeave?: () => void;
   latencyBadge?: React.ReactNode;
+  /** Callback when chart render completes with render time in ms */
+  onRenderComplete?: (renderMs: number) => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export function InvestorActivityEchartsChart({
   onBarHover,
   onBarLeave,
   latencyBadge,
+  onRenderComplete,
 }: InvestorActivityEchartsChartProps) {
   // Transform CusipQuarterInvestorActivity to QuarterlyActivityPoint
   const chartData = useMemo(() => {
@@ -42,6 +45,7 @@ export function InvestorActivityEchartsChart({
       onBarClick={onBarClick}
       onBarHover={onBarHover}
       onBarLeave={onBarLeave}
+      onRenderComplete={onRenderComplete}
       latencyBadge={latencyBadge}
       unitLabel="investors"
     />

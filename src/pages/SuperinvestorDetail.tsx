@@ -5,43 +5,66 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
 import {
-  superinvestorsCollection,
+  type Superinvestor,
+  fetchSuperinvestorRecord,
   cikQuarterlyCollection,
   fetchCikQuarterlyData,
 } from '@/collections';
 import { CikValueLineChart } from '@/components/charts/CikValueLineChart';
+import { clearSuperinvestorDetailRouteCaches } from '@/collections/page-cache-cleanup';
 
 export function SuperinvestorDetailPage() {
   const { cik } = useParams({ strict: false }) as { cik?: string };
   const { onReady } = useContentReady();
   const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
+  const [recordSource, setRecordSource] = useState<DataFlow>('unknown');
   const [chartQueryTimeMs, setChartQueryTimeMs] = useState<number | null>(null);
   const [chartDataSource, setChartDataSource] = useState<DataFlow>('unknown');
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartRenderMs, setChartRenderMs] = useState<number | null>(null);
+  const [record, setRecord] = useState<Superinvestor | null | undefined>(undefined);
 
-  // Query superinvestors from TanStack DB local collection (instant from IndexedDB cache)
-  // Data is preloaded on app init and persisted to IndexedDB
-  const { data: superinvestorsData, isLoading } = useLiveQuery(
-    (q) => q.from({ superinvestors: superinvestorsCollection }),
-  );
   const { data: cikQuarterlyData } = useLiveQuery(
     (q) => q.from({ rows: cikQuarterlyCollection }),
   );
 
-  // Find the specific superinvestor record
-  const record = superinvestorsData?.find(s => s.cik === cik);
-
-  // Set latency to 0ms when data is available (memory/IndexedDB load)
   useEffect(() => {
-    if (!isLoading && superinvestorsData && queryTimeMs == null) {
-      setQueryTimeMs(0);
+    if (!cik) {
+      setRecord(undefined);
+      return;
     }
-  }, [isLoading, superinvestorsData, queryTimeMs]);
+
+    let cancelled = false;
+    const startedAt = performance.now();
+    setRecord(undefined);
+    setQueryTimeMs(null);
+    setRecordSource('unknown');
+
+    fetchSuperinvestorRecord(cik)
+      .then((superinvestor) => {
+        if (cancelled) return;
+        setRecord(superinvestor);
+        setQueryTimeMs(Math.round(performance.now() - startedAt));
+        setRecordSource(superinvestor ? 'tsdb-api' : 'unknown');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[SuperinvestorDetail] Failed to load superinvestor record:', error);
+        setRecord(null);
+        setQueryTimeMs(null);
+        setRecordSource('unknown');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cik]);
 
   // Fetch quarterly chart data when CIK is available
   useEffect(() => {
     if (!cik) return;
 
+    setChartRenderMs(null);
     setChartLoading(true);
 
     fetchCikQuarterlyData(cik)
@@ -63,6 +86,12 @@ export function SuperinvestorDetailPage() {
       });
   }, [cik]);
 
+  useEffect(() => {
+    return () => {
+      clearSuperinvestorDetailRouteCaches();
+    };
+  }, [cik]);
+
   const chartData = useMemo(() => {
     if (!cikQuarterlyData || !cik) return [];
     return cikQuarterlyData
@@ -74,17 +103,15 @@ export function SuperinvestorDetailPage() {
   const readyCalledRef = useRef(false);
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (record || (!isLoading && superinvestorsData !== undefined)) {
+    if (record !== undefined) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [record, isLoading, superinvestorsData, onReady]);
+  }, [record, onReady]);
 
   if (!cik) return <div className="p-6">Missing CIK.</div>;
 
-  // Show loading while data is loading OR while we have no data yet
-  // (Dexie collections may return empty array initially before IndexedDB loads)
-  if (isLoading || (superinvestorsData?.length === 0)) {
+  if (record === undefined) {
     return <div className="p-6">Loading…</div>;
   }
 
@@ -98,7 +125,7 @@ export function SuperinvestorDetailPage() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-2">
             <span>{record.cikName}</span>
-            <LatencyBadge latencyMs={queryTimeMs ?? undefined} source="tsdb-indexeddb" />
+            <LatencyBadge latencyMs={queryTimeMs ?? undefined} source={recordSource} />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -122,9 +149,11 @@ export function SuperinvestorDetailPage() {
         <CikValueLineChart
           data={chartData}
           cikName={record.cikName}
+          onRenderComplete={setChartRenderMs}
           latencyBadge={
             <LatencyBadge
-              latencyMs={chartQueryTimeMs ?? undefined}
+              dataLoadMs={chartQueryTimeMs ?? undefined}
+              renderMs={chartRenderMs ?? undefined}
               source={chartDataSource}
             />
           }

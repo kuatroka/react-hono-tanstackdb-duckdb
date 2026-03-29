@@ -4,7 +4,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { OpenedClosedBarChart } from "./OpenedClosedBarChart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge } from "@/components/LatencyBadge";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { allAssetsActivityCollection } from "@/collections";
 
 interface AllAssetsActivityChartProps {
@@ -20,6 +20,7 @@ export function AllAssetsActivityChart({ onBarClick }: AllAssetsActivityChartPro
   const { data: rows, isLoading } = useLiveQuery((q) =>
     q.from({ rows: allAssetsActivityCollection })
   );
+  const [renderMs, setRenderMs] = useState<number | null>(null);
 
   const sortedRows = useMemo(() => {
     if (!rows) return [];
@@ -46,7 +47,14 @@ export function AllAssetsActivityChart({ onBarClick }: AllAssetsActivityChartPro
       title="All Assets Activity (ECharts)"
       description="Total opened (green) and closed (red) positions across all assets by quarter"
       onBarClick={onBarClick}
-      latencyBadge={<LatencyBadge latencyMs={0} source="tsdb-indexeddb" />}
+      onRenderComplete={setRenderMs}
+      latencyBadge={
+        <LatencyBadge
+          dataLoadMs={0}
+          renderMs={renderMs ?? undefined}
+          source="tsdb-indexeddb"
+        />
+      }
       unitLabel="positions"
     />
   );

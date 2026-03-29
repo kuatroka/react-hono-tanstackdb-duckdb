@@ -40,6 +40,8 @@ interface OpenedClosedBarChartProps {
   unitLabel?: string;
   /** Optional latency badge */
   latencyBadge?: React.ReactNode;
+  /** Callback when chart render completes with render time in ms */
+  onRenderComplete?: (renderMs: number) => void;
 }
 
 interface OpenedClosedChartEvent {
@@ -71,10 +73,21 @@ export function OpenedClosedBarChart({
   onBarLeave,
   unitLabel = "positions",
   latencyBadge,
+  onRenderComplete,
 }: OpenedClosedBarChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
   const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
+  const renderStartRef = useRef<number | null>(null);
+  const prevDataLengthRef = useRef<number>(0);
+
+  // Track render start when data changes
+  useEffect(() => {
+    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
+      renderStartRef.current = performance.now();
+      prevDataLengthRef.current = data.length;
+    }
+  }, [data]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -247,6 +260,13 @@ export function OpenedClosedBarChart({
       notMerge: false,
       lazyUpdate: false,
     });
+
+    // Signal render complete after chart is set up
+    if (renderStartRef.current != null && onRenderComplete) {
+      const elapsed = Math.round(performance.now() - renderStartRef.current);
+      onRenderComplete(elapsed);
+      renderStartRef.current = null;
+    }
 
     const clickHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarClick || !params.name || !params.seriesName) return;

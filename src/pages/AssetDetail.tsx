@@ -3,19 +3,21 @@ import { useLiveQuery } from '@tanstack/react-db';
 
 import { InvestorActivityUplotChart } from '@/components/charts/InvestorActivityUplotChart';
 import { InvestorActivityEchartsChart } from '@/components/charts/InvestorActivityEchartsChart';
-import { InvestorFlowChart } from '@/components/charts/InvestorFlowChart';
+import { InvestorFlowChart, InvestorFlowUplotChart } from '@/components/charts/InvestorFlowChart';
 import { InvestorActivityDrilldownTable } from '@/components/InvestorActivityDrilldownTable';
 import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
 import { useContentReady } from '@/hooks/useContentReady';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  assetsCollection,
+  type Asset,
   assetActivityCollection,
   investorFlowCollection,
+  fetchAssetRecord,
   fetchAssetActivityData,
   fetchInvestorFlowData,
 } from '@/collections';
 import { backgroundLoadAllDrilldownData, fetchDrilldownBothActions } from '@/collections/investor-details';
+import { clearAssetDetailRouteCaches } from '@/collections/page-cache-cleanup';
 
 type InvestorActivityAction = 'open' | 'close';
 
@@ -31,32 +33,50 @@ export function AssetDetailPage() {
   // Determine if we have a valid cusip (not "_" placeholder)
   const hasCusip = cusip && cusip !== "_";
 
-  // Query assets from TanStack DB local collection (instant)
-  // Data is preloaded on app init
-  const { data: assetsData, isLoading: isAssetsLoading } = useLiveQuery(
-    (q) => q.from({ assets: assetsCollection }),
-  );
+  const [record, setRecord] = useState<Asset | null | undefined>(undefined);
 
-  // Find the specific asset record
-  const record = assetsData?.find(a =>
-    hasCusip
-      ? a.asset === code && a.cusip === cusip
-      : a.asset === code
-  );
+  useEffect(() => {
+    if (!code) {
+      setRecord(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    setRecord(undefined);
+
+    fetchAssetRecord(code, hasCusip ? cusip : null)
+      .then((assetRecord) => {
+        if (!cancelled) {
+          setRecord(assetRecord);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('[AssetDetail] Failed to load asset record:', error);
+          setRecord(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code, cusip, hasCusip]);
 
   // Signal ready immediately when asset record is available
   const readyCalledRef = useRef(false);
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (record || (!isAssetsLoading && assetsData !== undefined)) {
+    if (record !== undefined) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [record, isAssetsLoading, assetsData, onReady]);
+  }, [record, onReady]);
 
   const [activityQueryTimeMs, setActivityQueryTimeMs] = useState<number | null>(null);
   const [activityDataSource, setActivityDataSource] = useState<DataFlow>('unknown');
   const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const [uplotRenderMs, setUplotRenderMs] = useState<number | null>(null);
+  const [echartsRenderMs, setEchartsRenderMs] = useState<number | null>(null);
   const { data: activityCollectionData } = useLiveQuery(
     (q) => q.from({ rows: assetActivityCollection }),
   );
@@ -65,14 +85,37 @@ export function AssetDetailPage() {
   const [flowQueryTimeMs, setFlowQueryTimeMs] = useState<number | null>(null);
   const [flowDataSource, setFlowDataSource] = useState<DataFlow>('unknown');
   const [isFlowLoading, setIsFlowLoading] = useState(false);
+  const [flowRenderMs, setFlowRenderMs] = useState<number | null>(null);
+  const [flowUplotRenderMs, setFlowUplotRenderMs] = useState<number | null>(null);
   const { data: flowCollectionData } = useLiveQuery(
     (q) => q.from({ rows: investorFlowCollection }),
   );
+
+  // Callbacks for chart render timing
+  const handleActivityRenderComplete = useCallback((renderMs: number) => {
+    setUplotRenderMs(renderMs);
+  }, []);
+
+  const handleEchartsRenderComplete = useCallback((renderMs: number) => {
+    setEchartsRenderMs(renderMs);
+  }, []);
+
+  const handleFlowRenderComplete = useCallback((renderMs: number) => {
+    setFlowRenderMs(renderMs);
+  }, []);
+
+  const handleFlowUplotRenderComplete = useCallback((renderMs: number) => {
+    setFlowUplotRenderMs(renderMs);
+  }, []);
 
   useEffect(() => {
     if (!code) return;
 
     let cancelled = false;
+    setActivityQueryTimeMs(null);
+    setActivityDataSource('unknown');
+    setUplotRenderMs(null);
+    setEchartsRenderMs(null);
     setIsActivityLoading(true);
 
     fetchAssetActivityData(code, hasCusip ? cusip : null)
@@ -104,6 +147,10 @@ export function AssetDetailPage() {
     if (!code) return;
 
     let cancelled = false;
+    setFlowQueryTimeMs(null);
+    setFlowDataSource('unknown');
+    setFlowRenderMs(null);
+    setFlowUplotRenderMs(null);
     setIsFlowLoading(true);
 
     fetchInvestorFlowData(code)
@@ -198,6 +245,12 @@ export function AssetDetailPage() {
     setHoverSelection(null);
     backgroundLoadStartedRef.current = false;
   }, [code]);
+
+  useEffect(() => {
+    return () => {
+      clearAssetDetailRouteCaches();
+    };
+  }, [code, cusip]);
 
   // Cleanup hover timeout on unmount
   useEffect(() => {
@@ -309,7 +362,7 @@ export function AssetDetailPage() {
   if (!code) return <div className="p-6">Missing asset code.</div>;
 
   // Show loading while assets are loading or while IndexedDB-backed collection hydrates
-  if (isAssetsLoading || (assetsData?.length === 0)) {
+  if (record === undefined) {
     return <div className="p-6">Loading…</div>;
   }
 
@@ -355,11 +408,14 @@ export function AssetDetailPage() {
                 onBarClick={({ quarter, action }) => handleSelectionChange({ quarter, action })}
                 onBarHover={({ quarter, action }) => handleHoverChange({ quarter, action })}
                 onBarLeave={() => handleHoverChange(null)}
+                onRenderComplete={handleActivityRenderComplete}
                 latencyBadge={
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground">data</span>
-                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityDataSource} />
-                  </div>
+                  <LatencyBadge 
+                    dataLoadMs={activityQueryTimeMs ?? undefined}
+                    renderMs={uplotRenderMs ?? undefined}
+                    source={activityDataSource}
+                    variant="inline"
+                  />
                 }
               />
               <InvestorActivityEchartsChart
@@ -368,27 +424,53 @@ export function AssetDetailPage() {
                 onBarClick={({ quarter, action }) => handleSelectionChange({ quarter, action })}
                 onBarHover={({ quarter, action }) => handleHoverChange({ quarter, action })}
                 onBarLeave={() => handleHoverChange(null)}
+                onRenderComplete={handleEchartsRenderComplete}
                 latencyBadge={
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground">data</span>
-                    <LatencyBadge latencyMs={activityQueryTimeMs ?? undefined} source={activityDataSource} />
-                  </div>
+                  <LatencyBadge 
+                    dataLoadMs={activityQueryTimeMs ?? undefined}
+                    renderMs={echartsRenderMs ?? undefined}
+                    source={activityDataSource}
+                    variant="inline"
+                  />
                 }
               />
             </div>
 
             {/* Investor Flow Chart */}
-            <div className="mt-6">
+            <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
               {isFlowLoading ? (
-                <div className="h-[400px] flex items-center justify-center border rounded-lg bg-card text-muted-foreground">
+                <div className="xl:col-span-2 h-[400px] flex items-center justify-center border rounded-lg bg-card text-muted-foreground">
                   Loading flow chart...
                 </div>
               ) : (
-                <InvestorFlowChart
-                  data={flowRows}
-                  ticker={record.asset}
-                  latencyBadge={<LatencyBadge latencyMs={flowQueryTimeMs ?? undefined} source={flowDataSource} />}
-                />
+                <>
+                  <InvestorFlowUplotChart
+                    data={flowRows}
+                    ticker={record.asset}
+                    onRenderComplete={handleFlowUplotRenderComplete}
+                    latencyBadge={
+                      <LatencyBadge 
+                        dataLoadMs={flowQueryTimeMs ?? undefined}
+                        renderMs={flowUplotRenderMs ?? undefined}
+                        source={flowDataSource}
+                        variant="inline"
+                      />
+                    }
+                  />
+                  <InvestorFlowChart
+                    data={flowRows}
+                    ticker={record.asset}
+                    onRenderComplete={handleFlowRenderComplete}
+                    latencyBadge={
+                      <LatencyBadge 
+                        dataLoadMs={flowQueryTimeMs ?? undefined}
+                        renderMs={flowRenderMs ?? undefined}
+                        source={flowDataSource}
+                        variant="inline"
+                      />
+                    }
+                  />
+                </>
               )}
             </div>
 

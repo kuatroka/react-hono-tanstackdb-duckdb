@@ -8,6 +8,20 @@ export interface Superinvestor {
     cikName: string
 }
 
+export async function fetchSuperinvestorRecord(cik: string): Promise<Superinvestor | null> {
+    const response = await fetch(`/api/superinvestors/${encodeURIComponent(cik)}`)
+
+    if (response.status === 404) {
+        return null
+    }
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch superinvestor')
+    }
+
+    return await response.json() as Superinvestor
+}
+
 // Factory function to create superinvestors collection with queryClient
 // Uses 'eager' sync mode: loads entire collection upfront
 // Best for ~15K rows - well under the 50K threshold for on-demand

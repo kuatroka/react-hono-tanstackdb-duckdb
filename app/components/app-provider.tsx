@@ -1,13 +1,10 @@
 import { useEffect, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient, preloadCollections, initializeWithFreshnessCheck, checkFreshnessOnFocus } from "@/collections";
+import { queryClient, initializeWithFreshnessCheck, checkFreshnessOnFocus } from "@/collections";
 import { openDatabase } from "@/lib/dexie-db";
 
-// Re-export for backward compatibility
-export { queryClient };
-
-// Preload collections on app init for instant queries
-// First opens Dexie database, checks data freshness, then preloads
+// Open Dexie and validate freshness on app init.
+// Heavy collections now load on-demand from the routes that actually need them.
 function CollectionPreloader() {
     const hasInitialized = useRef(false);
 
@@ -24,9 +21,6 @@ function CollectionPreloader() {
 
             // 2. Check if backend data is fresher than cache, invalidate if stale
             await initializeWithFreshnessCheck();
-
-            // 3. Then preload all eager collections
-            await preloadCollections();
         }
         void init();
     }, []);
@@ -38,12 +32,7 @@ function CollectionPreloader() {
 function DataFreshnessOnFocus() {
     useEffect(() => {
         const handleFocus = () => {
-            checkFreshnessOnFocus().then(invalidated => {
-                if (invalidated) {
-                    // Refetch collections after invalidation
-                    void preloadCollections();
-                }
-            });
+            void checkFreshnessOnFocus();
         };
 
         window.addEventListener('focus', handleFocus);

@@ -119,8 +119,8 @@ export function DuckDBGlobalSearch() {
     return filtered;
   }, [allItems, debouncedQuery, shouldSearch]);
 
-  // Defer search index loading to avoid blocking page load
-  // Load during browser idle time or when user focuses the search box
+  // Load the search index only on explicit user intent (focus / typing)
+  // to avoid paying the memory cost on routes where search is never used.
   const indexLoadStartedRef = useRef(false);
 
   const loadSearchIndex = useCallback(async () => {
@@ -131,14 +131,15 @@ export function DuckDBGlobalSearch() {
     console.log('[Search] Loading search index...');
     await loadPrecomputedIndex();
 
-    // 2. If pre-computed index loaded, we're done
+    // 2. If pre-computed index loaded, we're done – skip the heavy
+    //    searches collection preload (56K items) to save ~50 MB of heap.
     if (isSearchIndexReady()) {
       console.log('[Search] Search index loaded successfully');
       setIsInitialized(true);
       return;
     }
 
-    // 3. Fallback: load via TanStack DB full-dump sync
+    // 3. Fallback: load via TanStack DB full-dump cursor pagination
     console.log('[Search] Fallback to full-dump sync...');
     const syncState = getSyncState();
     if (syncState.status !== 'complete') {
@@ -147,27 +148,16 @@ export function DuckDBGlobalSearch() {
     setIsInitialized(true);
   }, []);
 
-  // Load index on idle (deferred) or immediately if user starts typing
+  // Load immediately once the user starts searching.
   useEffect(() => {
-    // Use requestIdleCallback to defer loading until browser is idle
-    // This prevents blocking the initial page render
-    if ('requestIdleCallback' in window) {
-      const idleId = requestIdleCallback(() => {
-        loadSearchIndex();
-      }, { timeout: 2000 }); // Load within 2 seconds max
-
-      return () => cancelIdleCallback(idleId);
-    } else {
-      // Fallback for browsers without requestIdleCallback
-      const timeoutId = setTimeout(loadSearchIndex, 100);
-      return () => clearTimeout(timeoutId);
+    if (shouldSearch && !indexLoadStartedRef.current) {
+      void loadSearchIndex();
     }
-  }, [loadSearchIndex]);
+  }, [shouldSearch, loadSearchIndex]);
 
-  // Also load immediately if user focuses search before idle callback fires
   const handleFocus = useCallback(() => {
     if (!indexLoadStartedRef.current) {
-      loadSearchIndex();
+      void loadSearchIndex();
     }
   }, [loadSearchIndex]);
 

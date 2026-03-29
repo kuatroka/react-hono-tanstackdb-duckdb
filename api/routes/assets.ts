@@ -29,7 +29,7 @@ assetsRoutes.get("/", async (c) => {
         const reader = await conn.runAndReadAll(sql);
         const rows = reader.getRows();
 
-        const results = rows.map((row: any[], index: number) => ({
+        const results = rows.map((row: unknown[], index: number) => ({
             id: `${row[0]}-${row[2] || index}`,
             asset: row[0] as string,
             assetName: row[1] as string,
@@ -43,6 +43,66 @@ assetsRoutes.get("/", async (c) => {
         console.error("[DuckDB Assets] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         return c.json({ error: "Assets query failed", details: errorMessage }, 500);
+    }
+});
+
+/**
+ * GET /api/assets/:code
+ * GET /api/assets/:code/:cusip
+ *
+ * Returns a single asset record for detail pages without hydrating the full assets collection.
+ */
+assetsRoutes.get("/:code/:cusip?", async (c) => {
+    const code = c.req.param("code");
+    const cusip = c.req.param("cusip");
+
+    try {
+        const conn = await getDuckDBConnection();
+
+        const sql = cusip
+            ? `
+      SELECT
+        asset,
+        asset_name as "assetName",
+        cusip
+      FROM assets
+      WHERE asset = ? AND cusip = ?
+      LIMIT 1
+    `
+            : `
+      SELECT
+        asset,
+        asset_name as "assetName",
+        cusip
+      FROM assets
+      WHERE asset = ?
+      ORDER BY asset_name ASC
+      LIMIT 1
+    `;
+
+        const stmt = await conn.prepare(sql);
+        stmt.bindVarchar(1, code);
+        if (cusip) {
+            stmt.bindVarchar(2, cusip);
+        }
+        const reader = await stmt.runAndReadAll();
+        const rows = reader.getRows();
+
+        if (rows.length === 0) {
+            return c.json({ error: "Asset not found" }, 404);
+        }
+
+        const row = rows[0];
+        return c.json({
+            id: `${row[0]}-${row[2] || "none"}`,
+            asset: row[0] as string,
+            assetName: row[1] as string,
+            cusip: row[2] as string | null,
+        });
+    } catch (error) {
+        console.error("[DuckDB Asset] Error:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return c.json({ error: "Asset query failed", details: errorMessage }, 500);
     }
 });
 

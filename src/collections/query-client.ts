@@ -1,18 +1,18 @@
 /**
- * Shared QueryClient with Dexie IndexedDB Persistence
+ * Shared QueryClient (no query-level persister)
  *
- * This file creates the shared QueryClient instance with IndexedDB persistence
- * using Dexie for proper connection lifecycle management.
+ * Large collections (assets 40K, searches 56K, superinvestors 15K) fetch
+ * fresh from the fast DuckDB API on each page load (~60 ms).
  *
- * Dexie provides:
- * - Proper connection lifecycle (close/delete/reopen without page reload)
- * - Single database with multiple tables
- * - Better error handling
+ * Route-specific data (search index, asset-activity, investor-flow,
+ * drilldown, cik-quarterly) is persisted manually in dedicated Dexie
+ * tables – see the individual collection modules.
+ *
+ * Removing the per-query persister eliminates the "restore-then-refetch"
+ * double-load that caused peak heap to grow on every refresh.
  */
 
 import { QueryClient } from '@tanstack/query-core'
-import { experimental_createQueryPersister } from '@tanstack/query-persist-client-core'
-import { createDexieStorage } from '@/lib/dexie-persister'
 import {
     getDb,
     type SearchIndexEntry,
@@ -22,26 +22,33 @@ import {
     type InvestorFlowEntry,
 } from '@/lib/dexie-db'
 
-// Create the persister using Dexie storage
-// Each query is persisted separately (not the whole client)
-// Queries are lazily restored when first used
-export const persister = typeof window !== 'undefined'
-    ? experimental_createQueryPersister({
-        storage: createDexieStorage(),
-        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-    })
-    : null
-
-// Shared QueryClient instance with Dexie persistence
+// Shared QueryClient – no per-query persister
 export const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 5 * 60 * 1000,      // 5 minutes - refetch after this
-            gcTime: 1000 * 60 * 30,        // 30 minutes in memory (persister handles long-term)
-            persister: persister?.persisterFn,
+            staleTime: 5 * 60 * 1000,      // 5 minutes
+            gcTime: 1000 * 60 * 30,         // 30 minutes in memory
         },
     },
 })
+
+/**
+ * One-time cleanup: drop any data left in the legacy queryCache table
+ * so it doesn't bloat IndexedDB (~11 MB for the four persisted queries).
+ */
+export async function clearLegacyQueryCache(): Promise<void> {
+    if (typeof window === 'undefined') return
+    try {
+        const db = getDb()
+        const count = await db.queryCache.count()
+        if (count > 0) {
+            await db.queryCache.clear()
+            console.log(`[QueryClient] Cleared ${count} legacy queryCache entries`)
+        }
+    } catch {
+        // Table may not exist in fresh installs – ignore
+    }
+}
 
 // ============================================================
 // SEARCH INDEX PERSISTENCE (using Dexie searchIndex table)

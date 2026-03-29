@@ -16,7 +16,7 @@ import { invalidateDatabase } from '@/lib/dexie-db'
 import { clearAllCikQuarterlyData } from './cik-quarterly'
 import { clearAllAssetActivityData } from './asset-activity'
 import { clearAllInvestorFlowData } from './investor-flow'
-import { queryClient } from './query-client'
+import { queryClient, clearLegacyQueryCache } from './query-client'
 
 const STORAGE_KEY = 'app-data-version'
 
@@ -140,6 +140,9 @@ export async function initializeWithFreshnessCheck(): Promise<boolean> {
     }
 
     initializationPromise = (async () => {
+        // Drop orphaned per-query cache left by the removed persister
+        clearLegacyQueryCache().catch(() => {})
+
         const { isStale, serverVersion, localVersion } = await checkDataFreshness()
 
         if (isStale && serverVersion) {

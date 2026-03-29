@@ -1,11 +1,9 @@
 /**
  * TanStack DB Collection Instances
  * 
- * This file creates singleton collection instances that can be imported
- * by components for use with useLiveQuery.
- * 
- * Collections use queryCollectionOptions with syncMode for smart loading
- * and experimental_createQueryPersister for IndexedDB persistence.
+ * Singleton collection instances imported by components for useLiveQuery.
+ * Collections fetch fresh from the DuckDB API on every page load (~60 ms).
+ * Route-specific data uses dedicated Dexie tables for persistence.
  */
 
 import { queryClient } from './query-client';
@@ -23,14 +21,13 @@ export const assetsCollection = createAssetsCollection(queryClient);
 export const superinvestorsCollection = createSuperinvestorsCollection(queryClient);
 export const allAssetsActivityCollection = createAllAssetsActivityCollection(queryClient);
 
-// Re-export searches collection (now uses shared queryClient with IndexedDB persistence)
+// Re-export searches collection
 export { searchesCollection, preloadSearches };
 
 // Re-export types for convenience
 export type { Asset, Superinvestor, SearchResult, InvestorDetail };
 
-// Preload collections - triggers initial fetch
-// With persister, subsequent loads will restore from IndexedDB first
+// Preload collections - triggers fresh API fetch on every page load
 export async function preloadCollections(): Promise<void> {
     const startTime = performance.now();
     console.log('[Collections] Preloading...');

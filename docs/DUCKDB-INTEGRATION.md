@@ -1,186 +1,192 @@
 # DuckDB Integration Guide
 
-This document describes how DuckDB tables are integrated into this application and the process for adding new tables.
+This document describes how DuckDB-backed analytics data is integrated into `react-hono-tanstackdb-duckdb` and how to add new DuckDB-backed surfaces safely.
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  DATA PIPELINE (separate codebase)                              │
-│  Creates/updates tables in DuckDB file                          │
-│  Location: /Users/yo_macbook/Documents/app_data/TR_05_DB/       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  THIS APP (zero-hono-react-counter-uplot)                       │
-│                                                                 │
-│  DuckDB tables → Query via duckdb-node-neo (READ_ONLY)          │
-│  - No schema management needed in this app                      │
-│  - Just add API routes that query the tables                    │
-│  - TypeScript types defined in src/types/duckdb.ts              │
-│                                                                 │
-│  Postgres tables → Drizzle ORM + Zero sync                      │
-│  - For data that needs real-time sync to client                 │
-│  - Schema managed via Drizzle migrations                        │
-└─────────────────────────────────────────────────────────────────┘
+```text
+External data pipeline / source tables
+            │
+            ▼
+      DuckDB database files
+            │
+            ▼
+   Hono API routes on Bun (`api/routes/*`)
+            │
+            ▼
+ TanStack DB collections / client fetch flows
+            │
+            ▼
+ React tables and charts
 ```
 
-## Key Principle: DuckDB is READ-ONLY
+## Current architectural role of DuckDB
 
-This app connects to DuckDB in `READ_ONLY` mode. Schema is managed by the external data pipeline, not this app.
+DuckDB is the primary analytics query engine for this application.
 
-**DO NOT use Drizzle for DuckDB tables.** Drizzle is only for Postgres tables that need Zero sync.
+It is used for read-heavy endpoints such as:
 
-## Current DuckDB Tables
+- assets
+- superinvestors
+- search index data
+- all-assets activity
+- investor flow
+- quarterly value/history data
+- drilldown/detail slices
 
-| Table | Purpose |
-|-------|---------|
-| `all_assets_activity` | **Pre-aggregated** totals across all assets per quarter (total_open, total_add, total_reduce, total_close, total_hold) |
-| `assets` | Asset metadata (id, asset, asset_name) |
-| `cusip_quarter_investor_activity` | Per-asset quarterly opened/closed/add/reduce/hold counts |
-| `cusip_quarter_investor_activity_detail` | Detail rows for drilldown (via Parquet files) |
-| `superinvestors` | Superinvestor metadata |
-| `searches` | Search index for assets/superinvestors |
-| `every_qtr` | Quarter-level aggregates |
-| `high_level_totals` | Global totals |
+The browser does **not** query DuckDB directly. Instead:
 
-## Process: Adding a New DuckDB Table
+1. Hono API routes execute DuckDB queries
+2. The frontend fetches through API routes or collection-backed query functions
+3. TanStack DB collections persist and reactively expose the results on the client
+4. IndexedDB-backed persistence is used for repeat navigation and instant local reads where configured
 
-When a new table becomes available from the data pipeline:
+## Key principle: DuckDB is query-side, not migration-managed app storage
 
-### 1. Document the Schema
+DuckDB tables are treated as analytics/query targets.
 
-Get column names and types from the data pipeline team or inspect the DuckDB file:
+Implications:
 
-```sql
-DESCRIBE table_name;
-SELECT * FROM table_name LIMIT 5;
-```
+- DuckDB schema is not managed from the browser
+- DuckDB tables are not managed by Drizzle migrations in the same way as app-managed relational schema
+- frontend code should consume typed API responses and collection data, not raw DuckDB connections
 
-### 2. Add TypeScript Interface
+## Current DuckDB-backed surfaces
 
-Create or update `src/types/duckdb.ts`:
+Examples already present in this repository include:
 
-```typescript
-/** Description of what this table contains */
-export interface NewTableRow {
-  column1: string;
-  column2: number;
-  // ... etc
+- all-assets activity data
+- asset metadata
+- superinvestor metadata
+- search index rows
+- investor-flow data
+- cik-quarterly/value history data
+- drilldown detail rows
+
+Type definitions live under:
+
+- `src/types/duckdb.ts`
+- `src/types/index.ts`
+
+API route implementations live under:
+
+- `api/routes/`
+
+Client collection and cache integration lives under:
+
+- `src/collections/`
+
+## Recommended process for adding a new DuckDB-backed feature
+
+### 1. Define the response shape
+
+Add or update TypeScript types in:
+
+- `src/types/duckdb.ts`
+- or another appropriate typed module under `src/types/`
+
+Example:
+
+```ts
+export interface NewAnalyticsRow {
+  label: string;
+  value: number;
 }
 
-/** API response type */
-export interface NewTableResponse {
-  data: NewTableRow[];
+export interface NewAnalyticsResponse {
+  data: NewAnalyticsRow[];
   queryTimeMs: number;
 }
 ```
 
-### 3. Add API Route
+### 2. Add the API route
 
-Create `api/routes/new-table.ts`:
+Create a new route under `api/routes/` that:
 
-```typescript
+- opens or reuses the DuckDB connection helper used by the API layer
+- runs a scoped SQL query
+- maps rows into typed response objects
+- returns a stable JSON response
+- reports timing information if the UI needs latency data
+
+Example shape:
+
+```ts
 import { Hono } from "hono";
-import { getDuckDBConnection } from "../duckdb";
 
-const newTableRoutes = new Hono();
+const routes = new Hono();
 
-newTableRoutes.get("/", async (c) => {
-  try {
-    const startTime = performance.now();
-    const conn = await getDuckDBConnection();
+routes.get("/", async (c) => {
+  const startTime = performance.now();
 
-    const sql = `SELECT * FROM new_table ORDER BY some_column`;
-    const reader = await conn.runAndReadAll(sql);
-    const rows = reader.getRows();
+  // query DuckDB here
 
-    const data = rows.map((row: any[]) => ({
-      column1: row[0],
-      column2: Number(row[1]),
-    }));
-
-    return c.json({
-      data,
-      queryTimeMs: Math.round((performance.now() - startTime) * 100) / 100,
-    });
-  } catch (error) {
-    console.error("[NewTable] Error:", error);
-    return c.json({ error: "Query failed" }, 500);
-  }
-});
-
-export default newTableRoutes;
-```
-
-### 4. Register the Route
-
-In `api/index.ts`:
-
-```typescript
-import newTableRoutes from "./routes/new-table";
-// ...
-app.route("/new-table", newTableRoutes);
-```
-
-### 5. Add React Component/Hook
-
-Create a component that fetches from the API:
-
-```typescript
-import { useQuery } from "@tanstack/react-query";
-
-export function useNewTableData() {
-  return useQuery({
-    queryKey: ["new-table"],
-    queryFn: async () => {
-      const res = await fetch("/api/new-table");
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    staleTime: 5 * 60 * 1000,
+  return c.json({
+    data: [],
+    queryTimeMs: Math.round((performance.now() - startTime) * 100) / 100,
   });
-}
-```
-
-## Example: All Assets Activity
-
-The `AllAssetsActivityChart` component demonstrates this pattern:
-
-1. **Type**: `src/types/duckdb.ts` → `QuarterlyActivityPoint`, `AllAssetsActivityResponse`
-2. **API**: `api/routes/all-assets-activity.ts` → aggregates `cusip_quarter_investor_activity`
-3. **Component**: `src/components/charts/AllAssetsActivityChart.tsx` → fetches and renders
-
-## DuckDB Connection
-
-Singleton connection in `api/duckdb.ts`:
-
-```typescript
-const instance = await DuckDBInstance.fromCache(DUCKDB_PATH, {
-  threads: "4",
-  access_mode: "READ_ONLY",
 });
+
+export default routes;
 ```
 
-- Uses `fromCache` for shared in-process instance
-- `READ_ONLY` prevents any writes
-- Connection is reused across requests
+### 3. Register the route
+
+Wire the route into `api/index.ts` so it is exposed under `/api/...`.
+
+### 4. Decide the client access pattern
+
+Choose the right client-side integration:
+
+- **TanStack DB collection** for data that benefits from reactive local persistence and repeat navigation speed
+- **Direct fetch / scoped request flow** for highly targeted, parameterized detail queries
+
+Use TanStack DB + IndexedDB when the data should remain available locally for fast revisits.
+
+### 5. Render through UI components
+
+Connect the data to tables or charts under `src/pages/` or `src/components/charts/`.
+
+Where applicable:
+
+- expose query timing from the API
+- expose render timing in the component
+- surface both through the shared latency badge UI
+
+## Example integration pattern
+
+A typical current pattern is:
+
+1. DuckDB-backed API route returns typed JSON with `queryTimeMs`
+2. A collection or fetch helper under `src/collections/` or related modules loads the data
+3. The page/chart component consumes the result
+4. The UI shows both data and render latency
 
 ## Troubleshooting
 
-### "Conflicting lock" Error
+### Conflicting lock on DuckDB file
 
-If you see:
-```
-IO Error: Could not set lock on file: Conflicting lock is held
-```
+If DuckDB reports a lock/conflict error, another process may already have the database file open.
 
-Another process (like Tad or DBeaver) has the DuckDB file open. Close that application.
+Common causes:
 
-### Schema Changes
+- another local tool inspecting the database
+- a second app/process using the same DuckDB file
 
-If the data pipeline adds/removes columns:
-1. Update TypeScript interfaces in `src/types/duckdb.ts`
-2. Update SQL queries in API routes
-3. No migrations needed - DuckDB schema is external
+### Schema changes from upstream data pipeline
+
+If upstream DuckDB tables change:
+
+1. update the TypeScript interfaces
+2. update the affected SQL queries in API routes
+3. update any collection adapters or UI assumptions that depend on the old shape
+
+### Performance issues
+
+If a new DuckDB-backed view is slow:
+
+- narrow the SQL query scope
+- pre-aggregate when possible
+- avoid loading large detail sets eagerly into the browser
+- use on-demand queries for very large fact-style datasets
+- only persist locally what the UI actually benefits from revisiting

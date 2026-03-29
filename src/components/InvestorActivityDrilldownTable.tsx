@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import {
   getDrilldownDataFromCollection,
   investorDrilldownCollection,
   loadDrilldownFromIndexedDB,
+  isDrilldownIndexedDBLoaded,
   type InvestorDetail
 } from "@/collections/investor-details";
 
@@ -45,6 +46,9 @@ export function InvestorActivityDrilldownTable({
   const [isError, setIsError] = useState(false);
   const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
   const [dataFlow, setDataFlow] = useState<DataFlow>("unknown");
+  const [renderMs, setRenderMs] = useState<number | null>(null);
+  const renderStartRef = useRef<number | null>(null);
+  const prevDataLengthRef = useRef<number>(0);
 
   // Subscribe to the collection for this slice
   const slice = useLiveQuery((q) =>
@@ -53,6 +57,28 @@ export function InvestorActivityDrilldownTable({
       .select(({ rows }) => rows)
   );
 
+  // Track render timing when data changes
+  useEffect(() => {
+    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
+      renderStartRef.current = performance.now();
+      prevDataLengthRef.current = data.length;
+    }
+  }, [data]);
+
+  // Measure render time after paint
+  useEffect(() => {
+    if (renderStartRef.current != null && data.length > 0) {
+      const rafId = requestAnimationFrame(() => {
+        if (renderStartRef.current != null) {
+          const elapsed = Math.round(performance.now() - renderStartRef.current);
+          setRenderMs(elapsed);
+          renderStartRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [data]);
+
   // Load from IndexedDB first, then fetch if missing
   useEffect(() => {
     if (!enabled) return;
@@ -60,16 +86,27 @@ export function InvestorActivityDrilldownTable({
     let cancelled = false;
 
     (async () => {
+      // Track if it was already loaded before we await
+      const wasAlreadyLoaded = isDrilldownIndexedDBLoaded();
+      const startedAt = performance.now();
+
       // Try to load from IndexedDB first
       const loadedFromIDB = await loadDrilldownFromIndexedDB();
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      
       if (cancelled) return;
 
       // Check if data is now available in collection
       const localRows = getDrilldownDataFromCollection(ticker, cusip, quarter, action);
       if (localRows && localRows.length > 0) {
         setData(localRows);
-        setQueryTimeMs(0);
-        setDataFlow(loadedFromIDB ? "tsdb-indexeddb" : "tsdb-memory");
+        if (!wasAlreadyLoaded && loadedFromIDB) {
+          setQueryTimeMs(elapsedMs);
+          setDataFlow("tsdb-indexeddb");
+        } else {
+          setQueryTimeMs(0);
+          setDataFlow("tsdb-memory");
+        }
         return;
       }
 
@@ -191,8 +228,10 @@ export function InvestorActivityDrilldownTable({
 
   const latencyDisplay = (
     <LatencyBadge
-      latencyMs={queryTimeMs ?? undefined}
+      dataLoadMs={queryTimeMs ?? undefined}
+      renderMs={renderMs ?? undefined}
       source={dataFlow}
+      variant="inline"
     />
   );
 

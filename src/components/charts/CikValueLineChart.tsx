@@ -15,6 +15,7 @@ interface CikValueLineChartProps {
   data: readonly CikQuarterlyData[];
   cikName?: string;
   latencyBadge?: React.ReactNode;
+  onRenderComplete?: (renderMs: number) => void;
 }
 
 interface TooltipData {
@@ -44,10 +45,12 @@ export function CikValueLineChart({
   data,
   cikName,
   latencyBadge,
+  onRenderComplete,
 }: CikValueLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const renderStartRef = useRef<number | null>(null);
 
   // Transform data for uPlot using categorical X-axis (same as InvestorActivityUplotChart)
   const chartData = useMemo(() => {
@@ -79,6 +82,8 @@ export function CikValueLineChart({
 
   useEffect(() => {
     if (!containerRef.current || !chartData) return;
+
+    renderStartRef.current = performance.now();
 
     const { labels, values, indices } = chartData;
 
@@ -177,6 +182,16 @@ export function CikValueLineChart({
 
     chartRef.current = chart;
 
+    let rafId: number | null = null;
+    if (renderStartRef.current != null && onRenderComplete) {
+      rafId = requestAnimationFrame(() => {
+        if (renderStartRef.current == null) return;
+        const elapsed = Math.round(performance.now() - renderStartRef.current);
+        onRenderComplete(elapsed);
+        renderStartRef.current = null;
+      });
+    }
+
     const resizeObserver = new ResizeObserver(() => {
       if (chartRef.current && containerRef.current) {
         const nextWidth = containerRef.current.clientWidth;
@@ -187,11 +202,14 @@ export function CikValueLineChart({
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
       resizeObserver.disconnect();
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [chartData]);
+  }, [chartData, onRenderComplete]);
 
   if (!chartData || data.length === 0) {
     return (

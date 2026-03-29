@@ -4,6 +4,7 @@ import { queryClient } from './instances'
 import { 
     persistDrilldownData, 
     loadPersistedDrilldownData,
+    clearPersistedDrilldownData,
     type PersistedDrilldownData 
 } from './query-client'
 
@@ -21,6 +22,20 @@ export interface InvestorDetail {
     didReduce: boolean | null
     didClose: boolean | null
     didHold: boolean | null
+}
+
+interface DrilldownApiRow {
+    action?: 'open' | 'close' | null
+    cik?: string | number | null
+    cikName?: string | null
+    cikTicker?: string | null
+    quarter?: string | null
+    cusip?: string | null
+    didOpen?: boolean | null
+    didAdd?: boolean | null
+    didReduce?: boolean | null
+    didClose?: boolean | null
+    didHold?: boolean | null
 }
 
 // TanStack DB collection that holds all drill-down rows (all quarters/actions per ticker)
@@ -52,6 +67,10 @@ const bulkFetchedPairs = new Set<string>()
 // Track if we've loaded from IndexedDB
 let indexedDBLoaded = false
 let indexedDBLoadPromise: Promise<boolean> | null = null
+
+export function isDrilldownIndexedDBLoaded(): boolean {
+    return indexedDBLoaded
+}
 
 /**
  * Load drilldown data from IndexedDB into the collection.
@@ -222,7 +241,7 @@ export async function fetchDrilldownBothActions(
         if (!res.ok) throw new Error('Failed to fetch investor details (both actions)')
         const data = await res.json()
 
-        const rows: InvestorDetail[] = (data.rows || []).map((row: any) => {
+        const rows: InvestorDetail[] = ((data.rows || []) as DrilldownApiRow[]).map((row) => {
             const action: 'open' | 'close' = row.action === 'close' ? 'close' : 'open'
             const rowCusip = row.cusip ?? cusip
             return {
@@ -315,7 +334,7 @@ export async function backgroundLoadAllDrilldownData(
     }
     const data = await res.json()
 
-    const rows: InvestorDetail[] = (data.rows || []).map((row: any) => {
+    const rows: InvestorDetail[] = ((data.rows || []) as DrilldownApiRow[]).map((row) => {
         const rowCusip = row.cusip ?? cusip
         return {
             id: `${rowCusip ?? 'nocusip'}-${row.quarter ?? 'unknown'}-${row.action ?? 'open'}-${row.cik ?? 'nocik'}`,
@@ -376,4 +395,21 @@ export function getDrilldownDataFromCollection(
     }
 
     return getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter && item.action === action)
+}
+
+export function clearAllDrilldownData(): void {
+    const ids = getAllDrilldownRows().map((row) => row.id)
+    if (ids.length > 0) {
+        investorDrilldownCollection.utils.writeDelete(ids)
+    }
+
+    fetchedCombinations.clear()
+    inFlightBothActionsFetches.clear()
+    inFlightBulkFetches.clear()
+    bulkFetchedPairs.clear()
+    indexedDBLoaded = false
+    indexedDBLoadPromise = null
+    clearPersistedDrilldownData().catch((error) => {
+        console.warn('[Drilldown] Failed to clear persisted cache:', error)
+    })
 }

@@ -44,6 +44,27 @@ function getAllInvestorFlowRows(): InvestorFlowData[] {
     return Array.from(investorFlowCollection.entries()).map(([, value]) => value)
 }
 
+export function mapInvestorFlowRows(
+    normalizedTicker: string,
+    sourceRows: InvestorFlowApiRow[]
+): InvestorFlowData[] {
+    const dedupedRows = new Map<string, InvestorFlowData>()
+
+    for (const row of sourceRows) {
+        const quarter = row.quarter ? String(row.quarter) : ''
+        const id = `${normalizedTicker}-${quarter}`
+        dedupedRows.set(id, {
+            id,
+            ticker: normalizedTicker,
+            quarter,
+            inflow: Number(row.inflow) || 0,
+            outflow: Number(row.outflow) || 0,
+        })
+    }
+
+    return Array.from(dedupedRows.values())
+}
+
 export function getInvestorFlowFromCollection(ticker: string): InvestorFlowData[] {
     const normalizedTicker = normalizeTicker(ticker)
     return getAllInvestorFlowRows()
@@ -104,13 +125,7 @@ export async function fetchInvestorFlowData(
         }
 
         const data = await response.json() as { rows?: InvestorFlowApiRow[] }
-        const rows = (Array.isArray(data.rows) ? data.rows : []).map((row) => ({
-            id: `${normalizedTicker}-${row.quarter ? String(row.quarter) : ''}`,
-            ticker: normalizedTicker,
-            quarter: row.quarter ? String(row.quarter) : '',
-            inflow: Number(row.inflow) || 0,
-            outflow: Number(row.outflow) || 0,
-        }))
+        const rows = mapInvestorFlowRows(normalizedTicker, Array.isArray(data.rows) ? data.rows : [])
 
         if (rows.length > 0) {
             investorFlowCollection.utils.writeUpsert(rows)

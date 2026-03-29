@@ -11,6 +11,11 @@ import {
 } from "@/components/ui/card";
 import type { CusipQuarterInvestorActivity } from "@/schema";
 
+type UplotInteractionChart = uPlot & {
+  valToPos(value: number, scaleKey: string, can: boolean): number;
+  posToIdx(position: number): number | null;
+};
+
 interface InvestorActivityUplotChartProps {
   data: readonly CusipQuarterInvestorActivity[];
   ticker: string;
@@ -18,6 +23,8 @@ interface InvestorActivityUplotChartProps {
   onBarHover?: (payload: { quarter: string; action: "open" | "close" }) => void;
   onBarLeave?: () => void;
   latencyBadge?: React.ReactNode;
+  /** Callback when chart render completes with render time in ms */
+  onRenderComplete?: (renderMs: number) => void;
 }
 
 export function InvestorActivityUplotChart({
@@ -27,6 +34,7 @@ export function InvestorActivityUplotChart({
   onBarHover,
   onBarLeave,
   latencyBadge,
+  onRenderComplete,
 }: InvestorActivityUplotChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
@@ -34,6 +42,8 @@ export function InvestorActivityUplotChart({
 
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return;
+
+    const renderStartedAt = performance.now();
 
     const labels = data.map((item) => item.quarter ?? "Unknown");
     const opened = data.map((item) => item.numOpen ?? 0);
@@ -110,7 +120,7 @@ export function InvestorActivityUplotChart({
               let action: "open" | "close";
               
               const cursorY = u.cursor.top ?? 0;
-              const anyChart = u as any;
+              const anyChart = u as UplotInteractionChart;
               const zeroY = anyChart.valToPos(0, "y", true) as number;
 
               if (openedVal > 0 && closedVal === 0) {
@@ -136,7 +146,14 @@ export function InvestorActivityUplotChart({
 
     chartRef.current = chart;
 
-    const anyChart = chart as any;
+    let rafId: number | null = null;
+    if (onRenderComplete) {
+      rafId = requestAnimationFrame(() => {
+        onRenderComplete(Math.round(performance.now() - renderStartedAt));
+      });
+    }
+
+    const anyChart = chart as UplotInteractionChart;
     const zeroY = anyChart.valToPos(0, "y", true) as number;
 
     const handleClick = (event: MouseEvent) => {
@@ -186,12 +203,15 @@ export function InvestorActivityUplotChart({
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
       resizeObserver.disconnect();
       chart.root.removeEventListener("click", handleClick);
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [data, ticker, onBarClick, onBarHover, onBarLeave]);
+  }, [data, ticker, onBarClick, onBarHover, onBarLeave, onRenderComplete]);
 
   if (data.length === 0) {
     return (
