@@ -34,10 +34,11 @@ git checkout main
 git pull --ff-only origin main
 
 compose config >/dev/null
-compose build app
+compose build app permissions
 compose up -d postgres
 
 bash "$SCRIPT_DIR/apply-postgres-bootstrap.sh" "$ENV_FILE"
+bash "$SCRIPT_DIR/deploy-zero-permissions.sh" "$ENV_FILE"
 
 compose up -d app zero-cache
 
@@ -47,4 +48,3 @@ sudo systemctl reload caddy
 CHECK_PUBLIC_ENDPOINTS=1 bash "$SCRIPT_DIR/healthcheck.sh" "$ENV_FILE"
 
 echo "Production deployment completed successfully."
-

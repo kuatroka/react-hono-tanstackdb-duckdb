@@ -69,6 +69,21 @@ services:
       ZERO_PUBLIC_URL: ${ZERO_PUBLIC_URL}
       ZERO_QUERY_URL: ${ZERO_QUERY_URL}
 
+  permissions:
+    image: ${PERMISSIONS_IMAGE:-fintellectus-permissions:latest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: permissions-runtime
+    profiles: ["ops"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ZERO_UPSTREAM_DB: ${ZERO_UPSTREAM_DB}
+      ZERO_AUTH_SECRET: ${ZERO_AUTH_SECRET}
+    command: ["node", "./node_modules/.bin/zero-deploy-permissions", "--force", "-p", "src/schema.ts"]
+
   zero-cache:
     image: ${ZERO_IMAGE:-rocicorp/zero:1.0.0}
     container_name: ${ZERO_CONTAINER_NAME:-fintellectus_zero_cache}
@@ -104,4 +119,3 @@ volumes:
     name: ${POSTGRES_VOLUME_NAME:-sec_pgdata}
   zero_cache_data:
     name: ${ZERO_REPLICA_VOLUME_NAME:-fintellectus_zero_cache}
-

@@ -14,6 +14,7 @@ This directory makes this repo the deployment source of truth for:
 - `.env.example` is the contract for the external env file stored on the VPS.
 - `scripts/deploy.sh` performs a non-destructive deploy.
 - `scripts/apply-postgres-bootstrap.sh` reapplies the idempotent SQL needed for an existing shared volume.
+- `scripts/deploy-zero-permissions.sh` deploys Zero permissions with a Node 24 runner.
 - `scripts/healthcheck.sh` verifies app, Zero, and Postgres readiness.
 - `scripts/inspect-current-postgres.sh` captures the current prod container, ports, volume mounts, and DB settings before cutover.
 - `sql/verify-zero-readiness.sql` fails fast if the shared DB is not ready for Zero.
@@ -43,6 +44,8 @@ The deploy script never calls `docker compose down -v` and never drops the share
 - `ZERO_DOMAIN` -> `zero-cache` on localhost `ZERO_BIND_PORT`
 
 Caddy handles TLS, HTTP/2, HTTP/3, and WebSocket proxying for Zero.
+
+The deploy path now also builds and runs a one-shot `permissions` container based on `node:24`, so `zero-deploy-permissions` can run with a supported runtime even though the app itself ships on Bun.
 
 If you do not have real DNS yet, set `ZERO_PATH_PREFIX=/zero` and point `ZERO_PUBLIC_URL` at the same public app origin, for example `http://<vps-ip>/zero`.
 

@@ -23,3 +23,12 @@ EXPOSE 3000
 
 CMD ["bun", "api/server.ts"]
 
+FROM node:24-bookworm-slim AS permissions-runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+CMD ["node", "./node_modules/.bin/zero-deploy-permissions", "--help"]

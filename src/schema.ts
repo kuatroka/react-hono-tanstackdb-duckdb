@@ -116,6 +116,21 @@ const superinvestor = table("superinvestors")
   })
   .primaryKey("id");
 
+const cusipQuarterInvestorActivity = table("cusip_quarter_investor_activity")
+  .from("serving.cusip_quarter_investor_activity")
+  .columns({
+    id: number(),
+    cusip: string(),
+    ticker: string(),
+    quarter: string(),
+    numOpen: number().from("num_open"),
+    numAdd: number().from("num_add"),
+    numReduce: number().from("num_reduce"),
+    numClose: number().from("num_close"),
+    numHold: number().from("num_hold"),
+  })
+  .primaryKey("id");
+
 const messageRelationships = relationships(message, ({ one }) => ({
   sender: one({
     sourceField: ["senderID"],
@@ -130,7 +145,7 @@ const messageRelationships = relationships(message, ({ one }) => ({
 }));
 
 export const schema = createSchema({
-  tables: [user, medium, message, counter, valueQuarter, entity, userCounter, searches, asset, superinvestor],
+  tables: [user, medium, message, counter, valueQuarter, entity, userCounter, searches, asset, superinvestor, cusipQuarterInvestorActivity],
   relationships: [messageRelationships],
   enableLegacyMutators: true,
 });
@@ -148,17 +163,7 @@ export type UserCounter = Row<typeof schema.tables.user_counters>;
 export type Search = Row<typeof schema.tables.searches>;
 export type Asset = Row<typeof schema.tables.assets>;
 export type Superinvestor = Row<typeof schema.tables.superinvestors>;
-export type CusipQuarterInvestorActivity = {
-  id: number;
-  cusip: string;
-  ticker: string;
-  quarter: string;
-  numOpen: number;
-  numAdd: number;
-  numReduce: number;
-  numClose: number;
-  numHold: number;
-};
+export type CusipQuarterInvestorActivity = Row<typeof schema.tables.cusip_quarter_investor_activity>;
 
 // The contents of your decoded JWT.
 type AuthData = {
@@ -243,6 +248,11 @@ export const permissions = await definePermissions<AuthData, Schema>(schema, () 
       },
     },
     superinvestors: {
+      row: {
+        select: ANYONE_CAN,
+      },
+    },
+    cusip_quarter_investor_activity: {
       row: {
         select: ANYONE_CAN,
       },

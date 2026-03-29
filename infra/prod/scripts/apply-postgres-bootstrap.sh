@@ -27,9 +27,9 @@ SQL_FILES=(
   "$REPO_ROOT/docker/init/01-setup-extensions.sql"
   "$REPO_ROOT/docker/seed.sql"
   "$REPO_ROOT/docker/migrations/08_add_drilldown_function.sql"
-  "$REPO_ROOT/docker/migrations/0004_ensure_zero_sync_key.sql"
   "$REPO_ROOT/docker/migrations/0008_move_shared_tables_to_namespaces.sql"
   "$REPO_ROOT/docker/migrations/0009_create_zero_app_publication.sql"
+  "$REPO_ROOT/docker/migrations/0010_enable_investor_activity_zero_sync.sql"
 )
 
 for sql_file in "${SQL_FILES[@]}"; do
@@ -39,4 +39,3 @@ done
 
 echo "Verifying Zero readiness against shared Postgres"
 psql_exec < "$REPO_ROOT/infra/prod/sql/verify-zero-readiness.sql"
-

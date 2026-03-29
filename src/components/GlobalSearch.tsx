@@ -113,8 +113,10 @@ const GlobalSearchResultsList = memo(function GlobalSearchResultsList({
             if (result.category === "assets") {
               if (result.cusip) {
                 z.preload(queries.assetBySymbolAndCusip(result.code, result.cusip), { ttl: PRELOAD_TTL });
+                z.preload(queries.investorActivityByCusip(result.cusip), { ttl: PRELOAD_TTL });
               } else {
                 z.preload(queries.assetBySymbol(result.code), { ttl: PRELOAD_TTL });
+                z.preload(queries.investorActivityByTicker(result.code), { ttl: PRELOAD_TTL });
               }
             } else if (result.category === "superinvestors") {
               z.preload(queries.superinvestorByCik(result.code), { ttl: PRELOAD_TTL });
