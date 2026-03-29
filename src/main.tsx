@@ -41,6 +41,7 @@ import { initZero } from "./zero-client";
 import { queries } from "./zero/queries";
 import { LatencyBadge } from "@/components/LatencyBadge";
 import { useLatencyMs } from "./lib/latency";
+import { RouterNavigationBridge } from "./lib/navigation";
 import { getRuntimeConfig } from "./runtime-config";
 
 // Stable IDs so Zero reuses the same IndexedDB database
@@ -95,6 +96,7 @@ function AppContent() {
 
   return (
     <BrowserRouter>
+      <RouterNavigationBridge />
       <div>
         <GlobalNav />
         <Routes>

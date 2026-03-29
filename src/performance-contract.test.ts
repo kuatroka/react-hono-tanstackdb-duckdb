@@ -20,8 +20,59 @@ describe("performance contracts", () => {
 
     expect(globalSearch).not.toContain("useSearchParams");
     expect(globalSearch).not.toContain("setSearchParams");
+    expect(globalSearch).not.toContain("useNavigate");
     expect(globalSearch).not.toContain('params.set("q"');
     expect(globalSearch).not.toContain('params.delete("q"');
+  });
+
+  test("global search isolates the input in its own memoized component", () => {
+    const globalSearch = readProjectFile("src/components/GlobalSearch.tsx");
+
+    expect(globalSearch).toContain("memo(function GlobalSearchInput");
+    expect(globalSearch).toContain('const [inputValue, setInputValue] = useState("")');
+    expect(globalSearch).toContain("clearSignal");
+    expect(globalSearch).not.toContain("const deferredQuery = useDeferredValue(query)");
+  });
+
+  test("global search keeps query and keyboard callbacks in refs so search results do not rerender the input", () => {
+    const globalSearch = readProjectFile("src/components/GlobalSearch.tsx");
+
+    expect(globalSearch).toContain("const onQueryCommitRef = useRef(onQueryCommit)");
+    expect(globalSearch).toContain("const onKeyActionRef = useRef(onKeyAction)");
+    expect(globalSearch).toContain("setTimeout(() => {");
+  });
+
+  test("global search does not keep idle zero search subscriptions alive when the dropdown is closed", () => {
+    const globalSearch = readProjectFile("src/components/GlobalSearch.tsx");
+
+    expect(globalSearch).not.toContain('queries.searchesByCode("", 0)');
+    expect(globalSearch).not.toContain('queries.searchesByName("", 0)');
+    expect(globalSearch).toContain("enabled: shouldSearch");
+  });
+
+  test("global search keeps zero preloading inside the mounted results list instead of the idle navbar shell", () => {
+    const globalSearch = readProjectFile("src/components/GlobalSearch.tsx");
+    const globalSearchShell = globalSearch.split('export const GlobalSearch = memo(function GlobalSearch() {')[1] ?? "";
+
+    expect(globalSearch).toContain("memo(function GlobalSearchResultsList");
+    expect(globalSearchShell).not.toContain("useZero<Schema>()");
+  });
+
+  test("global nav isolates route-aware link state instead of subscribing the whole navbar to location changes", () => {
+    const globalNav = readProjectFile("src/components/GlobalNav.tsx");
+
+    expect(globalNav).not.toContain("useLocation");
+    expect(globalNav).toContain("memo(function GlobalNavLink");
+    expect(globalNav).toContain("<GlobalNavLink");
+  });
+
+  test("router navigation is bridged once so global search can navigate without rerendering on route changes", () => {
+    const main = readProjectFile("src/main.tsx");
+    const navigationBridge = readProjectFile("src/lib/navigation.ts");
+
+    expect(main).toContain("<RouterNavigationBridge />");
+    expect(navigationBridge).toContain("useNavigate");
+    expect(navigationBridge).toContain("export function navigateTo");
   });
 
   test("investor activity echarts chart uses a stable manual echarts lifecycle", () => {
@@ -31,6 +82,16 @@ describe("performance contracts", () => {
     expect(chartSource).toContain("echarts.init");
     expect(chartSource).toContain("animation: false");
     expect(chartSource).toContain("ResizeObserver");
+  });
+
+  test("investor activity echarts chart initializes directly from the live container size instead of waiting on separate size state", () => {
+    const chartSource = readProjectFile("src/components/charts/InvestorActivityEchartsChart.tsx");
+
+    expect(chartSource).not.toContain("const [chartSize, setChartSize]");
+    expect(chartSource).not.toContain("!chartSize");
+    expect(chartSource).toContain("const syncChart = () =>");
+    expect(chartSource).toContain("container.clientWidth || container.getBoundingClientRect().width");
+    expect(chartSource).toContain("container.clientHeight || container.getBoundingClientRect().height");
   });
 
   test("assets and superinvestors page searches keep transient input out of the router state", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts/core";
 import { BarChart } from "echarts/charts";
 import { GridComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
@@ -40,36 +40,6 @@ export const InvestorActivityEchartsChart = memo(function InvestorActivityEchart
 }: InvestorActivityEchartsChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
-  const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const updateSize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-
-      if (width > 0 && height > 0) {
-        setChartSize((current) => {
-          if (current?.width === width && current?.height === height) {
-            return current;
-          }
-
-          return { width, height };
-        });
-      }
-    };
-
-    updateSize();
-
-    const observer = new ResizeObserver(() => {
-      updateSize();
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
 
   const option = useMemo(() => {
     if (data.length === 0) return null;
@@ -188,26 +158,39 @@ export const InvestorActivityEchartsChart = memo(function InvestorActivityEchart
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !option || !chartSize) return;
+    if (!container || !option) return;
 
-    const chart =
-      echarts.getInstanceByDom(container) ??
-      echarts.init(container, undefined, {
-        renderer: "canvas",
-        width: chartSize.width,
-        height: chartSize.height,
+    const syncChart = () => {
+      const width = container.clientWidth || container.getBoundingClientRect().width;
+      const height = container.clientHeight || container.getBoundingClientRect().height;
+
+      if (width <= 0 || height <= 0) return;
+
+      const chart =
+        chartRef.current && !chartRef.current.isDisposed()
+          ? chartRef.current
+          : echarts.getInstanceByDom(container) ??
+            echarts.init(container, undefined, {
+              renderer: "canvas",
+            });
+
+      chartRef.current = chart;
+      chart.resize({ width, height });
+      chart.setOption(option, {
+        notMerge: true,
+        lazyUpdate: true,
       });
+    };
 
-    chartRef.current = chart;
-    chart.resize({
-      width: chartSize.width,
-      height: chartSize.height,
+    syncChart();
+
+    const observer = new ResizeObserver(() => {
+      syncChart();
     });
-    chart.setOption(option, {
-      notMerge: true,
-      lazyUpdate: true,
-    });
-  }, [chartSize, option]);
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [option]);
 
   useEffect(() => {
     return () => {
