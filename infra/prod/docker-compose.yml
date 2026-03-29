@@ -54,6 +54,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      target: runtime
     restart: unless-stopped
     depends_on:
       postgres:
