@@ -44,6 +44,12 @@ The deploy script never calls `docker compose down -v` and never drops the share
 
 Caddy handles TLS, HTTP/2, HTTP/3, and WebSocket proxying for Zero.
 
+If you do not have real DNS yet, set `ZERO_PATH_PREFIX=/zero` and point `ZERO_PUBLIC_URL` at the same public app origin, for example `http://<vps-ip>/zero`.
+
+- In this mode, Caddy keeps a single public app site and proxies `/zero/*` to `zero-cache`.
+- This is the recommended temporary fallback for IP-only access because it avoids depending on an extra public port that may be blocked upstream.
+- Once real DNS exists, unset `ZERO_PATH_PREFIX` and return to separate `APP_DOMAIN` / `ZERO_DOMAIN` hostnames.
+
 ## Next Stage: Dokploy Evaluation
 
 After the first stable production deployment, the next platform layer to evaluate is `Dokploy`.
