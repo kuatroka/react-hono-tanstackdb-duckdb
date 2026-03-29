@@ -5,8 +5,6 @@ import { LatencyBadge } from '@/components/LatencyBadge';
 import { useLatencyMs } from '@/lib/latency';
 import { queries } from '@/zero/queries';
 import { PRELOAD_TTL } from '@/zero-preload';
-import { InvestorActivityUplotChart } from '@/components/charts/InvestorActivityUplotChart';
-import { InvestorActivityEchartsChart } from '@/components/charts/InvestorActivityEchartsChart';
 
 export function AssetDetailPage({ onReady }: { onReady: () => void }) {
   const { code, cusip } = useParams();
@@ -36,27 +34,6 @@ export function AssetDetailPage({ onReady }: { onReady: () => void }) {
     resetKey: hasCusip ? `asset:${code ?? ''}:${cusip ?? ''}` : `asset:${code ?? ''}`,
   });
   const assetSource = hasCusip ? 'Zero: assets.bySymbolAndCusip' : 'Zero: assets.bySymbol';
-
-  // Query investor activity: prefer by cusip if available, otherwise by ticker
-  const [activityByCusip, activityByCusipResult] = useQuery(
-    queries.investorActivityByCusip(cusip || ''),
-    { enabled: Boolean(hasCusip), ttl: PRELOAD_TTL }
-  );
-
-  const [activityByTicker, activityByTickerResult] = useQuery(
-    queries.investorActivityByTicker(code || ''),
-    { enabled: Boolean(code) && !hasCusip, ttl: PRELOAD_TTL }
-  );
-
-  const activityRows = hasCusip ? (activityByCusip ?? []) : (activityByTicker ?? []);
-
-  const activityResult = hasCusip ? activityByCusipResult : activityByTickerResult;
-  const activityReady = Boolean(activityRows.length > 0 || activityResult.type === 'complete');
-  const activityLatencyMs = useLatencyMs({
-    isReady: activityReady,
-    resetKey: hasCusip ? `activity:${cusip ?? ''}` : `activity:${code ?? ''}`,
-  });
-  const activitySource = hasCusip ? 'Zero: investorActivity.byCusip' : 'Zero: investorActivity.byTicker';
 
   // Signal ready when data is available (from cache or server)
   useEffect(() => {
@@ -103,9 +80,15 @@ export function AssetDetailPage({ onReady }: { onReady: () => void }) {
       </div>
 
       <div className="container mx-auto max-w-7xl px-4 pb-8">
-        <div className="mt-8 space-y-10">
-        <InvestorActivityUplotChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
-        <InvestorActivityEchartsChart data={activityRows} ticker={record.asset} latencyMs={activityLatencyMs} latencySource={activitySource} />
+        <div className="mt-8">
+          <section className="rounded-xl border border-border bg-card p-6">
+            <h2 className="text-xl font-semibold">Investor activity</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Investor activity charts are temporarily unavailable in this production deployment.
+              The upstream dataset is present, but it is not yet Zero-syncable because the
+              backing table is missing a stable client-sync key.
+            </p>
+          </section>
         </div>
       </div>
     </>

@@ -183,24 +183,6 @@ export const queries = {
     (cik) => builder.superinvestors.where("cik", "=", cik).limit(1)
   ),
 
-  investorActivityByTicker: syncedQuery(
-    "investorActivity.byTicker",
-    z.tuple([z.string().min(1)]),
-    (ticker) =>
-      builder.cusip_quarter_investor_activity
-        .where("ticker", "=", ticker)
-        .orderBy("quarter", "asc")
-  ),
-
-  investorActivityByCusip: syncedQuery(
-    "investorActivity.byCusip",
-    z.tuple([z.string().min(1)]),
-    (cusip) =>
-      builder.cusip_quarter_investor_activity
-        .where("cusip", "=", cusip)
-        .orderBy("quarter", "asc")
-  ),
-
   assetByCusip: syncedQuery(
     "assets.byCusip",
     z.tuple([z.string().min(1)]),
