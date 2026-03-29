@@ -9,8 +9,7 @@ __ZERO_DOMAIN__ {
 
   reverse_proxy 127.0.0.1:__ZERO_BIND_PORT__ {
     transport http {
-      versions h1_1
+      versions 1.1
     }
   }
 }
-
