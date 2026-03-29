@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "@tanstack/react-db";
-import { Input } from "@/components/ui/input";
 import { LatencyBadge } from "@/components/LatencyBadge";
+import { GlobalSearchInput } from "@/components/global-search/GlobalSearchInput";
+import { GlobalSearchResults } from "@/components/global-search/GlobalSearchResults";
+import type { SearchResult } from "@/components/global-search/search-result";
 import { searchesCollection, preloadSearches, getSyncState, buildSearchIndex, searchWithIndex, isSearchIndexReady, loadPrecomputedIndex } from "@/collections/searches";
 import type { SearchResult as CollectionSearchResult } from "@/collections/searches";
 
@@ -16,10 +18,6 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
 
   return debouncedValue;
-}
-
-interface SearchResult extends CollectionSearchResult {
-  score: number;
 }
 
 interface SearchResponse {
@@ -80,6 +78,7 @@ export function DuckDBGlobalSearch() {
   const [isUsingApi, setIsUsingApi] = useState(false);
   const [apiResults, setApiResults] = useState<SearchResult[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const apiRequestSequenceRef = useRef(0);
 
   // 50ms debounce
   const debouncedQuery = useDebounce(query.trim(), 50);
@@ -106,18 +105,25 @@ export function DuckDBGlobalSearch() {
   }, [allItems]);
 
   // Filter and rank results using indexed search (sub-ms) or fallback to O(n) filter
-  const localResults = useMemo(() => {
-    if (!shouldSearch) return [];
-    const startTime = performance.now();
-    
-    // Use indexed search if available (sub-ms), otherwise fallback to O(n) filter
-    const filtered = isSearchIndexReady()
+  const localSearchMetrics = useMemo(() => {
+    if (!shouldSearch) {
+      return { results: [] as SearchResult[], latencyMs: undefined as number | undefined };
+    }
+
+    const startedAt = performance.now();
+    const results = isSearchIndexReady()
       ? searchWithIndex(debouncedQuery, 20)
       : filterAndRankResults(allItems, debouncedQuery, 20);
-    
-    setQueryTimeMs(Math.round((performance.now() - startTime) * 1000) / 1000);
-    return filtered;
+
+    return {
+      results,
+      latencyMs: Math.round((performance.now() - startedAt) * 1000) / 1000,
+    };
   }, [allItems, debouncedQuery, shouldSearch]);
+
+  useEffect(() => {
+    setQueryTimeMs(localSearchMetrics.latencyMs);
+  }, [localSearchMetrics.latencyMs]);
 
   // Load the search index only on explicit user intent (focus / typing)
   // to avoid paying the memory cost on routes where search is never used.
@@ -127,25 +133,31 @@ export function DuckDBGlobalSearch() {
     if (indexLoadStartedRef.current) return;
     indexLoadStartedRef.current = true;
 
-    // 1. Try to load pre-computed index from IndexedDB/API
-    console.log('[Search] Loading search index...');
-    await loadPrecomputedIndex();
+    try {
+      // 1. Try to load pre-computed index from IndexedDB/API
+      console.log('[Search] Loading search index...');
+      await loadPrecomputedIndex();
 
-    // 2. If pre-computed index loaded, we're done – skip the heavy
-    //    searches collection preload (56K items) to save ~50 MB of heap.
-    if (isSearchIndexReady()) {
-      console.log('[Search] Search index loaded successfully');
+      // 2. If pre-computed index loaded, we're done – skip the heavy
+      //    searches collection preload (56K items) to save ~50 MB of heap.
+      if (isSearchIndexReady()) {
+        console.log('[Search] Search index loaded successfully');
+        setIsInitialized(true);
+        return;
+      }
+
+      // 3. Fallback: load via TanStack DB full-dump cursor pagination
+      console.log('[Search] Fallback to full-dump sync...');
+      const syncState = getSyncState();
+      if (syncState.status !== 'complete') {
+        await preloadSearches();
+      }
       setIsInitialized(true);
-      return;
+    } catch (error) {
+      console.error('[Search] Search index load failed:', error);
+      indexLoadStartedRef.current = false;
+      setIsInitialized(true);
     }
-
-    // 3. Fallback: load via TanStack DB full-dump cursor pagination
-    console.log('[Search] Fallback to full-dump sync...');
-    const syncState = getSyncState();
-    if (syncState.status !== 'complete') {
-      await preloadSearches();
-    }
-    setIsInitialized(true);
   }, []);
 
   // Load immediately once the user starts searching.
@@ -161,41 +173,46 @@ export function DuckDBGlobalSearch() {
     }
   }, [loadSearchIndex]);
 
-  // Fallback to API if collection is empty and user is searching
+  const hasLocalSearchAuthority = isSearchIndexReady() || allItems.length > 0;
+
+  // Fallback to API only when no local search source is available yet
   useEffect(() => {
     if (!shouldSearch) {
+      apiRequestSequenceRef.current += 1;
       setApiResults([]);
       setIsUsingApi(false);
       return;
     }
 
-    // If we have local data, use it
-    if (allItems.length > 0) {
+    if (hasLocalSearchAuthority) {
+      apiRequestSequenceRef.current += 1;
       setIsUsingApi(false);
       return;
     }
 
-    // Only fallback to API if initialized and still no data
+    // Only fallback to API if initialized and still no local authority
     if (!isInitialized) return;
 
-    // Fallback to API while sync is in progress
     setIsUsingApi(true);
+    const requestId = ++apiRequestSequenceRef.current;
     const fetchFromApi = async () => {
       try {
         const result = await fetchDuckDBSearch(debouncedQuery);
+        if (requestId !== apiRequestSequenceRef.current) return;
         setApiResults(result.results);
         setQueryTimeMs(result.queryTimeMs);
       } catch (error) {
+        if (requestId !== apiRequestSequenceRef.current) return;
         console.error('[Search] API Error:', error);
         setApiResults([]);
       }
     };
 
     fetchFromApi();
-  }, [debouncedQuery, shouldSearch, allItems.length, isInitialized]);
+  }, [debouncedQuery, shouldSearch, hasLocalSearchAuthority, isInitialized]);
 
-  // Use local results if available, otherwise API results
-  const results = allItems.length > 0 ? localResults : apiResults;
+  const hasLocalResults = localSearchMetrics.results.length > 0;
+  const results = hasLocalResults ? localSearchMetrics.results : (hasLocalSearchAuthority ? localSearchMetrics.results : apiResults);
   const isFetching = isUsingApi && apiResults.length === 0 && shouldSearch;
 
   // Close dropdown on outside click
@@ -271,14 +288,11 @@ export function DuckDBGlobalSearch() {
   return (
     <div ref={containerRef} className="relative w-full sm:w-auto">
       <div className="relative">
-        <Input
-          type="search"
-          placeholder="DuckDB Search..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+        <GlobalSearchInput
+          query={query}
+          onChange={setQuery}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          className="w-full sm:w-[30rem] pr-16"
         />
         {queryTimeMs !== undefined && shouldSearch && !isFetching && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -296,44 +310,12 @@ export function DuckDBGlobalSearch() {
       </div>
       {isOpen && results.length > 0 && (
         <div ref={listRef} className="absolute z-50 mt-1 w-full sm:w-[30rem] max-h-[400px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
-          {results.map((result, index) => (
-            <button
-              key={result.id}
-              data-index={index}
-              type="button"
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted ${index === highlightedIndex ? "bg-muted" : ""
-                }`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleNavigate(result);
-              }}
-              onMouseEnter={() => setHighlightedIndex(index)}
-            >
-              <div className="flex flex-col truncate mr-2">
-                {result.category === "assets" ? (
-                  <>
-                    <span className="truncate">
-                      <span className="font-bold">{result.code}</span>
-                      {result.name && <span> - {result.name}</span>}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {result.cusip || ""}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="truncate">{result.name || result.code}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {result.code}
-                    </span>
-                  </>
-                )}
-              </div>
-              <span className="ml-auto text-xs uppercase text-muted-foreground">
-                {result.category}
-              </span>
-            </button>
-          ))}
+          <GlobalSearchResults
+            results={results}
+            highlightedIndex={highlightedIndex}
+            onHover={setHighlightedIndex}
+            onSelect={handleNavigate}
+          />
         </div>
       )}
     </div>

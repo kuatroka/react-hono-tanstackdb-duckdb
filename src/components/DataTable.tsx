@@ -218,6 +218,7 @@ export function DataTable<T extends { id: number | string }>({
     <div className="space-y-4" onKeyDown={handleKeyDown}>
       <div className="w-full sm:w-96">
         <Input
+          name="data-table-search"
           type="search"
           placeholder={searchPlaceholder}
           value={searchQuery}

@@ -9,12 +9,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import type { CikQuarterlyData } from "@/collections";
 
 interface CikValueLineChartProps {
   data: readonly CikQuarterlyData[];
   cikName?: string;
-  latencyBadge?: React.ReactNode;
+  dataLoadMs?: number;
+  renderMs?: number;
+  source?: "tsdb-api" | "tsdb-indexeddb" | "tsdb-memory" | "unknown";
   onRenderComplete?: (renderMs: number) => void;
 }
 
@@ -44,7 +47,9 @@ function formatValue(value: number): string {
 export function CikValueLineChart({
   data,
   cikName,
-  latencyBadge,
+  dataLoadMs,
+  renderMs,
+  source = "unknown",
   onRenderComplete,
 }: CikValueLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -235,7 +240,11 @@ export function CikValueLineChart({
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span>Portfolio Value Over Time{cikName ? ` - ${cikName}` : ""}</span>
-          {latencyBadge}
+          <LatencyBadge
+            dataLoadMs={dataLoadMs}
+            renderMs={renderMs}
+            source={source as DataFlow}
+          />
         </CardTitle>
         <CardDescription>
           {data.length} quarters tracked • Latest:{" "}

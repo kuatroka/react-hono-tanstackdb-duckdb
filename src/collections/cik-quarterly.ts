@@ -209,7 +209,10 @@ export async function prefetchCikQuarterlyData(cik: string): Promise<void> {
  * Clears both memory cache and IndexedDB.
  */
 export async function invalidateCikQuarterlyData(cik: string): Promise<void> {
-    cikDataCache.delete(cik)
+    const ids = getRowsForCik(cik).map((row) => row.id)
+    if (ids.length > 0) {
+        cikQuarterlyCollection.utils.writeDelete(ids)
+    }
     await clearPersistedCikQuarterlyData(cik)
 }
 

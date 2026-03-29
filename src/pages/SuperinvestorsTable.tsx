@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from '@tanstack/react-db';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { DataTable, ColumnDef } from '@/components/DataTable';
@@ -10,6 +10,10 @@ import { superinvestorsCollection, type Superinvestor } from '@/collections';
 const SUPERINVESTORS_TOTAL_ROWS = 14908;
 
 export function SuperinvestorsTablePage() {
+  return <SuperinvestorsTableSurface />;
+}
+
+function SuperinvestorsTableSurface() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { page?: string; search?: string };
   const { onReady } = useContentReady();
@@ -19,38 +23,7 @@ export function SuperinvestorsTablePage() {
   const parsedPage = rawPage ? parseInt(rawPage, 10) : 1;
   const currentPage = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
 
-  const searchParam = searchParams.search ?? '';
-  const [searchTerm, setSearchTerm] = useState(searchParam);
-  const isTypingRef = useRef(false);
-  const rowSelectedRef = useRef(false);
-
-  // Sync searchTerm with URL only on external navigation (not while typing)
-  useEffect(() => {
-    if (!isTypingRef.current) {
-      setSearchTerm(searchParam);
-    }
-    isTypingRef.current = false;
-  }, [searchParam]);
-
-  // Clear search term on mount if no row was selected (page refresh scenario)
-  useEffect(() => {
-    if (searchParam && !rowSelectedRef.current) {
-      navigate({ to: '/superinvestors', search: { page: '1', search: undefined }, replace: true });
-      setSearchTerm('');
-    }
-  }, []); // Run only on mount
-
-  const trimmedSearch = searchTerm.trim();
-
-  // Sync URL with searchTerm state changes
-  useEffect(() => {
-    if (!isTypingRef.current) return;
-    navigate({
-      to: '/superinvestors',
-      search: { page: '1', search: searchTerm.trim() || undefined },
-    });
-    isTypingRef.current = false;
-  }, [searchTerm, navigate]);
+  const trimmedSearch = (searchParams.search ?? '').trim();
 
   // Use TanStack DB useLiveQuery for instant local queries
   // Data is preloaded on app init, so queries execute against local collection
@@ -89,11 +62,13 @@ export function SuperinvestorsTablePage() {
   };
 
   const handleSearchChange = (value: string) => {
-    isTypingRef.current = true;
-    setSearchTerm(value);
+    navigate({
+      to: '/superinvestors',
+      search: { page: '1', search: value.trim() || undefined },
+    });
   };
 
-  const columns: ColumnDef<Superinvestor>[] = [
+  const columns = useMemo<ColumnDef<Superinvestor>[]>(() => [
     {
       key: 'cik',
       header: 'CIK',
@@ -104,9 +79,6 @@ export function SuperinvestorsTablePage() {
         <Link
           to="/superinvestors/$cik"
           params={{ cik: row.cik }}
-          onMouseDown={() => {
-            rowSelectedRef.current = true;
-          }}
           className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? 'underline' : ''}`}
         >
           {String(value)}
@@ -119,7 +91,7 @@ export function SuperinvestorsTablePage() {
       sortable: true,
       searchable: true,
     },
-  ];
+  ], []);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -145,7 +117,7 @@ export function SuperinvestorsTablePage() {
               initialPage={currentPage}
               onPageChange={handlePageChange}
               onSearchChange={handleSearchChange}
-              searchValue={searchTerm}
+              searchValue={trimmedSearch}
               searchDisabled={!!trimmedSearch}
               totalCount={trimmedSearch ? filteredSuperinvestors?.length ?? 0 : SUPERINVESTORS_TOTAL_ROWS}
             />
