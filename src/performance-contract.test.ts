@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const projectRoot = join(import.meta.dir, "..");
@@ -143,6 +143,70 @@ describe("performance contracts", () => {
 
     expect(dataTable).toContain("memo(DataTableInner)");
     expect(dataTable).toContain("MemoizedDataTable.displayName = 'DataTable'");
+  });
+
+  test("assets and superinvestors pages delegate virtualized search and sorting to a zero-virtual table instead of owning paginated table state", () => {
+    const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
+    const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
+
+    expect(assetsTable).toContain("ZeroVirtualDataTable");
+    expect(superinvestorsTable).toContain("ZeroVirtualDataTable");
+    expect(assetsTable).not.toContain("<DataTable");
+    expect(superinvestorsTable).not.toContain("<DataTable");
+    expect(assetsTable).not.toContain("const [searchTerm, setSearchTerm]");
+    expect(superinvestorsTable).not.toContain("const [searchTerm, setSearchTerm]");
+    expect(assetsTable).not.toContain("useSearchParams");
+    expect(superinvestorsTable).not.toContain("useSearchParams");
+  });
+
+  test("zero-virtual table isolates the search input and defaults to a 10-row viewport without pagination controls", () => {
+    const zeroVirtualTablePath = join(projectRoot, "src/components/ZeroVirtualDataTable.tsx");
+
+    expect(existsSync(zeroVirtualTablePath)).toBe(true);
+
+    if (!existsSync(zeroVirtualTablePath)) {
+      return;
+    }
+
+    const zeroVirtualTable = readProjectFile("src/components/ZeroVirtualDataTable.tsx");
+
+    expect(zeroVirtualTable).toContain("useZeroVirtualizer");
+    expect(zeroVirtualTable).toContain("useHistoryScrollState");
+    expect(zeroVirtualTable).toContain("memo(function ZeroVirtualTableSearchInput");
+    expect(zeroVirtualTable).toContain("const DEFAULT_VISIBLE_ROW_COUNT = 10");
+    expect(zeroVirtualTable).not.toContain("ChevronsLeft");
+    expect(zeroVirtualTable).not.toContain("Rows per page");
+    expect(zeroVirtualTable).not.toContain("Page ");
+  });
+
+  test("zero-virtual table keeps scroll-driven virtualizer state inside a dedicated viewport so the toolbar and sort chrome stay isolated", () => {
+    const zeroVirtualTable = readProjectFile("src/components/ZeroVirtualDataTable.tsx");
+    const outerComponent = zeroVirtualTable.split("function ZeroVirtualDataTableInner")[1] ?? "";
+
+    expect(zeroVirtualTable).toContain("memo(function ZeroVirtualTableToolbar");
+    expect(zeroVirtualTable).toContain("memo(function ZeroVirtualTableHeader");
+    expect(zeroVirtualTable).toContain("memo(function ZeroVirtualTableViewport");
+    expect(zeroVirtualTable).toContain("onReadyChange");
+    expect(outerComponent).not.toContain("useZeroVirtualizer<");
+  });
+
+  test("zero query contracts support zero-virtual start-row pagination for assets and superinvestors", () => {
+    const zeroQueries = readProjectFile("src/zero/queries.ts");
+
+    expect(zeroQueries).toContain("assetsVirtualPage");
+    expect(zeroQueries).toContain("assetsVirtualRowById");
+    expect(zeroQueries).toContain("superinvestorsVirtualPage");
+    expect(zeroQueries).toContain("superinvestorsVirtualRowById");
+    expect(zeroQueries).toContain(".start(start, { inclusive: false })");
+    expect(zeroQueries).toContain("dir === \"forward\"");
+  });
+
+  test("assets and superinvestors cards drop the subtitle once the table owns the search UX", () => {
+    const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
+    const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
+
+    expect(assetsTable).not.toContain("CardDescription");
+    expect(superinvestorsTable).not.toContain("CardDescription");
   });
 
   test("app root does not wrap the router tree in StrictMode while using react-scan for render diagnostics", () => {

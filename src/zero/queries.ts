@@ -2,6 +2,40 @@ import { escapeLike, syncedQuery } from "@rocicorp/zero";
 import { z } from "zod";
 import { builder } from "../schema";
 
+const sortDirectionSchema = z.enum(["asc", "desc"]);
+const assetVirtualSortColumnSchema = z.enum(["asset", "assetName"]);
+const superinvestorVirtualSortColumnSchema = z.enum(["cik", "cikName"]);
+
+const assetVirtualStartSchema = z.object({
+  id: z.number().int(),
+  asset: z.string(),
+  assetName: z.string(),
+  cusip: z.string(),
+});
+
+const superinvestorVirtualStartSchema = z.object({
+  id: z.number().int(),
+  cik: z.string(),
+  cikName: z.string(),
+});
+
+export type AssetVirtualStartRow = z.infer<typeof assetVirtualStartSchema>;
+export type SuperinvestorVirtualStartRow = z.infer<typeof superinvestorVirtualStartSchema>;
+export type AssetVirtualSortColumn = z.infer<typeof assetVirtualSortColumnSchema>;
+export type SuperinvestorVirtualSortColumn = z.infer<typeof superinvestorVirtualSortColumnSchema>;
+
+export type AssetVirtualListContext = {
+  search: string;
+  sortColumn: AssetVirtualSortColumn;
+  sortDirection: "asc" | "desc";
+};
+
+export type SuperinvestorVirtualListContext = {
+  search: string;
+  sortColumn: SuperinvestorVirtualSortColumn;
+  sortDirection: "asc" | "desc";
+};
+
 export const queries = {
   listUsers: syncedQuery("users.list", z.tuple([]), () =>
     builder.user.orderBy("name", "asc")
@@ -159,6 +193,62 @@ export const queries = {
         .limit(limit);
     }
   ),
+  assetsVirtualPage: syncedQuery(
+    "assets.virtualPage",
+    z.tuple([
+      z.number().int().min(1).max(50000),
+      assetVirtualStartSchema.nullable(),
+      z.enum(["forward", "backward"]),
+      z.object({
+        search: z.string(),
+        sortColumn: assetVirtualSortColumnSchema,
+        sortDirection: sortDirectionSchema,
+      }),
+    ]),
+    (limit, start, dir, listContextParams) => {
+      const search = listContextParams.search.trim();
+      const orderByDir =
+        dir === "forward"
+          ? listContextParams.sortDirection
+          : listContextParams.sortDirection === "asc"
+            ? "desc"
+            : "asc";
+
+      let query = builder.assets.limit(limit);
+
+      if (search) {
+        const pattern = `%${escapeLike(search)}%`;
+        query = query.where(({ or, cmp }) =>
+          or(
+            cmp("asset", "ILIKE", pattern),
+            cmp("assetName", "ILIKE", pattern),
+            cmp("cusip", "ILIKE", pattern)
+          )
+        );
+      }
+
+      query = query
+        .orderBy(listContextParams.sortColumn, orderByDir)
+        .orderBy("id", orderByDir);
+
+      if (start) {
+        query = query.start(start, { inclusive: false });
+      }
+
+      return query;
+    }
+  ),
+  assetsVirtualRowById: syncedQuery(
+    "assets.virtualRowById",
+    z.tuple([z.string().min(1)]),
+    (id) => {
+      const numericId = Number.parseInt(id, 10);
+      if (Number.isNaN(numericId)) {
+        return builder.assets.where("id", "=", -1).one();
+      }
+      return builder.assets.where("id", "=", numericId).one();
+    }
+  ),
   assetBySymbol: syncedQuery(
     "assets.bySymbol",
     z.tuple([z.string().min(1)]),
@@ -174,6 +264,62 @@ export const queries = {
       return builder.superinvestors
         .orderBy("cikName", "asc")
         .limit(limit);
+    }
+  ),
+  superinvestorsVirtualPage: syncedQuery(
+    "superinvestors.virtualPage",
+    z.tuple([
+      z.number().int().min(1).max(50000),
+      superinvestorVirtualStartSchema.nullable(),
+      z.enum(["forward", "backward"]),
+      z.object({
+        search: z.string(),
+        sortColumn: superinvestorVirtualSortColumnSchema,
+        sortDirection: sortDirectionSchema,
+      }),
+    ]),
+    (limit, start, dir, listContextParams) => {
+      const search = listContextParams.search.trim();
+      const orderByDir =
+        dir === "forward"
+          ? listContextParams.sortDirection
+          : listContextParams.sortDirection === "asc"
+            ? "desc"
+            : "asc";
+
+      let query = builder.superinvestors.limit(limit);
+
+      if (search) {
+        const pattern = `%${escapeLike(search)}%`;
+        query = query.where(({ or, cmp }) =>
+          or(
+            cmp("cik", "ILIKE", pattern),
+            cmp("cikName", "ILIKE", pattern),
+            cmp("cikTicker", "ILIKE", pattern)
+          )
+        );
+      }
+
+      query = query
+        .orderBy(listContextParams.sortColumn, orderByDir)
+        .orderBy("id", orderByDir);
+
+      if (start) {
+        query = query.start(start, { inclusive: false });
+      }
+
+      return query;
+    }
+  ),
+  superinvestorsVirtualRowById: syncedQuery(
+    "superinvestors.virtualRowById",
+    z.tuple([z.string().min(1)]),
+    (id) => {
+      const numericId = Number.parseInt(id, 10);
+      if (Number.isNaN(numericId)) {
+        return builder.superinvestors.where("id", "=", -1).one();
+      }
+      return builder.superinvestors.where("id", "=", numericId).one();
     }
   ),
 

@@ -22,9 +22,23 @@ export const PRELOAD_LIMITS = {
  * the same cached `searches` rows.
  */
 export function preload(z: Zero<Schema>) {
-  // Preload browsing data (windowed pagination)
-  z.preload(queries.assetsPage(PRELOAD_LIMITS.assetsTable, 0), { ttl: PRELOAD_TTL });
-  z.preload(queries.superinvestorsPage(PRELOAD_LIMITS.superinvestorsTable, 0), { ttl: PRELOAD_TTL });
+  // Preload the initial virtualized table windows
+  z.preload(
+    queries.assetsVirtualPage(PRELOAD_LIMITS.assetsTable, null, "forward", {
+      search: "",
+      sortColumn: "assetName",
+      sortDirection: "asc",
+    }),
+    { ttl: PRELOAD_TTL }
+  );
+  z.preload(
+    queries.superinvestorsVirtualPage(PRELOAD_LIMITS.superinvestorsTable, null, "forward", {
+      search: "",
+      sortColumn: "cikName",
+      sortDirection: "asc",
+    }),
+    { ttl: PRELOAD_TTL }
+  );
 
   // Preload search index for instant local search (serves both global and per-table search)
   // Sorted alphabetically so local results are a valid prefix of full results
