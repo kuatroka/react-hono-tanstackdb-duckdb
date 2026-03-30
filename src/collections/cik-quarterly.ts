@@ -41,6 +41,7 @@ export const cikQuarterlyCollection = createCollection(
         getKey: (item) => item.id,
         enabled: false,
         staleTime: Infinity,
+        startSync: true,
     })
 )
 
