@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect, useState } from "react";
+import { memo, useMemo, useRef, useEffect, useState } from "react";
 import * as echarts from "echarts/core";
 import { BarChart } from "echarts/charts";
 import {
@@ -64,7 +64,7 @@ interface OpenedClosedTooltipParam {
  * - Per-asset investor activity (AssetDetail page)
  * - All-assets aggregated activity (Dashboard/Overview)
  */
-export function OpenedClosedBarChart({
+export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   data,
   title,
   description,
@@ -355,4 +355,4 @@ export function OpenedClosedBarChart({
       </CardContent>
     </Card>
   );
-}
+});

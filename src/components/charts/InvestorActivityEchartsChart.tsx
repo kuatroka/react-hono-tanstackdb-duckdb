@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { OpenedClosedBarChart } from "./OpenedClosedBarChart";
 import type { CusipQuarterInvestorActivity } from "@/schema";
 
@@ -19,7 +19,7 @@ interface InvestorActivityEchartsChartProps {
  * ECharts chart for per-asset investor activity.
  * Wraps the generic OpenedClosedBarChart with asset-specific data mapping.
  */
-export function InvestorActivityEchartsChart({ 
+export const InvestorActivityEchartsChart = memo(function InvestorActivityEchartsChart({ 
   data, 
   ticker, 
   onBarClick,
@@ -50,4 +50,4 @@ export function InvestorActivityEchartsChart({
       unitLabel="investors"
     />
   );
-}
+});

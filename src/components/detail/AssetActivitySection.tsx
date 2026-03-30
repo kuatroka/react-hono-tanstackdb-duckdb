@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { assetActivityCollection, fetchAssetActivityData } from "@/collections";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
@@ -13,14 +13,45 @@ interface AssetActivitySectionProps {
   hasCusip: boolean;
 }
 
-export function AssetActivitySection({ code, ticker, cusip, hasCusip }: AssetActivitySectionProps) {
+interface AssetActivityLoadState {
+  queryTimeMs: number | null;
+  dataSource: DataFlow;
+  isLoading: boolean;
+}
+
+function mapAssetActivityDataSource(source: string): DataFlow {
+  return source === "api"
+    ? "tsdb-api"
+    : source === "indexeddb"
+      ? "tsdb-indexeddb"
+      : "tsdb-memory";
+}
+
+function createInitialAssetActivityState(code: string): AssetActivityLoadState {
+  return {
+    queryTimeMs: null,
+    dataSource: "unknown",
+    isLoading: Boolean(code),
+  };
+}
+
+export const AssetActivitySection = memo(function AssetActivitySection({
+  code,
+  ticker,
+  cusip,
+  hasCusip,
+}: AssetActivitySectionProps) {
   const { setSelection, setHoverSelection } = useAssetDrilldownSection();
-  const [activityQueryTimeMs, setActivityQueryTimeMs] = useState<number | null>(null);
-  const [activityDataSource, setActivityDataSource] = useState<DataFlow>("unknown");
-  const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const [activityStatus, setActivityStatus] = useState<AssetActivityLoadState>(() => createInitialAssetActivityState(code));
   const [uplotRenderMs, setUplotRenderMs] = useState<number | null>(null);
   const [echartsRenderMs, setEchartsRenderMs] = useState<number | null>(null);
   const { data: activityCollectionData } = useLiveQuery((q) => q.from({ rows: assetActivityCollection }));
+
+  const {
+    queryTimeMs: activityQueryTimeMs,
+    dataSource: activityDataSource,
+    isLoading: isActivityLoading,
+  } = activityStatus;
 
   const activityRows = useMemo(() => {
     if (!activityCollectionData) return [];
@@ -30,7 +61,8 @@ export function AssetActivitySection({ code, ticker, cusip, hasCusip }: AssetAct
           ? row.ticker === code && row.cusip === cusip
           : row.ticker === code
       ))
-      .sort((left, right) => left.quarter.localeCompare(right.quarter));
+      .sort((left, right) => left.quarter.localeCompare(right.quarter))
+      .map(({ id: _id, ...row }) => ({ ...row }));
   }, [activityCollectionData, code, cusip, hasCusip]);
 
   const handleActivityRenderComplete = useCallback((renderMs: number) => {
@@ -41,35 +73,64 @@ export function AssetActivitySection({ code, ticker, cusip, hasCusip }: AssetAct
     setEchartsRenderMs(renderMs);
   }, []);
 
+  const handleUplotBarClick = useCallback(({ quarter, action }: { quarter: string; action: "open" | "close" }) => {
+    setSelection({ quarter, action });
+  }, [setSelection]);
+
+  const handleUplotBarHover = useCallback(({ quarter, action }: { quarter: string; action: "open" | "close" }) => {
+    setHoverSelection({ quarter, action });
+  }, [setHoverSelection]);
+
+  const handleUplotBarLeave = useCallback(() => {
+    setHoverSelection(null);
+  }, [setHoverSelection]);
+
+  const uplotLatencyBadge = useMemo(() => (
+    <LatencyBadge
+      dataLoadMs={activityQueryTimeMs ?? undefined}
+      renderMs={uplotRenderMs ?? undefined}
+      source={activityDataSource}
+      variant="inline"
+    />
+  ), [activityDataSource, activityQueryTimeMs, uplotRenderMs]);
+
+  const echartsLatencyBadge = useMemo(() => (
+    <LatencyBadge
+      dataLoadMs={activityQueryTimeMs ?? undefined}
+      renderMs={echartsRenderMs ?? undefined}
+      source={activityDataSource}
+      variant="inline"
+    />
+  ), [activityDataSource, activityQueryTimeMs, echartsRenderMs]);
+
   useEffect(() => {
     if (!code) return;
 
     let cancelled = false;
-    setActivityQueryTimeMs(null);
-    setActivityDataSource("unknown");
-    setUplotRenderMs(null);
-    setEchartsRenderMs(null);
-    setIsActivityLoading(true);
+    void (async () => {
+      let nextState: AssetActivityLoadState = {
+        queryTimeMs: null,
+        dataSource: "unknown",
+        isLoading: false,
+      };
 
-    fetchAssetActivityData(code, hasCusip ? cusip : null)
-      .then(({ queryTimeMs, source }) => {
-        if (cancelled) return;
-        setActivityQueryTimeMs(queryTimeMs);
-        setActivityDataSource(
-          source === "api" ? "tsdb-api" : source === "indexeddb" ? "tsdb-indexeddb" : "tsdb-memory",
-        );
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error("[AssetActivitySection] Failed to load asset activity:", error);
-        setActivityQueryTimeMs(null);
-        setActivityDataSource("unknown");
-      })
-      .finally(() => {
+      try {
+        const { queryTimeMs, source } = await fetchAssetActivityData(code, hasCusip ? cusip : null);
+        nextState = {
+          queryTimeMs,
+          dataSource: mapAssetActivityDataSource(source),
+          isLoading: false,
+        };
+      } catch (error) {
         if (!cancelled) {
-          setIsActivityLoading(false);
+          console.error("[AssetActivitySection] Failed to load asset activity:", error);
         }
-      });
+      }
+
+      if (!cancelled) {
+        setActivityStatus(nextState);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -97,35 +158,21 @@ export function AssetActivitySection({ code, ticker, cusip, hasCusip }: AssetAct
       <InvestorActivityUplotChart
         data={activityRows}
         ticker={ticker}
-        onBarClick={({ quarter, action }) => setSelection({ quarter, action })}
-        onBarHover={({ quarter, action }) => setHoverSelection({ quarter, action })}
-        onBarLeave={() => setHoverSelection(null)}
+        onBarClick={handleUplotBarClick}
+        onBarHover={handleUplotBarHover}
+        onBarLeave={handleUplotBarLeave}
         onRenderComplete={handleActivityRenderComplete}
-        latencyBadge={
-          <LatencyBadge
-            dataLoadMs={activityQueryTimeMs ?? undefined}
-            renderMs={uplotRenderMs ?? undefined}
-            source={activityDataSource}
-            variant="inline"
-          />
-        }
+        latencyBadge={uplotLatencyBadge}
       />
       <InvestorActivityEchartsChart
         data={activityRows}
         ticker={ticker}
-        onBarClick={({ quarter, action }) => setSelection({ quarter, action })}
-        onBarHover={({ quarter, action }) => setHoverSelection({ quarter, action })}
-        onBarLeave={() => setHoverSelection(null)}
+        onBarClick={handleUplotBarClick}
+        onBarHover={handleUplotBarHover}
+        onBarLeave={handleUplotBarLeave}
         onRenderComplete={handleEchartsRenderComplete}
-        latencyBadge={
-          <LatencyBadge
-            dataLoadMs={activityQueryTimeMs ?? undefined}
-            renderMs={echartsRenderMs ?? undefined}
-            source={activityDataSource}
-            variant="inline"
-          />
-        }
+        latencyBadge={echartsLatencyBadge}
       />
     </div>
   );
-}
+});

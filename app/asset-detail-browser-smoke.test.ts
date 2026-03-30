@@ -176,9 +176,7 @@ describe("asset detail browser smoke test", () => {
     const page = await browser.newPage();
     const { pageErrors, consoleErrors } = trackPageIssues(page);
 
-    await page.goto(`${baseUrl}/superinvestors`, { waitUntil: "networkidle" });
-    await page.locator('a[href^="/superinvestors/"]').first().click();
-    await page.waitForLoadState("networkidle");
+    await page.goto(`${baseUrl}/superinvestors/898371`, { waitUntil: "networkidle" });
     await page.waitForSelector("text=Portfolio Value Over Time");
     await page.locator('[data-latency-part="render"]').first().waitFor();
 

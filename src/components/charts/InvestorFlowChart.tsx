@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
 import { GridComponent, TooltipComponent, LegendComponent } from "echarts/components";
@@ -75,7 +75,7 @@ function EmptyInvestorFlowCard({ ticker, title }: { ticker: string; title: strin
     );
 }
 
-export function InvestorFlowChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
+export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const chartRef = useRef<echarts.EChartsType | null>(null);
     const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
@@ -278,9 +278,9 @@ export function InvestorFlowChart({ data, ticker, latencyBadge, onRenderComplete
             <div ref={containerRef} className="h-[400px] w-full min-w-0" />
         </InvestorFlowCard>
     );
-}
+});
 
-export function InvestorFlowUplotChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
+export const InvestorFlowUplotChart = memo(function InvestorFlowUplotChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const chartRef = useRef<uPlot | null>(null);
 
@@ -387,4 +387,4 @@ export function InvestorFlowUplotChart({ data, ticker, latencyBadge, onRenderCom
             <div ref={containerRef} className="h-[400px] w-full min-w-0" />
         </InvestorFlowCard>
     );
-}
+});

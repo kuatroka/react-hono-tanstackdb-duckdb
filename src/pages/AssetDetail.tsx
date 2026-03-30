@@ -7,61 +7,79 @@ import { AssetDrilldownSection } from "@/components/detail/AssetDrilldownSection
 import { AssetFlowSection } from "@/components/detail/AssetFlowSection";
 import { useContentReady } from "@/hooks/useContentReady";
 
+interface AssetDetailRecordState {
+  code: string | undefined;
+  cusip: string | null | undefined;
+  record: Asset | null | undefined;
+}
+
 export function AssetDetailPage() {
   const { code, cusip } = useParams({ strict: false }) as { code?: string; cusip?: string };
   const { onReady } = useContentReady();
   const hasCusip = Boolean(cusip && cusip !== "_");
-  const [record, setRecord] = useState<Asset | null | undefined>(undefined);
+  const currentCusip = hasCusip ? cusip : null;
+  const [recordState, setRecordState] = useState<AssetDetailRecordState>({
+    code: undefined,
+    cusip: undefined,
+    record: undefined,
+  });
   const readyCalledRef = useRef(false);
 
+  const isCurrentRecord = code !== undefined && recordState.code === code && recordState.cusip === currentCusip;
+
   useEffect(() => {
-    if (!code) {
-      setRecord(undefined);
-      return;
-    }
+    readyCalledRef.current = false;
+  }, [code, currentCusip]);
+
+  useEffect(() => {
+    if (!code) return;
 
     let cancelled = false;
-    setRecord(undefined);
 
-    fetchAssetRecord(code, hasCusip ? cusip : null)
-      .then((assetRecord) => {
-        if (!cancelled) {
-          setRecord(assetRecord);
-        }
-      })
-      .catch((error) => {
+    void (async () => {
+      let nextRecord: Asset | null = null;
+
+      try {
+        nextRecord = await fetchAssetRecord(code, currentCusip);
+      } catch (error) {
         if (!cancelled) {
           console.error("[AssetDetail] Failed to load asset record:", error);
-          setRecord(null);
         }
-      });
+      }
+
+      if (!cancelled) {
+        setRecordState({
+          code,
+          cusip: currentCusip,
+          record: nextRecord,
+        });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [code, cusip, hasCusip]);
-
-  useEffect(() => {
-    readyCalledRef.current = false;
-  }, [code, cusip]);
+  }, [code, currentCusip]);
 
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (record !== undefined) {
+    if (isCurrentRecord && recordState.record !== undefined) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [record, onReady]);
+  }, [isCurrentRecord, onReady, recordState.record]);
 
   if (!code) return <div className="p-6">Missing asset code.</div>;
 
-  if (record === undefined) {
+  if (!isCurrentRecord || recordState.record === undefined) {
     return <div className="p-6">Loading…</div>;
   }
 
-  if (!record) {
+  if (!recordState.record) {
     return <div className="p-6">Asset not found.</div>;
   }
+
+  const record = recordState.record;
 
   return (
     <>
@@ -85,6 +103,7 @@ export function AssetDetailPage() {
 
       <div className="mt-8 px-4 sm:px-6 lg:px-8">
         <AssetDrilldownSection
+          key={`asset-drilldown-${code}-${record.cusip ?? "no-cusip"}-${hasCusip ? "with-cusip" : "without-cusip"}`}
           code={code}
           ticker={record.asset}
           cusip={record.cusip}

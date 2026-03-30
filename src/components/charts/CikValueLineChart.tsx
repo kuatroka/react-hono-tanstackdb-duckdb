@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import uPlot from "uplot";
 import {
   Card,
@@ -26,6 +26,37 @@ interface TooltipData {
   value: number;
   x: number;
   y: number;
+}
+
+function updateTooltip(
+  tooltipRef: RefObject<HTMLDivElement | null>,
+  tooltipQuarterRef: RefObject<HTMLDivElement | null>,
+  tooltipValueRef: RefObject<HTMLDivElement | null>,
+  next: TooltipData | null,
+) {
+  const tooltipElement = tooltipRef.current;
+  if (!tooltipElement) {
+    return;
+  }
+
+  if (!next) {
+    tooltipElement.style.opacity = "0";
+    tooltipElement.style.visibility = "hidden";
+    return;
+  }
+
+  tooltipElement.style.opacity = "1";
+  tooltipElement.style.visibility = "visible";
+  tooltipElement.style.left = `${next.x}px`;
+  tooltipElement.style.top = `${next.y - 10}px`;
+
+  if (tooltipQuarterRef.current) {
+    tooltipQuarterRef.current.textContent = next.quarter;
+  }
+
+  if (tooltipValueRef.current) {
+    tooltipValueRef.current.textContent = formatValue(next.value);
+  }
 }
 
 /**
@@ -54,7 +85,9 @@ export function CikValueLineChart({
 }: CikValueLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
-  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const tooltipQuarterRef = useRef<HTMLDivElement>(null);
+  const tooltipValueRef = useRef<HTMLDivElement>(null);
   const renderStartRef = useRef<number | null>(null);
 
   // Transform data for uPlot using categorical X-axis (same as InvestorActivityUplotChart)
@@ -165,7 +198,7 @@ export function CikValueLineChart({
             (u) => {
               const idx = u.cursor.idx;
               if (idx == null || idx < 0 || idx >= labels.length) {
-                setTooltip(null);
+                updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, null);
                 return;
               }
 
@@ -176,7 +209,12 @@ export function CikValueLineChart({
               const left = u.valToPos(idx, "x");
               const top = u.valToPos(value, "y");
 
-              setTooltip({ quarter, value, x: left, y: top });
+              updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, {
+                quarter,
+                value,
+                x: left,
+                y: top,
+              });
             },
           ],
         },
@@ -211,6 +249,7 @@ export function CikValueLineChart({
         cancelAnimationFrame(rafId);
       }
       resizeObserver.disconnect();
+      updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, null);
       chartRef.current?.destroy();
       chartRef.current = null;
     };
@@ -258,19 +297,14 @@ export function CikValueLineChart({
       <CardContent>
         <div className="relative">
           <div ref={containerRef} className="h-[300px] w-full" />
-          {/* Tooltip */}
-          {tooltip && (
-            <div
-              className="absolute pointer-events-none z-10 px-3 py-2 text-sm bg-gray-900 text-white rounded-lg shadow-lg transform -translate-x-1/2 -translate-y-full"
-              style={{
-                left: tooltip.x,
-                top: tooltip.y - 10,
-              }}
-            >
-              <div className="font-semibold">{tooltip.quarter}</div>
-              <div>{formatValue(tooltip.value)}</div>
-            </div>
-          )}
+          <div
+            ref={tooltipRef}
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 px-3 py-2 text-sm text-white shadow-lg"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <div ref={tooltipQuarterRef} className="font-semibold" />
+            <div ref={tooltipValueRef} />
+          </div>
         </div>
       </CardContent>
     </Card>

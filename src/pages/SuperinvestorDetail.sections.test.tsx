@@ -3,11 +3,6 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as collectionsModule from "@/collections";
 import * as pageCacheCleanupModule from "@/collections/page-cache-cleanup";
 
-interface SuperinvestorRecord {
-  cik: string;
-  cikName: string;
-}
-
 interface CikQuarterlyRow {
   cik: string;
   quarter: string;
@@ -28,8 +23,9 @@ const fetchCikQuarterlyDataCalls: string[] = [];
 const cleanupCalls: string[] = [];
 let params: { cik?: string } = {};
 let currentOnReady: () => void = () => undefined;
-let currentFetchSuperinvestorRecord: (cik: string) => Promise<SuperinvestorRecord | null> = async () => null;
-let currentFetchCikQuarterlyData: (cik: string) => Promise<{ queryTimeMs: number; source: string }> = async () => ({
+let currentFetchSuperinvestorRecord: (cik: string) => Promise<any> = async () => null;
+let currentFetchCikQuarterlyData: (cik: string) => Promise<any> = async () => ({
+  rows: [],
   queryTimeMs: 0,
   source: "memory",
 });
@@ -54,26 +50,32 @@ function registerModuleMocks() {
     }),
   }));
 
-  spyOn(collectionsModule, "fetchSuperinvestorRecord").mockImplementation((cik: string) => {
-    fetchSuperinvestorRecordCalls.push(cik);
-    return currentFetchSuperinvestorRecord(cik);
-  });
+  spyOn(collectionsModule, "fetchSuperinvestorRecord").mockImplementation(
+    ((cik: string) => {
+      fetchSuperinvestorRecordCalls.push(cik);
+      return currentFetchSuperinvestorRecord(cik);
+    }) as any,
+  );
 
-  spyOn(collectionsModule, "fetchCikQuarterlyData").mockImplementation((cik: string) => {
-    fetchCikQuarterlyDataCalls.push(cik);
-    return currentFetchCikQuarterlyData(cik) as any;
-  });
+  spyOn(collectionsModule, "fetchCikQuarterlyData").mockImplementation(
+    ((cik: string) => {
+      fetchCikQuarterlyDataCalls.push(cik);
+      return currentFetchCikQuarterlyData(cik) as any;
+    }) as any,
+  );
 
   spyOn(collectionsModule, "hasFetchedCikData").mockImplementation(
     (cik: string) => currentLiveQueryRows.some((row) => row.cik === cik)
   );
 
-  spyOn(collectionsModule, "getCikQuarterlyDataFromCache").mockImplementation((cik: string) => {
-    const rows = currentLiveQueryRows
-      .filter((row) => row.cik === cik)
-      .sort((left, right) => left.quarter.localeCompare(right.quarter));
-    return rows.length > 0 ? rows : null;
-  });
+  spyOn(collectionsModule, "getCikQuarterlyDataFromCache").mockImplementation(
+    ((cik: string) => {
+      const rows = currentLiveQueryRows
+        .filter((row) => row.cik === cik)
+        .sort((left, right) => left.quarter.localeCompare(right.quarter));
+      return rows.length > 0 ? (rows as any) : null;
+    }) as any,
+  );
 
   spyOn(pageCacheCleanupModule, "clearSuperinvestorDetailRouteCaches").mockImplementation(() => {
     cleanupCalls.push("cleared");
@@ -105,6 +107,7 @@ function createHookHarness(component: (props: any) => unknown, initialProps: any
 
   mock.module("react", () => ({
     ...actualReact,
+    memo: (component: any) => component,
     useState<T>(initial: T | (() => T)) {
       const stateIndex = hookIndex++;
       if (!(stateIndex in hookState)) {
@@ -130,12 +133,23 @@ function createHookHarness(component: (props: any) => unknown, initialProps: any
       }
       return hookState[refIndex] as { current: T };
     },
-    useMemo<T>(factory: () => T) {
-      hookIndex++;
-      return factory();
+    useMemo<T>(factory: () => T, deps?: unknown[]) {
+      const memoIndex = hookIndex++;
+      const current = hookState[memoIndex] as { deps?: unknown[]; value: T } | undefined;
+      if (current && !depsChanged(current.deps, deps)) {
+        return current.value;
+      }
+      const value = factory();
+      hookState[memoIndex] = { deps, value };
+      return value;
     },
-    useCallback<T extends (...args: any[]) => any>(callback: T) {
-      hookIndex++;
+    useCallback<T extends (...args: any[]) => any>(callback: T, deps?: unknown[]) {
+      const callbackIndex = hookIndex++;
+      const current = hookState[callbackIndex] as { deps?: unknown[]; value: T } | undefined;
+      if (current && !depsChanged(current.deps, deps)) {
+        return current.value;
+      }
+      hookState[callbackIndex] = { deps, value: callback };
       return callback;
     },
     useEffect(effect: () => void | (() => void), deps?: unknown[]) {
@@ -289,7 +303,12 @@ describe("superinvestor detail route split", () => {
     expect(chartNodes).toHaveLength(0);
 
     harness.flushEffects();
-    resolveFetch?.({ queryTimeMs: 14, source: "api" });
+    if (!resolveFetch) {
+      throw new Error("Expected chart data fetch to be pending");
+    }
+    const resolve: (value: { queryTimeMs: number; source: string }) => void =
+      resolveFetch ?? (() => undefined);
+    resolve({ queryTimeMs: 14, source: "api" });
     await Promise.resolve();
     harness.settle();
   });

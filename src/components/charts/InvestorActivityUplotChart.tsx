@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import uPlot from "uplot";
 import {
   Card,
@@ -27,7 +27,7 @@ interface InvestorActivityUplotChartProps {
   onRenderComplete?: (renderMs: number) => void;
 }
 
-export function InvestorActivityUplotChart({
+export const InvestorActivityUplotChart = memo(function InvestorActivityUplotChart({
   data,
   ticker,
   onBarClick,
@@ -240,4 +240,4 @@ export function InvestorActivityUplotChart({
       </CardContent>
     </Card>
   );
-}
+});

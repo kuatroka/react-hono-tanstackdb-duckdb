@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useLiveQuery } from "@tanstack/react-db";
@@ -25,13 +26,88 @@ export interface InvestorActivitySelection {
 }
 
 interface AssetDrilldownSectionContextValue {
-  selection: InvestorActivitySelection | null;
-  hoverSelection: InvestorActivitySelection | null;
   setSelection: (next: InvestorActivitySelection) => void;
   setHoverSelection: (next: InvestorActivitySelection | null) => void;
 }
 
+interface HoverSelectionStore {
+  getSnapshot: () => InvestorActivitySelection | null;
+  subscribe: (listener: () => void) => () => void;
+  set: (next: InvestorActivitySelection | null) => void;
+}
+
+type ActivityRowPreview = {
+  quarter: string;
+  numOpen?: number | null;
+  numClose?: number | null;
+};
+
+function getDefaultInvestorActivitySelection(rows: ActivityRowPreview[]): InvestorActivitySelection | null {
+  if (rows.length === 0) return null;
+
+  const latestQuarterData = rows[rows.length - 1];
+  const latestQuarter = latestQuarterData?.quarter;
+  if (!latestQuarter) return null;
+
+  const hasOpenData = Boolean(latestQuarterData?.numOpen && latestQuarterData.numOpen > 0);
+  const hasCloseData = Boolean(latestQuarterData?.numClose && latestQuarterData.numClose > 0);
+
+  if (hasOpenData) {
+    return { quarter: latestQuarter, action: "open" };
+  }
+
+  if (hasCloseData) {
+    return { quarter: latestQuarter, action: "close" };
+  }
+
+  for (let i = rows.length - 2; i >= 0; i--) {
+    const row = rows[i];
+    if (!row?.quarter) continue;
+
+    const hasOpen = Boolean(row.numOpen && row.numOpen > 0);
+    const hasClose = Boolean(row.numClose && row.numClose > 0);
+
+    if (hasOpen) {
+      return { quarter: row.quarter, action: "open" };
+    }
+
+    if (hasClose) {
+      return { quarter: row.quarter, action: "close" };
+    }
+  }
+
+  return { quarter: latestQuarter, action: "open" };
+}
+
 const AssetDrilldownSectionContext = createContext<AssetDrilldownSectionContextValue | null>(null);
+
+function createHoverSelectionStore(): HoverSelectionStore {
+  let current: InvestorActivitySelection | null = null;
+  const listeners = new Set<() => void>();
+
+  return {
+    getSnapshot: () => current,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set: (next) => {
+      if (
+        current?.quarter === next?.quarter
+        && current?.action === next?.action
+      ) {
+        return;
+      }
+
+      current = next;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+  };
+}
 
 export function useAssetDrilldownSection() {
   const context = useContext(AssetDrilldownSectionContext);
@@ -49,6 +125,95 @@ interface AssetDrilldownSectionProps {
   children: ReactNode;
 }
 
+interface AssetDrilldownInteractionPanelsProps {
+  ticker: string;
+  cusip: string | null;
+  hasCusip: boolean;
+  resolvedSelection: InvestorActivitySelection | null;
+  hoverSelectionStore: HoverSelectionStore;
+}
+
+function AssetDrilldownInteractionPanels({
+  ticker,
+  cusip,
+  hasCusip,
+  resolvedSelection,
+  hoverSelectionStore,
+}: AssetDrilldownInteractionPanelsProps) {
+  const hoverSelection = useSyncExternalStore(
+    hoverSelectionStore.subscribe,
+    hoverSelectionStore.getSnapshot,
+    hoverSelectionStore.getSnapshot,
+  );
+
+  if ((resolvedSelection || hoverSelection) && hasCusip && cusip) {
+    return (
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">
+              Click Interaction
+            </span>
+            {resolvedSelection && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Locked
+              </span>
+            )}
+          </div>
+          {resolvedSelection ? (
+            <InvestorActivityDrilldownTable
+              key={`click-${ticker}-${cusip}-${resolvedSelection.quarter}-${resolvedSelection.action}`}
+              ticker={ticker}
+              cusip={cusip}
+              quarter={resolvedSelection.quarter}
+              action={resolvedSelection.action}
+            />
+          ) : (
+            <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+              Click a bar in the chart to see details
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-2 text-sm font-medium text-muted-foreground">
+            Hover Interaction
+          </div>
+          {hoverSelection ? (
+            <InvestorActivityDrilldownTable
+              ticker={ticker}
+              cusip={cusip}
+              quarter={hoverSelection.quarter}
+              action={hoverSelection.action}
+            />
+          ) : (
+            <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+              Hover over a bar in the chart to see details
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (resolvedSelection || hoverSelection) {
+    return (
+      <div className="py-8 text-center text-muted-foreground">
+        No CUSIP available for this asset.
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-8 text-center text-muted-foreground">
+      Click or hover over a bar in the chart to see which superinvestors opened or closed positions.
+    </div>
+  );
+}
+
 export function AssetDrilldownSection({
   code,
   ticker,
@@ -58,12 +223,12 @@ export function AssetDrilldownSection({
 }: AssetDrilldownSectionProps) {
   const { data: activityCollectionData } = useLiveQuery((q) => q.from({ rows: assetActivityCollection }));
   const [selection, setSelection] = useState<InvestorActivitySelection | null>(null);
-  const [hoverSelection, setHoverSelectionState] = useState<InvestorActivitySelection | null>(null);
   const [backgroundLoadProgress, setBackgroundLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
   const scrollYRef = useRef<number | null>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundLoadStartedRef = useRef(false);
   const backgroundLoadGenerationRef = useRef(0);
+  const hoverSelectionStore = useMemo(createHoverSelectionStore, []);
 
   const activityRows = useMemo(() => {
     if (!activityCollectionData) return [];
@@ -75,6 +240,13 @@ export function AssetDrilldownSection({
       ))
       .sort((left, right) => left.quarter.localeCompare(right.quarter));
   }, [activityCollectionData, code, cusip, hasCusip]);
+
+  const defaultSelection = useMemo(() => {
+    if (selection || activityRows.length === 0 || !code || !hasCusip || !cusip) return null;
+    return getDefaultInvestorActivitySelection(activityRows);
+  }, [activityRows, code, cusip, hasCusip, selection]);
+
+  const resolvedSelection = selection ?? defaultSelection;
 
   const handleSelectionChange = useCallback((next: InvestorActivitySelection) => {
     if (typeof window !== "undefined") {
@@ -90,13 +262,13 @@ export function AssetDrilldownSection({
 
     if (next) {
       hoverTimeoutRef.current = setTimeout(() => {
-        setHoverSelectionState(next);
+        hoverSelectionStore.set(next);
       }, 150);
       return;
     }
 
-    setHoverSelectionState(null);
-  }, []);
+    hoverSelectionStore.set(null);
+  }, [hoverSelectionStore]);
 
   useEffect(() => {
     if (scrollYRef.current == null) return;
@@ -112,14 +284,6 @@ export function AssetDrilldownSection({
   }, [selection]);
 
   useEffect(() => {
-    backgroundLoadGenerationRef.current += 1;
-    setSelection(null);
-    setHoverSelectionState(null);
-    setBackgroundLoadProgress(null);
-    backgroundLoadStartedRef.current = false;
-  }, [code, cusip]);
-
-  useEffect(() => {
     return () => {
       clearAssetDetailRouteCaches();
     };
@@ -130,52 +294,20 @@ export function AssetDrilldownSection({
       if (hoverTimeoutRef.current) {
         clearTimeout(hoverTimeoutRef.current);
       }
+      hoverSelectionStore.set(null);
     };
-  }, []);
+  }, [hoverSelectionStore]);
 
   useEffect(() => {
-    if (selection || activityRows.length === 0 || !code || !hasCusip || !cusip) return;
+    if (!defaultSelection || !code || !hasCusip || !cusip) return;
 
-    const latestQuarter = activityRows[activityRows.length - 1]?.quarter;
-    if (!latestQuarter) return;
-
-    const latestQuarterData = activityRows[activityRows.length - 1];
-    const hasOpenData = Boolean(latestQuarterData?.numOpen && latestQuarterData.numOpen > 0);
-    const hasCloseData = Boolean(latestQuarterData?.numClose && latestQuarterData.numClose > 0);
-
-    if (hasOpenData) {
-      setSelection({ quarter: latestQuarter, action: "open" });
-    } else if (hasCloseData) {
-      setSelection({ quarter: latestQuarter, action: "close" });
-    } else {
-      for (let i = activityRows.length - 2; i >= 0; i--) {
-        const row = activityRows[i];
-        if (!row?.quarter) continue;
-
-        const hasOpen = Boolean(row.numOpen && row.numOpen > 0);
-        const hasClose = Boolean(row.numClose && row.numClose > 0);
-
-        if (hasOpen) {
-          setSelection({ quarter: row.quarter, action: "open" });
-          return;
-        }
-
-        if (hasClose) {
-          setSelection({ quarter: row.quarter, action: "close" });
-          return;
-        }
-      }
-
-      setSelection({ quarter: latestQuarter, action: "open" });
-    }
-
-    fetchDrilldownBothActions(code, cusip, latestQuarter).catch((error) => {
+    fetchDrilldownBothActions(code, cusip, defaultSelection.quarter).catch((error) => {
       console.error("[AssetDrilldownSection] Failed eager drilldown load:", error);
     });
-  }, [selection, activityRows, code, cusip, hasCusip]);
+  }, [defaultSelection, code, cusip, hasCusip]);
 
   useEffect(() => {
-    if (!selection || !code || !hasCusip || !cusip || backgroundLoadStartedRef.current || activityRows.length === 0) {
+    if (!resolvedSelection || !code || !hasCusip || !cusip || backgroundLoadStartedRef.current || activityRows.length === 0) {
       return;
     }
 
@@ -205,14 +337,12 @@ export function AssetDrilldownSection({
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [selection, activityRows, code, cusip, hasCusip]);
+  }, [resolvedSelection, activityRows, code, cusip, hasCusip]);
 
   const contextValue = useMemo<AssetDrilldownSectionContextValue>(() => ({
-    selection,
-    hoverSelection,
     setSelection: handleSelectionChange,
     setHoverSelection: handleHoverChange,
-  }), [handleHoverChange, handleSelectionChange, hoverSelection, selection]);
+  }), [handleHoverChange, handleSelectionChange]);
 
   return (
     <AssetDrilldownSectionContext.Provider value={contextValue}>
@@ -235,65 +365,14 @@ export function AssetDrilldownSection({
           </div>
         )}
 
-        {(selection || hoverSelection) && hasCusip && cusip ? (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">
-                  Click Interaction
-                </span>
-                {selection && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Locked
-                  </span>
-                )}
-              </div>
-              {selection ? (
-                <InvestorActivityDrilldownTable
-                  key={`click-${ticker}-${cusip}-${selection.quarter}-${selection.action}`}
-                  ticker={ticker}
-                  cusip={cusip}
-                  quarter={selection.quarter}
-                  action={selection.action}
-                />
-              ) : (
-                <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
-                  Click a bar in the chart to see details
-                </div>
-              )}
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-medium text-muted-foreground">
-                Hover Interaction
-              </div>
-              {hoverSelection ? (
-                <InvestorActivityDrilldownTable
-                  ticker={ticker}
-                  cusip={cusip}
-                  quarter={hoverSelection.quarter}
-                  action={hoverSelection.action}
-                />
-              ) : (
-                <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
-                  Hover over a bar in the chart to see details
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (selection || hoverSelection) ? (
-          <div className="py-8 text-center text-muted-foreground">
-            No CUSIP available for this asset.
-          </div>
-        ) : (
-          <div className="py-8 text-center text-muted-foreground">
-            Click or hover over a bar in the chart to see which superinvestors opened or closed positions.
-          </div>
-        )}
+        <AssetDrilldownInteractionPanels
+          ticker={ticker}
+          cusip={cusip}
+          hasCusip={hasCusip}
+          resolvedSelection={resolvedSelection}
+          hoverSelectionStore={hoverSelectionStore}
+        />
       </div>
     </AssetDrilldownSectionContext.Provider>
   );
-}
+ }

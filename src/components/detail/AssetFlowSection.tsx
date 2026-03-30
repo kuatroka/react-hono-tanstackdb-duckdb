@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { fetchInvestorFlowData, investorFlowCollection } from "@/collections";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
@@ -9,13 +9,39 @@ interface AssetFlowSectionProps {
   ticker: string;
 }
 
-export function AssetFlowSection({ code, ticker }: AssetFlowSectionProps) {
-  const [flowQueryTimeMs, setFlowQueryTimeMs] = useState<number | null>(null);
-  const [flowDataSource, setFlowDataSource] = useState<DataFlow>("unknown");
-  const [isFlowLoading, setIsFlowLoading] = useState(false);
+interface AssetFlowLoadState {
+  queryTimeMs: number | null;
+  dataSource: DataFlow;
+  isLoading: boolean;
+}
+
+function mapAssetFlowDataSource(source: string): DataFlow {
+  return source === "api"
+    ? "tsdb-api"
+    : source === "indexeddb"
+      ? "tsdb-indexeddb"
+      : "tsdb-memory";
+}
+
+function createInitialAssetFlowState(code: string): AssetFlowLoadState {
+  return {
+    queryTimeMs: null,
+    dataSource: "unknown",
+    isLoading: Boolean(code),
+  };
+}
+
+export const AssetFlowSection = memo(function AssetFlowSection({ code, ticker }: AssetFlowSectionProps) {
+  const [flowStatus, setFlowStatus] = useState<AssetFlowLoadState>(() => createInitialAssetFlowState(code));
   const [flowRenderMs, setFlowRenderMs] = useState<number | null>(null);
   const [flowUplotRenderMs, setFlowUplotRenderMs] = useState<number | null>(null);
   const { data: flowCollectionData } = useLiveQuery((q) => q.from({ rows: investorFlowCollection }));
+
+  const {
+    queryTimeMs: flowQueryTimeMs,
+    dataSource: flowDataSource,
+    isLoading: isFlowLoading,
+  } = flowStatus;
 
   const flowRows = useMemo(() => {
     if (!flowCollectionData || !code) return [];
@@ -33,35 +59,52 @@ export function AssetFlowSection({ code, ticker }: AssetFlowSectionProps) {
     setFlowUplotRenderMs(renderMs);
   }, []);
 
+  const flowUplotLatencyBadge = useMemo(() => (
+    <LatencyBadge
+      dataLoadMs={flowQueryTimeMs ?? undefined}
+      renderMs={flowUplotRenderMs ?? undefined}
+      source={flowDataSource}
+      variant="inline"
+    />
+  ), [flowDataSource, flowQueryTimeMs, flowUplotRenderMs]);
+
+  const flowLatencyBadge = useMemo(() => (
+    <LatencyBadge
+      dataLoadMs={flowQueryTimeMs ?? undefined}
+      renderMs={flowRenderMs ?? undefined}
+      source={flowDataSource}
+      variant="inline"
+    />
+  ), [flowDataSource, flowQueryTimeMs, flowRenderMs]);
+
   useEffect(() => {
     if (!code) return;
 
     let cancelled = false;
-    setFlowQueryTimeMs(null);
-    setFlowDataSource("unknown");
-    setFlowRenderMs(null);
-    setFlowUplotRenderMs(null);
-    setIsFlowLoading(true);
+    void (async () => {
+      let nextState: AssetFlowLoadState = {
+        queryTimeMs: null,
+        dataSource: "unknown",
+        isLoading: false,
+      };
 
-    fetchInvestorFlowData(code)
-      .then(({ queryTimeMs, source }) => {
-        if (cancelled) return;
-        setFlowQueryTimeMs(queryTimeMs);
-        setFlowDataSource(
-          source === "api" ? "tsdb-api" : source === "indexeddb" ? "tsdb-indexeddb" : "tsdb-memory",
-        );
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error("[AssetFlowSection] Failed to load investor flow:", error);
-        setFlowQueryTimeMs(null);
-        setFlowDataSource("unknown");
-      })
-      .finally(() => {
+      try {
+        const { queryTimeMs, source } = await fetchInvestorFlowData(code);
+        nextState = {
+          queryTimeMs,
+          dataSource: mapAssetFlowDataSource(source),
+          isLoading: false,
+        };
+      } catch (error) {
         if (!cancelled) {
-          setIsFlowLoading(false);
+          console.error("[AssetFlowSection] Failed to load investor flow:", error);
         }
-      });
+      }
+
+      if (!cancelled) {
+        setFlowStatus(nextState);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -80,30 +123,16 @@ export function AssetFlowSection({ code, ticker }: AssetFlowSectionProps) {
             data={flowRows}
             ticker={ticker}
             onRenderComplete={handleFlowUplotRenderComplete}
-            latencyBadge={
-              <LatencyBadge
-                dataLoadMs={flowQueryTimeMs ?? undefined}
-                renderMs={flowUplotRenderMs ?? undefined}
-                source={flowDataSource}
-                variant="inline"
-              />
-            }
+            latencyBadge={flowUplotLatencyBadge}
           />
           <InvestorFlowChart
             data={flowRows}
             ticker={ticker}
             onRenderComplete={handleFlowRenderComplete}
-            latencyBadge={
-              <LatencyBadge
-                dataLoadMs={flowQueryTimeMs ?? undefined}
-                renderMs={flowRenderMs ?? undefined}
-                source={flowDataSource}
-                variant="inline"
-              />
-            }
+            latencyBadge={flowLatencyBadge}
           />
         </>
       )}
     </div>
   );
-}
+});

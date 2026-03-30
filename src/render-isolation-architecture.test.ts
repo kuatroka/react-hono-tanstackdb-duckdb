@@ -33,4 +33,18 @@ describe("rerender isolation architecture", () => {
     expect(superinvestorDetail).not.toContain("useLiveQuery");
     expect(superinvestorDetail).not.toContain("latencyBadge={");
   });
+
+  test("asset drilldown hover interaction is isolated from provider-level React state", () => {
+    const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
+
+    expect(assetDrilldown).toContain("useSyncExternalStore");
+    expect(assetDrilldown).not.toContain("const [hoverSelection, setHoverSelectionState] = useState");
+  });
+
+  test("superinvestor chart hover tooltip avoids React state updates", () => {
+    const cikValueLineChart = readProjectFile("src/components/charts/CikValueLineChart.tsx");
+
+    expect(cikValueLineChart).not.toContain("const [tooltip, setTooltip] = useState");
+    expect(cikValueLineChart).toContain("tooltipRef");
+  });
 });
