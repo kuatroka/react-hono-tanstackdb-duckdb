@@ -45,6 +45,19 @@ BEGIN
     RAISE EXCEPTION 'serving.cusip_quarter_investor_activity must have a primary key for Zero sync';
   END IF;
 
+  IF to_regclass('serving.cusip_quarter_investor_activity_detail') IS NULL THEN
+    RAISE EXCEPTION 'serving.cusip_quarter_investor_activity_detail is missing';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE contype = 'p'
+      AND conrelid = 'serving.cusip_quarter_investor_activity_detail'::regclass
+  ) THEN
+    RAISE EXCEPTION 'serving.cusip_quarter_investor_activity_detail must have a primary key for Zero sync';
+  END IF;
+
   IF to_regclass('app_state.user_counters') IS NULL THEN
     RAISE EXCEPTION 'app_state.user_counters is missing';
   END IF;
