@@ -172,7 +172,7 @@ function AssetDrilldownInteractionPanels({
               action={resolvedSelection.action}
             />
           ) : (
-            <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+            <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
               Click a bar in the chart to see details
             </div>
           )}
@@ -190,7 +190,7 @@ function AssetDrilldownInteractionPanels({
               action={hoverSelection.action}
             />
           ) : (
-            <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+            <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
               Hover over a bar in the chart to see details
             </div>
           )}
