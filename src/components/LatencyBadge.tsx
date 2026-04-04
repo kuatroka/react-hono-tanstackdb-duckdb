@@ -1,44 +1,30 @@
 import { Badge } from "@/components/ui/badge";
+import {
+  createLegacyPerfTelemetry,
+  formatPerfSourceLabel,
+  getPerfSourceCategory,
+  type PerfSource,
+  type PerfTelemetry,
+} from "@/lib/perf/telemetry";
 import { cn } from "@/lib/utils";
 
-/**
- * Data flow types showing the full path: [Framework] → [Storage/Source]
- * 
- * TanStack DB flows:
- * - "tsdb-indexeddb": TanStack DB collection loaded from IndexedDB (persisted)
- * - "tsdb-memory": TanStack DB collection in-memory only (not persisted)
- * - "tsdb-api": TanStack DB collection fetched from API (DuckDB)
- * 
- * React Query flows:
- * - "rq-memory": React Query cache hit (in-memory)
- * - "rq-api": React Query fetched from API (DuckDB)
- * 
- * Legacy (for backwards compatibility):
- * - "memory", "indexeddb", "api", "unknown"
- */
-export type DataFlow = 
-  | "tsdb-indexeddb"  // TanStack DB ↔ IndexedDB
-  | "tsdb-memory"     // TanStack DB ↔ in-memory
-  | "tsdb-api"        // TanStack DB ↔ DuckDB API
-  | "rq-memory"       // React Query ↔ in-memory cache
-  | "rq-api"          // React Query ↔ DuckDB API
-  | "memory"          // Legacy: generic memory
-  | "indexeddb"       // Legacy: generic IndexedDB
-  | "api"             // Legacy: generic API
-  | "unknown";
+export type DataFlow = PerfSource;
 
-// Keep old type for backwards compatibility
 export type LatencySource = DataFlow;
 
 export interface LatencyBadgeProps {
-  /** @deprecated Use dataLoadMs instead */
+  /** @deprecated Use ms or dataLoadMs instead */
   latencyMs?: number | null;
+  /** Zero-style shorthand for the primary latency value */
+  ms?: number | null;
   /** Time to load data from source (IndexedDB, API, or memory) */
   dataLoadMs?: number | null;
   /** Time to render the component after data is ready */
   renderMs?: number | null;
-  source?: DataFlow;
+  source?: DataFlow | string;
   className?: string;
+  label?: string;
+  telemetry?: PerfTelemetry | null;
   /** Layout variant: "inline" (single line) or "split" (two separate badges) */
   variant?: "inline" | "split";
 }
@@ -55,46 +41,14 @@ function getLatencyTone(latencyMs: number): "good" | "warn" | "bad" {
   return "bad";
 }
 
-function labelForSource(source: DataFlow): string {
-  switch (source) {
-    case "tsdb-indexeddb":
-      return "TanStack DB → IndexedDB";
-    case "tsdb-memory":
-      return "TanStack DB → memory";
-    case "tsdb-api":
-      return "TanStack DB → API";
-    case "rq-memory":
-      return "React Query → cache";
-    case "rq-api":
-      return "React Query → API";
-    case "memory":
-      return "memory";
-    case "indexeddb":
-      return "IndexedDB";
-    case "api":
-      return "API";
-    default:
-      return "unknown";
+function serializeLatencyMetric(latencyMs: number | null | undefined) {
+  if (latencyMs == null || Number.isNaN(latencyMs)) {
+    return undefined;
   }
+
+  return String(latencyMs);
 }
 
-function getSourceCategory(source: DataFlow): "local" | "cache" | "api" | "unknown" {
-  switch (source) {
-    case "tsdb-indexeddb":
-    case "indexeddb":
-      return "local";
-    case "tsdb-memory":
-    case "rq-memory":
-    case "memory":
-      return "cache";
-    case "tsdb-api":
-    case "rq-api":
-    case "api":
-      return "api";
-    default:
-      return "unknown";
-  }
-}
 
 function SingleLatencyBadge({ 
   latencyMs, 
@@ -108,7 +62,7 @@ function SingleLatencyBadge({
   className?: string;
 }) {
   const tone = getLatencyTone(latencyMs);
-  const category = getSourceCategory(source);
+  const category = getPerfSourceCategory(source);
 
   const toneClasses =
     tone === "good"
@@ -130,6 +84,10 @@ function SingleLatencyBadge({
   return (
     <Badge
       variant="outline"
+      data-testid="latency-badge"
+      data-latency-mode="single"
+      data-latency-source={source}
+      data-latency-data-ms={serializeLatencyMetric(latencyMs)}
       className={cn(
         "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
         "ring-1",
@@ -145,101 +103,139 @@ function SingleLatencyBadge({
 }
 
 export function LatencyBadge({ 
-  latencyMs, 
-  dataLoadMs, 
-  renderMs, 
-  source = "unknown", 
+  latencyMs,
+  ms,
+  dataLoadMs,
+  renderMs,
+  source = "unknown",
   className,
+  label,
+  telemetry,
   variant = "inline",
 }: LatencyBadgeProps) {
-  // Backward compatibility: if latencyMs is provided but dataLoadMs is not, use latencyMs as dataLoadMs
-  const resolvedDataLoadMs = dataLoadMs ?? latencyMs;
-  
-  // If no timing data at all, return null
-  if ((resolvedDataLoadMs == null || Number.isNaN(resolvedDataLoadMs)) && 
-      (renderMs == null || Number.isNaN(renderMs))) {
-    return null;
-  }
+  const resolvedDataLoadMs = dataLoadMs ?? ms ?? latencyMs;
+  const hasDataLoadMs = resolvedDataLoadMs != null && !Number.isNaN(resolvedDataLoadMs);
+  const hasRenderMs = renderMs != null && !Number.isNaN(renderMs);
 
-  // If only data load time is provided (legacy mode), render single badge
-  if ((renderMs == null || Number.isNaN(renderMs)) && resolvedDataLoadMs != null) {
+  if (telemetry) {
+    const { ms: resolvedMs, primaryLine, secondaryLine } = telemetry;
+
     return (
-      <SingleLatencyBadge 
-        latencyMs={resolvedDataLoadMs} 
-        source={source} 
-        label={labelForSource(source)}
-        className={className} 
-      />
+      <Badge
+        variant="secondary"
+        data-testid="latency-badge"
+        data-latency-mode="telemetry"
+        data-latency-source={telemetry.source}
+        data-latency-data-ms={serializeLatencyMetric(resolvedMs)}
+        data-latency-render-ms={serializeLatencyMetric(telemetry.secondaryLine ? renderMs : undefined)}
+        className={cn(
+          "font-mono font-medium text-[11px] leading-none px-2 py-1 shrink-0 whitespace-nowrap",
+          secondaryLine ? "flex flex-col items-start gap-0.5 py-1.5 leading-tight whitespace-nowrap" : undefined,
+          className,
+        )}
+        title={resolvedMs == null ? primaryLine : `${primaryLine} (${resolvedMs.toFixed(2)}ms)`}
+      >
+        <span>{primaryLine}</span>
+        {secondaryLine ? <span>{secondaryLine}</span> : null}
+      </Badge>
     );
   }
 
-  // Split variant: two separate badges
+  if (!hasDataLoadMs && !hasRenderMs) {
+    return null;
+  }
+
+  if (variant === "inline" && hasRenderMs) {
+    const totalMs = (resolvedDataLoadMs ?? 0) + (renderMs ?? 0);
+    const tone = getLatencyTone(totalMs);
+    const category = getPerfSourceCategory(source as DataFlow);
+
+    const toneClasses =
+      tone === "good"
+        ? "ring-emerald-500/30 border-emerald-200/50"
+        : tone === "warn"
+          ? "ring-amber-500/30 border-amber-200/50"
+          : "ring-rose-500/30 border-rose-200/50";
+
+    const sourceClasses =
+      category === "local"
+        ? "text-violet-700 dark:text-violet-400"
+        : category === "cache"
+          ? "text-emerald-700 dark:text-emerald-400"
+          : category === "api"
+            ? "text-sky-700 dark:text-sky-400"
+            : "text-muted-foreground";
+
+    return (
+      <Badge
+        variant="outline"
+        data-testid="latency-badge"
+        data-latency-mode="inline"
+        data-latency-source={String(source)}
+        data-latency-data-ms={serializeLatencyMetric(resolvedDataLoadMs)}
+        data-latency-render-ms={serializeLatencyMetric(renderMs)}
+        className={cn(
+          "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
+          "ring-1",
+          toneClasses,
+          className
+        )}
+      >
+        <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
+          <span className="opacity-90">data:</span>
+          <span>{resolvedDataLoadMs != null ? formatLatency(resolvedDataLoadMs) : "—"}</span>
+        </span>
+        <span className="opacity-40 text-muted-foreground">|</span>
+        <span
+          data-latency-part="render"
+          className="inline-flex items-center gap-1 text-[goldenrod]"
+        >
+          <span className="opacity-90">render:</span>
+          <span>{renderMs != null ? formatLatency(renderMs) : "—"}</span>
+        </span>
+        <span className="opacity-40 text-muted-foreground">|</span>
+        <span className={cn("opacity-90", sourceClasses)}>{formatPerfSourceLabel(source as DataFlow)}</span>
+      </Badge>
+    );
+  }
+
   if (variant === "split") {
     return (
-      <div className={cn("inline-flex items-center gap-1", className)}>
-        {resolvedDataLoadMs != null && !Number.isNaN(resolvedDataLoadMs) && (
-          <SingleLatencyBadge 
-            latencyMs={resolvedDataLoadMs} 
-            source={source} 
-            label="data"
+      <div
+        data-testid="latency-badge"
+        data-latency-mode="split"
+        data-latency-source={String(source)}
+        data-latency-data-ms={serializeLatencyMetric(resolvedDataLoadMs)}
+        data-latency-render-ms={serializeLatencyMetric(renderMs)}
+        className={cn("inline-flex items-center gap-1", className)}
+      >
+        {hasDataLoadMs ? (
+          <SingleLatencyBadge
+            latencyMs={resolvedDataLoadMs}
+            source={source as DataFlow}
+            label={label ?? "data"}
           />
-        )}
-        {renderMs != null && !Number.isNaN(renderMs) && (
-          <SingleLatencyBadge 
-            latencyMs={renderMs} 
+        ) : null}
+        {hasRenderMs ? (
+          <SingleLatencyBadge
+            latencyMs={renderMs}
             source="tsdb-memory"
             label="render"
           />
-        )}
+        ) : null}
       </div>
     );
   }
 
-  // Inline variant (default): single badge with both timings
-  const totalMs = (resolvedDataLoadMs ?? 0) + (renderMs ?? 0);
-  const tone = getLatencyTone(totalMs);
-  const category = getSourceCategory(source);
-
-  const toneClasses =
-    tone === "good"
-      ? "ring-emerald-500/30 border-emerald-200/50"
-      : tone === "warn"
-        ? "ring-amber-500/30 border-amber-200/50"
-        : "ring-rose-500/30 border-rose-200/50";
-
-  const sourceClasses =
-    category === "local"
-      ? "text-violet-700 dark:text-violet-400"
-      : category === "cache"
-        ? "text-emerald-700 dark:text-emerald-400"
-        : category === "api"
-          ? "text-sky-700 dark:text-sky-400"
-          : "text-muted-foreground";
-
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
-        "ring-1",
-        toneClasses,
-        className
-      )}
-    >
-      <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
-        <span className="opacity-90">data:</span>
-        <span>{resolvedDataLoadMs != null ? formatLatency(resolvedDataLoadMs) : "—"}</span>
-      </span>
-      <span className="opacity-40 text-muted-foreground">|</span>
-      <span
-        data-latency-part="render"
-        className="inline-flex items-center gap-1 text-[goldenrod]"
-      >
-        <span className="opacity-90">render:</span>
-        <span>{renderMs != null ? formatLatency(renderMs) : "—"}</span>
-      </span>
-      <span className="opacity-40 text-muted-foreground">|</span>
-      <span className={cn("opacity-90", sourceClasses)}>{labelForSource(source)}</span>
-    </Badge>
+    <LatencyBadge
+      telemetry={createLegacyPerfTelemetry({
+        label,
+        ms: resolvedDataLoadMs,
+        renderMs,
+        source,
+      })}
+      className={className}
+    />
   );
 }
