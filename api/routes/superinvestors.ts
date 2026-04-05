@@ -3,6 +3,10 @@ import { getDuckDBConnection } from "../duckdb";
 
 const superinvestorsRoutes = new Hono();
 
+function sqlStringLiteral(value: string): string {
+    return `'${value.replaceAll("'", "''")}'`;
+}
+
 /**
  * GET /api/superinvestors?limit=<n>&offset=<n>
  *
@@ -55,18 +59,15 @@ superinvestorsRoutes.get("/:cik", async (c) => {
     try {
         const conn = await getDuckDBConnection();
 
-        const sql = `
+        const reader = await conn.runAndRead(`
       SELECT 
         cik,
         cik_name as "cikName"
       FROM superinvestors
-      WHERE cik = ?
+      WHERE cik = ${sqlStringLiteral(cik)}
       LIMIT 1
-    `;
-
-        const stmt = await conn.prepare(sql);
-        stmt.bindVarchar(1, cik);
-        const reader = await stmt.runAndReadAll();
+    `);
+        await reader.readAll();
         const rows = reader.getRows();
 
         if (rows.length === 0) {

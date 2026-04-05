@@ -3,6 +3,10 @@ import { getDuckDBConnection } from "../duckdb";
 
 const cikQuarterlyRoutes = new Hono();
 
+function sqlStringLiteral(value: string): string {
+    return `'${value.replaceAll("'", "''")}'`;
+}
+
 export interface CikQuarterlyData {
     cik: string;
     quarter: string;
@@ -24,7 +28,7 @@ cikQuarterlyRoutes.get("/:cik", async (c) => {
     try {
         const conn = await getDuckDBConnection();
 
-        const sql = `
+        const reader = await conn.runAndRead(`
             SELECT
                 cik,
                 quarter,
@@ -33,13 +37,10 @@ cikQuarterlyRoutes.get("/:cik", async (c) => {
                 ttl_value_per_cik_per_qtr_prc_chg,
                 num_assets_per_cik_per_qtr
             FROM every_cik_qtr
-            WHERE cik = ?
+            WHERE cik = ${sqlStringLiteral(cik)}
             ORDER BY quarter_end_date ASC
-        `;
-
-        const stmt = await conn.prepare(sql);
-        stmt.bindVarchar(1, cik);
-        const reader = await stmt.runAndReadAll();
+        `);
+        await reader.readAll();
         const rows = reader.getRows();
 
         const results: CikQuarterlyData[] = rows.map((row: any[]) => ({
