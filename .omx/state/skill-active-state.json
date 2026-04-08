@@ -1,11 +1,13 @@
 {
   "version": 1,
-  "active": true,
+  "active": false,
   "skill": "code-review",
   "keyword": "$code-review",
-  "phase": "reviewing",
+  "phase": "complete",
   "activated_at": "2026-04-05T03:22:35.517Z",
-  "updated_at": "2026-04-05T17:18:48.119Z",
+  "updated_at": "2026-04-08T21:16:14.643Z",
   "source": "keyword-detector",
-  "input_lock": null
+  "input_lock": null,
+  "session_id": "omx-1775358799089-c1irs1",
+  "active_skills": []
 }

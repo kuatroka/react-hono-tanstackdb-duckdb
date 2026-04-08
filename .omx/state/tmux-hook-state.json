@@ -4,6 +4,6 @@
   "session_counts": {},
   "recent_keys": {},
   "last_injection_ts": 0,
-  "last_reason": "disabled",
-  "last_event_at": "2026-04-05T03:32:46.155Z"
+  "last_reason": "loop_guard_input_marker",
+  "last_event_at": "2026-04-08T21:16:23.021Z"
 }
