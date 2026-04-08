@@ -15,20 +15,19 @@ interface SuperinvestorRow {
   cikName: string;
 }
 
-interface CapturedDataTableProps<TRow> {
-  initialPage: number;
-  searchValue: string;
-  searchDisabled: boolean;
+interface CapturedVirtualTableProps<TRow> {
   data: TRow[];
-  onPageChange: (page: number) => void;
+  searchValue: string;
+  searchPlaceholder: string;
+  defaultSortColumn: string;
+  gridTemplateColumns: string;
   onSearchChange: (value: string) => void;
 }
 
 interface NavigatePayload {
   to: "/assets" | "/superinvestors";
   search: {
-    page: string;
-    search: string;
+    search?: string;
   };
 }
 
@@ -53,9 +52,9 @@ describe("route search isolation", () => {
     expect(globalSearch).not.toContain("export interface SearchResult");
   });
 
-  test("assets route derives table state and navigation behavior from URL search params at runtime", async () => {
+  test("assets route derives virtual table state and navigation behavior from URL search params at runtime", async () => {
     const navigateCalls: NavigatePayload[] = [];
-    let capturedDataTableProps: CapturedDataTableProps<AssetRow> | undefined;
+    let capturedVirtualTableProps: CapturedVirtualTableProps<AssetRow> | undefined;
 
     mock.module("@tanstack/react-db", () => ({
       useLiveQuery: () => ({
@@ -75,10 +74,10 @@ describe("route search isolation", () => {
       useSearch: () => ({ page: "3", search: "  abc  " }),
     }));
 
-    mock.module("@/components/DataTable", () => ({
-      DataTable: (props: CapturedDataTableProps<AssetRow>) => {
-        capturedDataTableProps = props;
-        return React.createElement("div", { "data-testid": "assets-table" });
+    mock.module("@/components/VirtualDataTable", () => ({
+      VirtualDataTable: (props: CapturedVirtualTableProps<AssetRow>) => {
+        capturedVirtualTableProps = props;
+        return React.createElement("div", { "data-testid": "assets-virtual-table" });
       },
     }));
 
@@ -101,26 +100,26 @@ describe("route search isolation", () => {
     const { AssetsTablePage } = await import("../AssetsTable");
     const html = renderToStaticMarkup(React.createElement(AssetsTablePage));
 
-    expect(html).toContain("assets-table");
-    expect(capturedDataTableProps).toBeDefined();
-    expect(capturedDataTableProps?.initialPage).toBe(3);
-    expect(capturedDataTableProps?.searchValue).toBe("abc");
-    expect(capturedDataTableProps?.searchDisabled).toBe(true);
-    expect(capturedDataTableProps?.data).toHaveLength(1);
-    expect(capturedDataTableProps?.data[0].asset).toBe("ABC");
+    expect(html).toContain("assets-virtual-table");
+    expect(html).not.toContain("assets-chart");
+    expect(capturedVirtualTableProps).toBeDefined();
+    expect(capturedVirtualTableProps?.searchValue).toBe("abc");
+    expect(capturedVirtualTableProps?.searchPlaceholder).toBe("Search assets...");
+    expect(capturedVirtualTableProps?.defaultSortColumn).toBe("assetName");
+    expect(capturedVirtualTableProps?.gridTemplateColumns).toContain("minmax(12rem, 1fr)");
+    expect(capturedVirtualTableProps?.data).toHaveLength(2);
+    expect(capturedVirtualTableProps?.data[0].asset).toBe("ABC");
 
-    capturedDataTableProps?.onPageChange(5);
-    capturedDataTableProps?.onSearchChange("  xyz  ");
+    capturedVirtualTableProps?.onSearchChange("  xyz  ");
 
     expect(navigateCalls).toEqual([
-      { to: "/assets", search: { page: "5", search: "abc" } },
-      { to: "/assets", search: { page: "1", search: "xyz" } },
+      { to: "/assets", search: { search: "xyz" } },
     ]);
   });
 
-  test("superinvestors route derives table state and navigation behavior from URL search params at runtime", async () => {
+  test("superinvestors route derives virtual table state and navigation behavior from URL search params at runtime", async () => {
     const navigateCalls: NavigatePayload[] = [];
-    let capturedDataTableProps: CapturedDataTableProps<SuperinvestorRow> | undefined;
+    let capturedVirtualTableProps: CapturedVirtualTableProps<SuperinvestorRow> | undefined;
 
     mock.module("@tanstack/react-db", () => ({
       useLiveQuery: () => ({
@@ -140,10 +139,10 @@ describe("route search isolation", () => {
       useSearch: () => ({ page: "4", search: "  alpha  " }),
     }));
 
-    mock.module("@/components/DataTable", () => ({
-      DataTable: (props: CapturedDataTableProps<SuperinvestorRow>) => {
-        capturedDataTableProps = props;
-        return React.createElement("div", { "data-testid": "superinvestors-table" });
+    mock.module("@/components/VirtualDataTable", () => ({
+      VirtualDataTable: (props: CapturedVirtualTableProps<SuperinvestorRow>) => {
+        capturedVirtualTableProps = props;
+        return React.createElement("div", { "data-testid": "superinvestors-virtual-table" });
       },
     }));
 
@@ -162,20 +161,19 @@ describe("route search isolation", () => {
     const { SuperinvestorsTablePage } = await import("../SuperinvestorsTable");
     const html = renderToStaticMarkup(React.createElement(SuperinvestorsTablePage));
 
-    expect(html).toContain("superinvestors-table");
-    expect(capturedDataTableProps).toBeDefined();
-    expect(capturedDataTableProps?.initialPage).toBe(4);
-    expect(capturedDataTableProps?.searchValue).toBe("alpha");
-    expect(capturedDataTableProps?.searchDisabled).toBe(true);
-    expect(capturedDataTableProps?.data).toHaveLength(1);
-    expect(capturedDataTableProps?.data[0].cik).toBe("0001");
+    expect(html).toContain("superinvestors-virtual-table");
+    expect(capturedVirtualTableProps).toBeDefined();
+    expect(capturedVirtualTableProps?.searchValue).toBe("alpha");
+    expect(capturedVirtualTableProps?.searchPlaceholder).toBe("Search superinvestors...");
+    expect(capturedVirtualTableProps?.defaultSortColumn).toBe("cikName");
+    expect(capturedVirtualTableProps?.gridTemplateColumns).toContain("minmax(12rem, 1fr)");
+    expect(capturedVirtualTableProps?.data).toHaveLength(2);
+    expect(capturedVirtualTableProps?.data[0].cik).toBe("0001");
 
-    capturedDataTableProps?.onPageChange(2);
-    capturedDataTableProps?.onSearchChange("  0002  ");
+    capturedVirtualTableProps?.onSearchChange("  0002  ");
 
     expect(navigateCalls).toEqual([
-      { to: "/superinvestors", search: { page: "2", search: "alpha" } },
-      { to: "/superinvestors", search: { page: "1", search: "0002" } },
+      { to: "/superinvestors", search: { search: "0002" } },
     ]);
   });
 });

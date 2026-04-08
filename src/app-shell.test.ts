@@ -12,15 +12,15 @@ describe("app shell branding", () => {
   test("uses the TanStack DB app title in the browser tab", () => {
     const rootRoute = readProjectFile("app/routes/__root.tsx");
 
-    expect(rootRoute).toContain('{ title: "fintellectus (TanStack DB)" }');
+    expect(rootRoute).toContain('{ title: "fintellectus (Tanstack DB)" }');
   });
 
   test("uses the TanStack DB title on the homepage and in the global menu", () => {
     const homeRoute = readProjectFile("app/routes/_layout/index.tsx");
     const globalNav = readProjectFile("app/components/global-nav.tsx");
 
-    expect(homeRoute).toContain("Welcome to fintellectus (TanStack DB)");
-    expect(globalNav).toContain("fintellectus (TanStack DB)");
+    expect(homeRoute).toContain("Welcome to fintellectus (Tanstack DB)");
+    expect(globalNav).toContain("fintellectus (Tanstack DB)");
   });
 });
 

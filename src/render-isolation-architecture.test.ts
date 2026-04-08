@@ -47,4 +47,59 @@ describe("rerender isolation architecture", () => {
     expect(cikValueLineChart).not.toContain("const [tooltip, setTooltip] = useState");
     expect(cikValueLineChart).toContain("tooltipRef");
   });
+
+  test("eCharts activity charts resize without making resize state part of the render path", () => {
+    const openedClosedBarChart = readProjectFile("src/components/charts/OpenedClosedBarChart.tsx");
+    const investorFlowChart = readProjectFile("src/components/charts/InvestorFlowChart.tsx");
+
+    expect(openedClosedBarChart).toContain("ResizeObserver");
+    expect(openedClosedBarChart).toContain("chartRef.current.resize");
+    expect(openedClosedBarChart).toContain('chart.on("finished", handleChartFinished)');
+    expect(openedClosedBarChart).toContain('chart.off("finished", handleChartFinished)');
+    expect(openedClosedBarChart).not.toContain("setChartSize");
+    expect(openedClosedBarChart).not.toContain("chartSize");
+    expect(openedClosedBarChart).not.toContain("setChartSize(");
+
+    expect(investorFlowChart).toContain("ResizeObserver");
+    expect(investorFlowChart).toContain("chartRef.current.resize");
+    expect(investorFlowChart).not.toContain("setChartSize");
+    expect(investorFlowChart).not.toContain("chartSize");
+    expect(investorFlowChart).not.toContain("setChartSize(");
+  });
+
+  test("table pages surface separate table and search telemetry badges instead of hardcoded zero-latency placeholders", () => {
+    const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
+    const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
+    const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
+
+    expect(assetsTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(assetsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(assetsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
+    expect(assetsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
+
+    expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(superinvestorsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(superinvestorsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
+    expect(superinvestorsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
+
+    expect(virtualTable).toContain("onTableTelemetryChange");
+    expect(virtualTable).toContain("onSearchTelemetryChange");
+  });
+
+  test("card primitive pins border color to the shared border token so page shells match the Zero app", () => {
+    const cardPrimitive = readProjectFile("src/components/ui/card.tsx");
+
+    expect(cardPrimitive).toContain("border-border");
+  });
+
+  test("react-scan is loaded only in development code paths", () => {
+    const mainEntrypoint = readProjectFile("src/main.tsx");
+    const htmlShell = readProjectFile("index.html");
+
+    expect(mainEntrypoint).toContain("import.meta.env?.DEV");
+    expect(mainEntrypoint).toContain("https://unpkg.com/react-scan/dist/auto.global.js");
+    expect(htmlShell).not.toContain("react-scan/dist/auto.global.js");
+  });
 });

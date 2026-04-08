@@ -1,14 +1,17 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from '@tanstack/react-db';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { DataTable, ColumnDef } from '@/components/DataTable';
+import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge } from '@/components/LatencyBadge';
-import { AllAssetsActivityChart } from '@/components/charts/AllAssetsActivityChart';
 import { useContentReady } from '@/hooks/useContentReady';
-import { assetsCollection, type Asset } from '@/collections';
-
-const ASSETS_TOTAL_ROWS = 32000;
+import type { PerfSource, PerfTelemetry } from '@/lib/perf/telemetry';
+import {
+  assetsCollection,
+  getAssetListLoadSource,
+  subscribeAssetListLoadSource,
+  type Asset,
+} from '@/collections';
 
 export function AssetsTablePage() {
   return <AssetsTableSurface />;
@@ -18,35 +21,32 @@ function AssetsTableSurface() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { page?: string; search?: string };
   const { onReady } = useContentReady();
-  const tablePageSize = 10;
-
-  const rawPage = searchParams.page;
-  const parsedPage = rawPage ? parseInt(rawPage, 10) : 1;
-  const currentPage = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
-
   const trimmedSearch = (searchParams.search ?? '').trim();
+  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
+  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
+  const [dataSource, setDataSource] = useState<PerfSource>(() => {
+    const source = getAssetListLoadSource();
+    return source === 'api' ? 'api-duckdb' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory';
+  });
 
-  // Use TanStack DB useLiveQuery for instant local queries
-  // Data is preloaded on app init, so queries execute against local collection
   const { data: assetsData, isLoading } = useLiveQuery(
     (q) => q.from({ assets: assetsCollection }),
   );
 
-  // Filter assets client-side based on search term
-  // This filtering happens instantly against local data
-  const filteredAssets = useMemo(() => {
-    if (!assetsData) return [];
-    if (!trimmedSearch) return assetsData;
-
-    const lowerSearch = trimmedSearch.toLowerCase();
-    return assetsData.filter((asset: Asset) =>
-      asset.asset.toLowerCase().includes(lowerSearch) ||
-      asset.assetName.toLowerCase().includes(lowerSearch)
-    );
-  }, [assetsData, trimmedSearch]);
-
-  // Signal ready when data is available
   const readyCalledRef = useRef(false);
+  useEffect(() => {
+    const toPerfSource = (source: 'memory' | 'indexeddb' | 'api'): PerfSource => {
+      if (source === 'api') return 'api-duckdb';
+      if (source === 'indexeddb') return 'tsdb-indexeddb';
+      return 'tsdb-memory';
+    };
+
+    setDataSource(toPerfSource(getAssetListLoadSource()));
+    return subscribeAssetListLoadSource((source) => {
+      setDataSource(toPerfSource(source));
+    });
+  }, []);
+
   useEffect(() => {
     if (readyCalledRef.current) return;
     if (assetsData !== undefined) {
@@ -55,17 +55,10 @@ function AssetsTableSurface() {
     }
   }, [assetsData, onReady]);
 
-  const handlePageChange = (newPage: number) => {
-    navigate({
-      to: '/assets',
-      search: { page: String(newPage), search: trimmedSearch || undefined },
-    });
-  };
-
   const handleSearchChange = (value: string) => {
     navigate({
       to: '/assets',
-      search: { page: '1', search: value.trim() || undefined },
+      search: { search: value.trim() || undefined },
     });
   };
 
@@ -97,44 +90,39 @@ function AssetsTableSurface() {
   ], []);
 
   return (
-    <div className="w-full px-4 py-8 mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Assets</h1>
-        <p className="text-muted-foreground">Browse and search all assets</p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between gap-2">
-              <span>Assets Table</span>
-              <LatencyBadge latencyMs={isLoading ? undefined : 0} source="tsdb-indexeddb" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="py-8 text-center text-muted-foreground">Loading…</div>
-            ) : (
-              <DataTable
-                data={filteredAssets || []}
-                columns={columns}
-                searchPlaceholder="Search assets..."
-                defaultPageSize={tablePageSize}
-                defaultSortColumn="assetName"
-                defaultSortDirection="asc"
-                initialPage={currentPage}
-                onPageChange={handlePageChange}
-                onSearchChange={handleSearchChange}
-                searchValue={trimmedSearch}
-                searchDisabled={!!trimmedSearch}
-                totalCount={trimmedSearch ? filteredAssets.length : ASSETS_TOTAL_ROWS}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <AllAssetsActivityChart />
-      </div>
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+          <CardTitle className="text-3xl font-bold tracking-tight">Assets</CardTitle>
+          <div className="flex flex-col items-end gap-2">
+            {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
+            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading…</div>
+          ) : (
+            <VirtualDataTable
+              data={assetsData || []}
+              columns={columns}
+              defaultSortColumn="assetName"
+              gridTemplateColumns="minmax(12rem, 1fr) minmax(20rem, 1.5fr)"
+              latencySource="tsdb-memory"
+              dataSource={dataSource}
+              onReady={onReady}
+              onSearchChange={handleSearchChange}
+              onSearchTelemetryChange={setSearchTelemetry}
+              onTableTelemetryChange={setTableTelemetry}
+              searchDebounceMs={150}
+              searchPlaceholder="Search assets..."
+              searchTelemetryLabel="search"
+              searchValue={trimmedSearch}
+              tableTelemetryLabel="virtual table"
+            />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

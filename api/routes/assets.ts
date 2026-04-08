@@ -3,10 +3,6 @@ import { getDuckDBConnection } from "../duckdb";
 
 const assetsRoutes = new Hono();
 
-function sqlStringLiteral(value: string): string {
-    return `'${value.replaceAll("'", "''")}'`;
-}
-
 /**
  * GET /api/assets?limit=<n>&offset=<n>
  *
@@ -63,14 +59,14 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
     try {
         const conn = await getDuckDBConnection();
 
-        const reader = await conn.runAndRead(cusip
+        const sql = cusip
             ? `
       SELECT
         asset,
         asset_name as "assetName",
         cusip
       FROM assets
-      WHERE asset = ${sqlStringLiteral(code)} AND cusip = ${sqlStringLiteral(cusip)}
+      WHERE asset = ? AND cusip = ?
       LIMIT 1
     `
             : `
@@ -79,11 +75,17 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
         asset_name as "assetName",
         cusip
       FROM assets
-      WHERE asset = ${sqlStringLiteral(code)}
+      WHERE asset = ?
       ORDER BY asset_name ASC
       LIMIT 1
-    `);
-        await reader.readAll();
+    `;
+
+        const stmt = await conn.prepare(sql);
+        stmt.bindVarchar(1, code);
+        if (cusip) {
+            stmt.bindVarchar(2, cusip);
+        }
+        const reader = await stmt.runAndReadAll();
         const rows = reader.getRows();
 
         if (rows.length === 0) {

@@ -1,5 +1,6 @@
 export type PerfSource =
   | 'api-duckdb'
+  | 'api-postgres'
   | 'tsdb-indexeddb'
   | 'tsdb-memory'
   | 'rq-memory'
@@ -28,6 +29,8 @@ export function formatPerfSourceLabel(source: PerfSource) {
   switch (source) {
     case 'api-duckdb':
       return 'API (DuckDB)';
+    case 'api-postgres':
+      return 'API (Postgres)';
     case 'tsdb-indexeddb':
       return 'TanStack DB (IndexedDB)';
     case 'tsdb-memory':
@@ -53,6 +56,7 @@ export function getPerfSourceCategory(source: PerfSource): PerfSourceCategory {
     case 'memory':
       return 'cache';
     case 'api-duckdb':
+    case 'api-postgres':
       return 'api';
     default:
       return 'unknown';
@@ -62,6 +66,7 @@ export function getPerfSourceCategory(source: PerfSource): PerfSourceCategory {
 export function toPerfSource(source: string): PerfSource {
   if (
     source === 'api-duckdb'
+    || source === 'api-postgres'
     || source === 'tsdb-indexeddb'
     || source === 'tsdb-memory'
     || source === 'rq-memory'
@@ -77,7 +82,7 @@ export function toPerfSource(source: string): PerfSource {
   }
 
   if (source === 'api:pg') {
-    return 'api-duckdb';
+    return 'api-postgres';
   }
 
   if (source === 'zero:cache') {

@@ -4,7 +4,7 @@ import { DataTable, type ColumnDef } from "./DataTable";
 import { GlobalSearchInput } from "./global-search/GlobalSearchInput";
 
 describe("search inputs", () => {
-  test("global search input provides a stable form name", () => {
+  test("global search input matches the Zero app placeholder and provides a stable form name", () => {
     const html = renderToStaticMarkup(
       <GlobalSearchInput
         query=""
@@ -15,6 +15,7 @@ describe("search inputs", () => {
     );
 
     expect(html).toContain('name="global-search"');
+    expect(html).toContain('placeholder="Search superinvestors, tickers..."');
   });
 
   test("data table search input provides a stable form name", () => {

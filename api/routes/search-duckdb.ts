@@ -4,6 +4,15 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 
 const searchDuckdbRoutes = new Hono();
+const MISSING_CIK_NAME_SENTINEL = "!!! no cik_name found !!!";
+
+function normalizeSearchName(name: string | null | undefined, code: string, category: string) {
+  const trimmed = name?.trim();
+  if (!trimmed || trimmed === MISSING_CIK_NAME_SENTINEL) {
+    return category === "superinvestors" ? `Unknown filer (${code})` : code;
+  }
+  return trimmed;
+}
 
 function resolveSearchIndexPath(): string | null {
   const rawPath = process.env.SEARCH_INDEX_PATH;
@@ -177,14 +186,18 @@ searchDuckdbRoutes.get("/", async (c) => {
     const rows = reader.getRows();
 
     // Convert to objects
-    const results = rows.map((row: any[]) => ({
-      id: Number(row[0]),
-      cusip: row[1],
-      code: row[2],
-      name: row[3],
-      category: row[4],
-      score: Number(row[5]),
-    }));
+    const results = rows.map((row: any[]) => {
+      const code = String(row[2]);
+      const category = String(row[4]);
+      return {
+        id: Number(row[0]),
+        cusip: row[1],
+        code,
+        name: normalizeSearchName(row[3] as string | null, code, category),
+        category,
+        score: Number(row[5]),
+      };
+    });
 
     const queryTimeMs = Math.round((performance.now() - startTime) * 100) / 100;
 

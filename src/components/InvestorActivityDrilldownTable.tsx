@@ -120,7 +120,7 @@ export function InvestorActivityDrilldownTable({
         const filtered = result.rows.filter((r) => r.action === action);
         setData(filtered);
         setQueryTimeMs(result.queryTimeMs);
-        setDataFlow(result.queryTimeMs === 0 ? "tsdb-memory" : "tsdb-api");
+        setDataFlow(result.queryTimeMs === 0 ? "tsdb-memory" : "api-duckdb");
       } catch (err) {
         if (cancelled) return;
         console.error("Failed to fetch drilldown data:", err);
@@ -221,7 +221,7 @@ export function InvestorActivityDrilldownTable({
     switch (dataFlow) {
       case "tsdb-indexeddb": return "Loaded from IndexedDB";
       case "tsdb-memory": return "Served from in-memory cache";
-      case "tsdb-api": return "Fetched from DuckDB API";
+      case "api-duckdb": return "Fetched from API (DuckDB)";
       default: return "Loading...";
     }
   })();

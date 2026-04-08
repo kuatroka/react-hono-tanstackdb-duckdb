@@ -1,6 +1,28 @@
 import { createCollection } from '@tanstack/db'
 import { queryCollectionOptions } from '@tanstack/query-db-collection'
 import type { QueryClient } from '@tanstack/query-core'
+import { loadPersistedAssetListData, persistAssetListData } from './query-client'
+
+export type AssetListLoadSource = 'memory' | 'indexeddb' | 'api'
+
+const assetListSourceListeners = new Set<(source: AssetListLoadSource) => void>()
+let currentAssetListLoadSource: AssetListLoadSource = 'memory'
+
+function setAssetListLoadSource(source: AssetListLoadSource) {
+    currentAssetListLoadSource = source
+    for (const listener of assetListSourceListeners) {
+        listener(source)
+    }
+}
+
+export function getAssetListLoadSource(): AssetListLoadSource {
+    return currentAssetListLoadSource
+}
+
+export function subscribeAssetListLoadSource(listener: (source: AssetListLoadSource) => void): () => void {
+    assetListSourceListeners.add(listener)
+    return () => assetListSourceListeners.delete(listener)
+}
 
 export interface Asset {
     id: string
@@ -26,23 +48,57 @@ export async function fetchAssetRecord(code: string, cusip?: string | null): Pro
 }
 
 // Factory function to create assets collection with queryClient
-// Uses 'progressive' sync mode: loads query subset first, syncs full dataset in background
-// Best for ~40K rows - instant first paint + sub-millisecond queries after sync
+// Restores from IndexedDB first, then refreshes from the DuckDB API.
+const inFlightAssetListLoads = new Map<string, Promise<Asset[]>>()
+
 export function createAssetsCollection(queryClient: QueryClient) {
     return createCollection(
         queryCollectionOptions({
             queryKey: ['assets'],
             queryFn: async () => {
-                const startTime = performance.now()
-                const res = await fetch('/api/assets')
-                if (!res.ok) throw new Error('Failed to fetch assets')
-                const assets = await res.json() as Asset[]
-                console.log(`[Assets] Fetched ${assets.length} assets in ${Math.round(performance.now() - startTime)}ms`)
-                return assets
+                const queryKey = 'assets'
+                const inFlight = inFlightAssetListLoads.get(queryKey)
+                if (inFlight) {
+                    return inFlight
+                }
+
+                const loadPromise = (async () => {
+                    const persisted = await loadPersistedAssetListData()
+                    if (persisted && persisted.rows.length > 0) {
+                        setAssetListLoadSource('indexeddb')
+                        void fetch('/api/assets')
+                            .then(async (res) => {
+                                if (!res.ok) throw new Error('Failed to refresh assets')
+                                const assets = await res.json() as Asset[]
+                                await persistAssetListData(assets)
+                            })
+                            .catch((error) => {
+                                console.warn('[Assets] Background refresh failed:', error)
+                            })
+
+                        return persisted.rows as Asset[]
+                    }
+
+                    const startTime = performance.now()
+                    const res = await fetch('/api/assets')
+                    if (!res.ok) throw new Error('Failed to fetch assets')
+                    const assets = await res.json() as Asset[]
+                    setAssetListLoadSource('api')
+                    console.log(`[Assets] Fetched ${assets.length} assets in ${Math.round(performance.now() - startTime)}ms`)
+                    void persistAssetListData(assets)
+                    return assets
+                })()
+
+                inFlightAssetListLoads.set(queryKey, loadPromise)
+                try {
+                    return await loadPromise
+                } finally {
+                    inFlightAssetListLoads.delete(queryKey)
+                }
             },
             queryClient,
             getKey: (item) => item.id,
-            syncMode: 'eager', // Load all ~40K assets upfront for instant queries
+            syncMode: 'eager',
         })
     )
 }

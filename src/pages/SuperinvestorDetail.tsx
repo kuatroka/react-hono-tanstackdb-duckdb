@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
 import {
   type Superinvestor,
-  fetchSuperinvestorRecord,
+  fetchSuperinvestorRecordWithSource,
 } from '@/collections';
 import { SuperinvestorChartSection } from '@/components/detail/SuperinvestorChartSection';
 
@@ -28,12 +28,20 @@ export function SuperinvestorDetailPage() {
     setQueryTimeMs(null);
     setRecordSource('unknown');
 
-    fetchSuperinvestorRecord(cik)
-      .then((superinvestor) => {
+    fetchSuperinvestorRecordWithSource(cik)
+      .then(({ record: superinvestor, source }) => {
         if (cancelled) return;
         setRecord(superinvestor);
         setQueryTimeMs(Math.round(performance.now() - startedAt));
-        setRecordSource(superinvestor ? 'tsdb-api' : 'unknown');
+        setRecordSource(
+          source === 'api'
+            ? 'api-duckdb'
+            : source === 'indexeddb'
+              ? 'tsdb-indexeddb'
+              : source === 'memory'
+                ? 'tsdb-memory'
+                : 'unknown',
+        );
       })
       .catch((error) => {
         if (cancelled) return;

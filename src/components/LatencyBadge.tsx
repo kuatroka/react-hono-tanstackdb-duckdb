@@ -41,14 +41,6 @@ function getLatencyTone(latencyMs: number): "good" | "warn" | "bad" {
   return "bad";
 }
 
-function serializeLatencyMetric(latencyMs: number | null | undefined) {
-  if (latencyMs == null || Number.isNaN(latencyMs)) {
-    return undefined;
-  }
-
-  return String(latencyMs);
-}
-
 
 function SingleLatencyBadge({ 
   latencyMs, 
@@ -84,10 +76,6 @@ function SingleLatencyBadge({
   return (
     <Badge
       variant="outline"
-      data-testid="latency-badge"
-      data-latency-mode="single"
-      data-latency-source={source}
-      data-latency-data-ms={serializeLatencyMetric(latencyMs)}
       className={cn(
         "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
         "ring-1",
@@ -123,11 +111,6 @@ export function LatencyBadge({
     return (
       <Badge
         variant="secondary"
-        data-testid="latency-badge"
-        data-latency-mode="telemetry"
-        data-latency-source={telemetry.source}
-        data-latency-data-ms={serializeLatencyMetric(resolvedMs)}
-        data-latency-render-ms={serializeLatencyMetric(telemetry.secondaryLine ? renderMs : undefined)}
         className={cn(
           "font-mono font-medium text-[11px] leading-none px-2 py-1 shrink-0 whitespace-nowrap",
           secondaryLine ? "flex flex-col items-start gap-0.5 py-1.5 leading-tight whitespace-nowrap" : undefined,
@@ -169,11 +152,6 @@ export function LatencyBadge({
     return (
       <Badge
         variant="outline"
-        data-testid="latency-badge"
-        data-latency-mode="inline"
-        data-latency-source={String(source)}
-        data-latency-data-ms={serializeLatencyMetric(resolvedDataLoadMs)}
-        data-latency-render-ms={serializeLatencyMetric(renderMs)}
         className={cn(
           "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
           "ring-1",
@@ -201,14 +179,7 @@ export function LatencyBadge({
 
   if (variant === "split") {
     return (
-      <div
-        data-testid="latency-badge"
-        data-latency-mode="split"
-        data-latency-source={String(source)}
-        data-latency-data-ms={serializeLatencyMetric(resolvedDataLoadMs)}
-        data-latency-render-ms={serializeLatencyMetric(renderMs)}
-        className={cn("inline-flex items-center gap-1", className)}
-      >
+      <div className={cn("inline-flex items-center gap-1", className)}>
         {hasDataLoadMs ? (
           <SingleLatencyBadge
             latencyMs={resolvedDataLoadMs}

@@ -2,9 +2,14 @@ import { Hono } from "hono";
 import { getDuckDBConnection } from "../duckdb";
 
 const superinvestorsRoutes = new Hono();
+const MISSING_CIK_NAME_SENTINEL = "!!! no cik_name found !!!";
 
-function sqlStringLiteral(value: string): string {
-    return `'${value.replaceAll("'", "''")}'`;
+function normalizeSuperinvestorName(name: string | null | undefined, cik: string) {
+    const trimmed = name?.trim();
+    if (!trimmed || trimmed === MISSING_CIK_NAME_SENTINEL) {
+        return `Unknown filer (${cik})`;
+    }
+    return trimmed;
 }
 
 /**
@@ -32,11 +37,14 @@ superinvestorsRoutes.get("/", async (c) => {
         const reader = await conn.runAndReadAll(sql);
         const rows = reader.getRows();
 
-        const results = rows.map((row: any[]) => ({
-            id: String(row[0]),
-            cik: String(row[0]),
-            cikName: row[1] as string,
-        }));
+        const results = rows.map((row: any[]) => {
+            const cik = String(row[0]);
+            return {
+                id: cik,
+                cik,
+                cikName: normalizeSuperinvestorName(row[1] as string | null, cik),
+            };
+        });
 
         // Query completed in: Math.round((performance.now() - startTime) * 100) / 100 ms
 
@@ -59,15 +67,18 @@ superinvestorsRoutes.get("/:cik", async (c) => {
     try {
         const conn = await getDuckDBConnection();
 
-        const reader = await conn.runAndRead(`
+        const sql = `
       SELECT 
         cik,
         cik_name as "cikName"
       FROM superinvestors
-      WHERE cik = ${sqlStringLiteral(cik)}
+      WHERE cik = ?
       LIMIT 1
-    `);
-        await reader.readAll();
+    `;
+
+        const stmt = await conn.prepare(sql);
+        stmt.bindVarchar(1, cik);
+        const reader = await stmt.runAndReadAll();
         const rows = reader.getRows();
 
         if (rows.length === 0) {
@@ -75,10 +86,11 @@ superinvestorsRoutes.get("/:cik", async (c) => {
         }
 
         const row = rows[0];
+        const cikValue = String(row[0]);
         const result = {
-            id: String(row[0]),
-            cik: String(row[0]),
-            cikName: row[1] as string,
+            id: cikValue,
+            cik: cikValue,
+            cikName: normalizeSuperinvestorName(row[1] as string | null, cikValue),
         };
 
         return c.json(result);

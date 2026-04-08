@@ -11,7 +11,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "fintellectus (TanStack DB)" },
+      { title: "fintellectus (Tanstack DB)" },
     ],
     links: [
       { rel: "preconnect", href: serverURL },

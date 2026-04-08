@@ -20,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_message_timestamp ON message(timestamp DESC, id);
 CREATE INDEX IF NOT EXISTS idx_medium_name ON medium(name, id);
 
 -- User table: ordered by name, id
-CREATE INDEX IF NOT EXISTS idx_user_name ON user(name, id);
+CREATE INDEX IF NOT EXISTS idx_user_name ON "user"(name, id);
 
 -- Value_quarters table: ordered by quarter
 CREATE INDEX IF NOT EXISTS idx_value_quarters_quarter ON value_quarters(quarter);

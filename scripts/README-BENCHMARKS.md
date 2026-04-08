@@ -12,7 +12,6 @@ bun run benchmark:all
 bun run benchmark:api      # API endpoint performance
 bun run benchmark:charts   # Chart rendering performance
 bun run benchmark:duckdb   # DuckDB native query performance
-bun run benchmark:persistence  # Browser-local persistence comparison
 ```
 
 ## Prerequisites
@@ -81,39 +80,6 @@ Tests raw DuckDB query performance:
 **Output:**
 - Query execution times
 - Statistical analysis (avg, min, max, percentiles)
-
-### 4. Browser-local Persistence Benchmarks
-
-**Script:** `benchmark-browser-persistence.ts`  
-**Command:** `bun run benchmark:persistence`
-
-Compares browser-local persistence architectures across the app's hot routes:
-
-- `baseline` — current TanStack DB + Dexie/IndexedDB
-- `sqlite-idb` — TanStack DB + SQLite WASM using an IndexedDB-backed VFS
-- `sqlite-opfs` — SQLite WASM + OPFS worker candidate
-
-Measured dimensions:
-
-- cold-start route readiness
-- repeat/local-cache route readiness
-- visual readiness for tables/charts/drilldown
-- page memory snapshots where the browser exposes them
-- console/page/request failures
-
-Results are written to:
-
-```text
-benchmark-results/browser-persistence/browser-persistence-<timestamp>.json
-```
-
-Useful environment variables:
-
-```bash
-BENCHMARK_BASE_URL=http://127.0.0.1:4000
-BENCHMARK_ITERATIONS=5
-BENCHMARK_READY_TIMEOUT_MS=20000
-```
 
 ## Benchmark Results
 

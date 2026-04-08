@@ -73,6 +73,14 @@ describe("bun native production server smoke tests", () => {
     expect(await response.text()).toBe("ok");
   });
 
+  test("serves a lightweight health endpoint in production", async () => {
+    const response = await fetch(`${productionBaseUrl}/healthz`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toEqual({ ok: true, service: "fintellectus-tanstackdb" });
+  });
+
   test("falls back to index.html for client routes", async () => {
     const response = await fetch(`${productionBaseUrl}/dashboard`);
 

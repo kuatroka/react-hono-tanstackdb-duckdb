@@ -15,7 +15,7 @@ export function GlobalNav() {
               to="/"
               className={`text-lg sm:text-xl font-bold text-foreground hover:text-muted-foreground hover:underline underline-offset-4 transition-colors cursor-pointer outline-none ${location.pathname === "/" ? "underline" : ""}`}
             >
-              fintellectus (TanStack DB)
+              fintellectus (Tanstack DB)
             </Link>
           </div>
 

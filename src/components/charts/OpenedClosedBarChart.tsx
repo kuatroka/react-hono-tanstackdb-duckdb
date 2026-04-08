@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useRef, useEffect } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts/core";
 import { BarChart } from "echarts/charts";
 import {
@@ -12,9 +12,7 @@ import { LegacyGridContainLabel } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
-import { createDeferredRenderCompletion } from "./renderTiming";
 
-// Register only the components we need for tree shaking
 echarts.use([
   BarChart,
   GridComponent,
@@ -25,23 +23,14 @@ echarts.use([
 ]);
 
 interface OpenedClosedBarChartProps {
-  /** Array of quarterly data points with opened/closed counts */
   data: readonly QuarterlyActivityPoint[];
-  /** Chart title */
   title: string;
-  /** Optional description shown below title */
   description?: string;
-  /** Callback when a bar is clicked */
   onBarClick?: (selection: { quarter: string; action: "open" | "close" }) => void;
-  /** Callback when a bar is hovered */
   onBarHover?: (selection: { quarter: string; action: "open" | "close" }) => void;
-  /** Callback when mouse leaves a bar */
   onBarLeave?: () => void;
-  /** Unit label for tooltip (default: "positions") */
   unitLabel?: string;
-  /** Optional latency badge */
   latencyBadge?: React.ReactNode;
-  /** Callback when chart render completes with render time in ms */
   onRenderComplete?: (renderMs: number) => void;
 }
 
@@ -56,15 +45,6 @@ interface OpenedClosedTooltipParam {
   value?: number | string | null;
 }
 
-/**
- * Reusable ECharts bar chart for opened/closed positions by quarter.
- * - Opened positions shown as green bars above zero
- * - Closed positions shown as red bars below zero
- * 
- * Used for both:
- * - Per-asset investor activity (AssetDetail page)
- * - All-assets aggregated activity (Dashboard/Overview)
- */
 export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   data,
   title,
@@ -79,21 +59,12 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
   const renderStartRef = useRef<number | null>(null);
-  const prevDataLengthRef = useRef<number>(0);
-
-  // Track render start when data changes
-  useEffect(() => {
-    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
-      renderStartRef.current = performance.now();
-      prevDataLengthRef.current = data.length;
-    }
-  }, [data]);
 
   const chartData = useMemo(() => {
     return data.map((item) => ({
       quarter: item.quarter ?? "Unknown",
       opened: item.opened ?? 0,
-      closed: -(item.closed ?? 0), // Negative for below-zero display
+      closed: -(item.closed ?? 0),
     }));
   }, [data]);
 
@@ -103,29 +74,28 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
     const quarters = chartData.map((item) => item.quarter);
     const openedValues = chartData.map((item) => item.opened);
     const closedValues = chartData.map((item) => item.closed);
-
     const maxValue = Math.max(
-      1, // Prevent division by zero
-      ...chartData.map((item) => Math.max(Math.abs(item.opened), Math.abs(item.closed)))
+      1,
+      ...chartData.map((item) => Math.max(Math.abs(item.opened), Math.abs(item.closed))),
     );
     const maxDomain = maxValue * 1.1;
 
     return {
       animation: false,
-      grid: { 
-        top: 48, 
+      grid: {
+        top: 48,
         right: 48,
-        bottom: 80, 
-        left: 48, 
-        containLabel: true 
+        bottom: 80,
+        left: 48,
+        containLabel: true,
       },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: (params: OpenedClosedTooltipParam[]) => {
-          const lines = params.map((p) => {
-            const label = p.seriesName;
-            const value = Math.abs(Number(p.value));
+          const lines = params.map((param) => {
+            const label = param.seriesName;
+            const value = Math.abs(Number(param.value));
             return `${label}: ${value.toLocaleString()} ${unitLabel}`;
           });
           return [`<strong>${params[0]?.axisValueLabel ?? ""}</strong>`, ...lines].join("<br/>");
@@ -138,10 +108,9 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         axisLabel: {
           rotate: 0,
           hideOverlap: true,
-          interval: 'auto',
+          interval: "auto",
           formatter: (value: string) => {
-            if (!quarters.includes(value)) return '';
-            // Format as "Q1 '24" for compact display
+            if (!quarters.includes(value)) return "";
             const match = value.match(/^(\d{4})-Q(\d)$/);
             if (match) {
               const [, year, quarter] = match;
@@ -157,21 +126,21 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         min: -maxDomain,
         max: maxDomain,
         splitNumber: 6,
-          axisLabel: {
-            formatter: (value: number) => {
-              const absValue = Math.abs(value);
-              if (Math.abs(absValue - maxDomain) < maxDomain * 0.05) return '';
-              return absValue.toString();
-            },
-            margin: 8,
+        axisLabel: {
+          formatter: (value: number) => {
+            const absValue = Math.abs(value);
+            if (Math.abs(absValue - maxDomain) < maxDomain * 0.05) return "";
+            return absValue.toString();
           },
+          margin: 8,
+        },
         splitLine: {
           lineStyle: {
             type: "dashed",
             color: "rgba(148,163,184,0.3)",
           },
         },
-        position: 'left',
+        position: "left",
       },
       series: [
         {
@@ -179,9 +148,9 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           type: "bar",
           stack: "activity",
           emphasis: { focus: "series" },
-          itemStyle: { 
-            color: "hsl(142, 76%, 36%)", 
-            borderRadius: [4, 4, 0, 0] 
+          itemStyle: {
+            color: "hsl(142, 76%, 36%)",
+            borderRadius: [4, 4, 0, 0],
           },
           data: openedValues,
           markLine: {
@@ -201,9 +170,9 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           type: "bar",
           stack: "activity",
           emphasis: { focus: "series" },
-          itemStyle: { 
-            color: "hsl(0, 84%, 60%)", 
-            borderRadius: [0, 0, 4, 4] 
+          itemStyle: {
+            color: "hsl(0, 84%, 60%)",
+            borderRadius: [0, 0, 4, 4],
           },
           data: closedValues,
         },
@@ -212,113 +181,98 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   }, [chartData, unitLabel]);
 
   useEffect(() => {
+    if (chartData.length === 0) {
+      renderStartRef.current = null;
+      return;
+    }
+    renderStartRef.current = performance.now();
+  }, [chartData]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container || !option) return;
 
-    const renderCompletion = createDeferredRenderCompletion({
-      renderStartRef,
-      onRenderComplete,
-    });
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (width <= 0 || height <= 0) return;
 
-    const ensureChart = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      if (width <= 0 || height <= 0) {
-        return null;
+    const chart =
+      echarts.getInstanceByDom(container) ??
+      echarts.init(container, undefined, {
+        renderer: "canvas",
+        width,
+        height,
+      });
+
+    chartRef.current = chart;
+
+    const handleChartFinished = () => {
+      if (renderStartRef.current == null || !onRenderComplete) {
+        return;
       }
-
-      const chartInstance =
-        echarts.getInstanceByDom(container) ??
-        echarts.init(container, undefined, {
-          renderer: "canvas",
-          width,
-          height,
-        });
-
-      chartRef.current = chartInstance;
-      chartInstance.resize({ width, height });
-      return chartInstance;
+      const elapsed = Math.round(performance.now() - renderStartRef.current);
+      onRenderComplete(elapsed);
+      renderStartRef.current = null;
     };
 
     const clickHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarClick || !params.name || !params.seriesName) return;
-
-      const quarter = params.name as string;
+      const quarter = params.name;
       const action = params.seriesName === "Opened" ? "open" : "close";
-
       onBarClick({ quarter, action });
     };
 
     const hoverHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarHover || !params.name || !params.seriesName) return;
-
-      const quarter = params.name as string;
+      const quarter = params.name;
       const action = params.seriesName === "Opened" ? "open" : "close";
-
       onBarHover({ quarter, action });
     };
 
     const mouseOutHandler = () => {
-      if (onBarLeave) {
-        onBarLeave();
-      }
+      onBarLeave?.();
     };
 
-    const handleFinished = () => {
-      renderCompletion.schedule();
-    };
-
-    const syncChart = () => {
-      const chartInstance = ensureChart();
-      if (!chartInstance) return;
-
-      chartInstance.off("finished", handleFinished);
-      chartInstance.on("finished", handleFinished);
-      chartInstance.off("click", clickHandler);
-      chartInstance.off("mouseover", hoverHandler);
-      chartInstance.off("globalout", mouseOutHandler);
-      chartInstance.on("click", clickHandler);
-      chartInstance.on("mouseover", hoverHandler);
-      chartInstance.on("globalout", mouseOutHandler);
-      chartInstance.setOption(option, {
-        notMerge: true,
-        lazyUpdate: true,
-      });
-      handleFinished();
-    };
-
-    syncChart();
-
-    const observer = new ResizeObserver(() => {
-      const chartInstance = chartRef.current;
-      if (chartInstance && !chartInstance.isDisposed()) {
-        chartInstance.resize({
-          width: container.clientWidth,
-          height: container.clientHeight,
-        });
-        return;
-      }
-
-      syncChart();
+    chart.on("finished", handleChartFinished);
+    chart.on("click", clickHandler);
+    chart.on("mouseover", hoverHandler);
+    chart.on("globalout", mouseOutHandler);
+    chart.resize({ width, height });
+    chart.setOption(option, {
+      notMerge: false,
+      lazyUpdate: false,
     });
 
-    observer.observe(container);
     return () => {
-      observer.disconnect();
-      renderCompletion.cancel();
-
       try {
-        if (chartRef.current && !chartRef.current.isDisposed()) {
-          chartRef.current.off("finished", handleFinished);
-          chartRef.current.off("click", clickHandler);
-          chartRef.current.off("mouseover", hoverHandler);
-          chartRef.current.off("globalout", mouseOutHandler);
+        if (chart && !chart.isDisposed()) {
+          chart.off("finished", handleChartFinished);
+          chart.off("click", clickHandler);
+          chart.off("mouseover", hoverHandler);
+          chart.off("globalout", mouseOutHandler);
         }
       } catch {
         // ignore
       }
     };
   }, [onBarClick, onBarHover, onBarLeave, onRenderComplete, option]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      if (chartRef.current && containerRef.current) {
+        chartRef.current.resize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        });
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     return () => {

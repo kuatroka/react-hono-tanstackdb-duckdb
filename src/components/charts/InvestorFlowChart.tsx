@@ -14,7 +14,6 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { type InvestorFlow } from "@/types";
-import { createDeferredRenderCompletion } from "./renderTiming";
 
 // Register only the modules this chart needs for tree shaking
 
@@ -90,14 +89,6 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker,
         })),
         [data],
     );
-
-    useEffect(() => {
-        const nextSignature = JSON.stringify(chartData.map((item) => [item.quarter, item.inflow, item.outflow]));
-        if (chartData.length > 0 && nextSignature !== prevDataSignatureRef.current) {
-            renderStartRef.current = performance.now();
-            prevDataSignatureRef.current = nextSignature;
-        }
-    }, [chartData]);
 
     const option = useMemo<echarts.EChartsCoreOption | null>(() => {
         if (chartData.length === 0) return null;
@@ -195,70 +186,69 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker,
     }, [chartData]);
 
     useEffect(() => {
+        const nextSignature = JSON.stringify(chartData.map((item) => [item.quarter, item.inflow, item.outflow]));
+        if (chartData.length > 0 && nextSignature !== prevDataSignatureRef.current) {
+            renderStartRef.current = performance.now();
+            prevDataSignatureRef.current = nextSignature;
+        }
+    }, [chartData]);
+
+    useEffect(() => {
         const container = containerRef.current;
         if (!container || !option) return;
 
-        const renderCompletion = createDeferredRenderCompletion({
-            renderStartRef,
-            onRenderComplete,
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        if (width <= 0 || height <= 0) return;
+
+        const chartInstance =
+            echarts.getInstanceByDom(container) ??
+            echarts.init(container, undefined, {
+                renderer: "canvas",
+                width,
+                height,
+            });
+
+        chartRef.current = chartInstance;
+        chartInstance.resize({
+            width,
+            height,
         });
 
-        const ensureChart = () => {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-            if (width <= 0 || height <= 0) {
-                return null;
-            }
-
-            const chartInstance =
-                echarts.getInstanceByDom(container) ??
-                echarts.init(container, undefined, {
-                    renderer: "canvas",
-                    width,
-                    height,
-                });
-
-            chartRef.current = chartInstance;
-            chartInstance.resize({ width, height });
-            return chartInstance;
-        };
-
         const handleFinished = () => {
-            renderCompletion.schedule();
+            if (renderStartRef.current != null && onRenderComplete) {
+                const elapsed = Math.round(performance.now() - renderStartRef.current);
+                onRenderComplete(elapsed);
+                renderStartRef.current = null;
+            }
         };
 
-        const syncChart = () => {
-            const chartInstance = ensureChart();
-            if (!chartInstance) return;
+        chartInstance.off("finished", handleFinished);
+        chartInstance.on("finished", handleFinished);
+        chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
+        handleFinished();
 
+        return () => {
             chartInstance.off("finished", handleFinished);
-            chartInstance.on("finished", handleFinished);
-            chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
-            handleFinished();
         };
+    }, [option, onRenderComplete]);
 
-        syncChart();
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
 
         const observer = new ResizeObserver(() => {
-            const chartInstance = chartRef.current;
-            if (chartInstance && !chartInstance.isDisposed()) {
-                chartInstance.resize({
-                    width: container.clientWidth,
-                    height: container.clientHeight,
+            if (chartRef.current && containerRef.current) {
+                chartRef.current.resize({
+                    width: containerRef.current.clientWidth,
+                    height: containerRef.current.clientHeight,
                 });
-                return;
             }
-
-            syncChart();
         });
 
         observer.observe(container);
-        return () => {
-            observer.disconnect();
-            renderCompletion.cancel();
-            chartRef.current?.off("finished", handleFinished);
-        };
-    }, [option, onRenderComplete]);
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
         return () => {

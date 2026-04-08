@@ -4,6 +4,13 @@ import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "../app/router";
 import "uplot/dist/uPlot.min.css";
 
+if (import.meta.env?.DEV) {
+  const script = document.createElement("script");
+  script.crossOrigin = "anonymous";
+  script.src = "https://unpkg.com/react-scan/dist/auto.global.js";
+  document.head.appendChild(script);
+}
+
 const container = document.getElementById("root");
 
 if (!container) {

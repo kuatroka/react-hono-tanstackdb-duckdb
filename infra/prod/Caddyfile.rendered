@@ -1,0 +1,5 @@
+fintellectus-tanstackdb.206.168.212.173.sslip.io {
+  encode zstd gzip
+
+  reverse_proxy 127.0.0.1:3200
+}

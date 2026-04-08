@@ -155,17 +155,17 @@ describe("asset detail browser smoke test", () => {
     await page.close();
   });
 
-  test("shows render latency on the all-assets chart route", async () => {
+  test("shows compact virtual-table telemetry on the assets route and does not render the removed all-assets chart", async () => {
     const page = await browser.newPage();
     const { pageErrors, consoleErrors } = trackPageIssues(page);
 
     await page.goto(`${baseUrl}/assets`, { waitUntil: "networkidle" });
-    await page.waitForSelector("text=All Assets Activity (ECharts)");
-    await page.locator('[data-latency-part="render"]').first().waitFor();
+    await page.waitForSelector("text=Assets");
 
     const pageText = await page.locator("body").textContent();
 
-    expect(pageText).toContain("render:");
+    expect(pageText).not.toContain("All Assets Activity (ECharts)");
+    expect(pageText).toContain("zero-client virtual table:");
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
 

@@ -42,7 +42,7 @@ export function SuperinvestorChartSection({ cik, cikName }: SuperinvestorChartSe
         setChartData(rows);
         setChartQueryTimeMs(elapsed);
         setChartDataSource(
-          source === "api" ? "tsdb-api" : source === "indexeddb" ? "tsdb-indexeddb" : "tsdb-memory",
+          source === "api" ? "api-duckdb" : source === "indexeddb" ? "tsdb-indexeddb" : "tsdb-memory",
         );
       })
       .catch((error) => {

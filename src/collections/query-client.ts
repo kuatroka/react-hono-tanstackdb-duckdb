@@ -20,6 +20,8 @@ import {
     type DrilldownEntry,
     type AssetActivityEntry,
     type InvestorFlowEntry,
+    type AssetListEntry,
+    type SuperinvestorListEntry,
 } from '@/lib/dexie-db'
 
 // Shared QueryClient – no per-query persister
@@ -535,5 +537,134 @@ export async function clearPersistedInvestorFlowData(ticker: string): Promise<vo
         await db.investorFlow.delete(ticker)
     } catch (error) {
         console.error('[InvestorFlow] Failed to clear:', error)
+    }
+}
+
+// ============================================================
+// ASSET LIST PERSISTENCE (using Dexie assetList table)
+// ============================================================
+
+const ASSET_LIST_KEY = 'assets-v1'
+const SUPERINVESTOR_LIST_KEY = 'superinvestors-v1'
+const LIST_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24
+
+export interface PersistedAssetListData {
+    key: string
+    rows: Array<{
+        id: string
+        asset: string
+        assetName: string
+        cusip: string | null
+    }>
+    metadata?: {
+        persistedAt?: number
+    }
+}
+
+export interface PersistedSuperinvestorListData {
+    key: string
+    rows: Array<{
+        id: string
+        cik: string
+        cikName: string
+    }>
+    metadata?: {
+        persistedAt?: number
+    }
+}
+
+export async function persistAssetListData(rows: PersistedAssetListData['rows']): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry: AssetListEntry = {
+            key: ASSET_LIST_KEY,
+            rows,
+            persistedAt: Date.now(),
+        }
+        await db.assetList.put(entry)
+        console.log(`[Assets] Persisted ${rows.length} rows to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+    } catch (error) {
+        console.error('[Assets] Failed to persist list:', error)
+    }
+}
+
+export async function loadPersistedAssetListData(): Promise<PersistedAssetListData | null> {
+    if (typeof window === 'undefined') return null
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry = await db.assetList.get(ASSET_LIST_KEY)
+
+        if (!entry) {
+            return null
+        }
+
+        const age = Date.now() - entry.persistedAt
+        if (age > LIST_CACHE_MAX_AGE_MS) {
+            await db.assetList.delete(ASSET_LIST_KEY)
+            return null
+        }
+
+        console.log(`[Assets] Loaded ${entry.rows.length} rows from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        return {
+            key: entry.key,
+            rows: entry.rows,
+            metadata: { persistedAt: entry.persistedAt },
+        }
+    } catch (error) {
+        console.error('[Assets] Failed to load list from IndexedDB:', error)
+        return null
+    }
+}
+
+export async function persistSuperinvestorListData(rows: PersistedSuperinvestorListData['rows']): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry: SuperinvestorListEntry = {
+            key: SUPERINVESTOR_LIST_KEY,
+            rows,
+            persistedAt: Date.now(),
+        }
+        await db.superinvestorList.put(entry)
+        console.log(`[Superinvestors] Persisted ${rows.length} rows to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+    } catch (error) {
+        console.error('[Superinvestors] Failed to persist list:', error)
+    }
+}
+
+export async function loadPersistedSuperinvestorListData(): Promise<PersistedSuperinvestorListData | null> {
+    if (typeof window === 'undefined') return null
+
+    try {
+        const startTime = performance.now()
+        const db = getDb()
+        const entry = await db.superinvestorList.get(SUPERINVESTOR_LIST_KEY)
+
+        if (!entry) {
+            return null
+        }
+
+        const age = Date.now() - entry.persistedAt
+        if (age > LIST_CACHE_MAX_AGE_MS) {
+            await db.superinvestorList.delete(SUPERINVESTOR_LIST_KEY)
+            return null
+        }
+
+        console.log(`[Superinvestors] Loaded ${entry.rows.length} rows from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        return {
+            key: entry.key,
+            rows: entry.rows,
+            metadata: { persistedAt: entry.persistedAt },
+        }
+    } catch (error) {
+        console.error('[Superinvestors] Failed to load list from IndexedDB:', error)
+        return null
     }
 }

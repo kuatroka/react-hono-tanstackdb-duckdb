@@ -19,12 +19,12 @@ export const GlobalSearchInput = memo(function GlobalSearchInput({
       id="global-search"
       name="global-search"
       type="search"
-      placeholder="DuckDB Search..."
+      placeholder="Search superinvestors, tickers..."
       value={query}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
-      className="w-full sm:w-[30rem] pr-16"
+      className="w-full sm:w-[30rem]"
     />
   );
 });

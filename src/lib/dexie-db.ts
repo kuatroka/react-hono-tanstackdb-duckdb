@@ -113,6 +113,27 @@ export interface InvestorFlowEntry {
     persistedAt: number
 }
 
+export interface AssetListEntry {
+    key: string
+    rows: Array<{
+        id: string
+        asset: string
+        assetName: string
+        cusip: string | null
+    }>
+    persistedAt: number
+}
+
+export interface SuperinvestorListEntry {
+    key: string
+    rows: Array<{
+        id: string
+        cik: string
+        cikName: string
+    }>
+    persistedAt: number
+}
+
 /**
  * App cache database extending Dexie
  */
@@ -123,6 +144,8 @@ export class AppCacheDB extends Dexie {
     drilldown!: Table<DrilldownEntry, string>
     assetActivity!: Table<AssetActivityEntry, string>
     investorFlow!: Table<InvestorFlowEntry, string>
+    assetList!: Table<AssetListEntry, string>
+    superinvestorList!: Table<SuperinvestorListEntry, string>
 
     constructor() {
         super('app-cache')
@@ -139,6 +162,16 @@ export class AppCacheDB extends Dexie {
             drilldown: 'key',
             assetActivity: 'key',
             investorFlow: 'ticker',
+        })
+        this.version(3).stores({
+            queryCache: 'key',
+            searchIndex: 'key',
+            cikQuarterly: 'cik',
+            drilldown: 'key',
+            assetActivity: 'key',
+            investorFlow: 'ticker',
+            assetList: 'key',
+            superinvestorList: 'key',
         })
     }
 }

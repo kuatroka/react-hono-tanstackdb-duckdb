@@ -13,8 +13,19 @@ export {
 
 // Types
 export type { Asset, Superinvestor, SearchResult } from './instances'
-export { fetchAssetRecord } from './assets'
-export { fetchSuperinvestorRecord } from './superinvestors'
+export {
+    fetchAssetRecord,
+    getAssetListLoadSource,
+    subscribeAssetListLoadSource,
+    type AssetListLoadSource,
+} from './assets'
+export {
+    fetchSuperinvestorRecord,
+    fetchSuperinvestorRecordWithSource,
+    getSuperinvestorListLoadSource,
+    subscribeSuperinvestorListLoadSource,
+    type SuperinvestorListLoadSource,
+} from './superinvestors'
 export { type InvestorDetail, investorDrilldownCollection } from './investor-details'
 export {
     type AssetActivityData,

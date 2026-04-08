@@ -17,6 +17,10 @@ function resolveDistPath(pathname: string) {
 function handleProductionRequest(request: Request) {
   const url = new URL(request.url);
 
+  if (url.pathname === "/healthz") {
+    return Response.json({ ok: true, service: "fintellectus-tanstackdb" });
+  }
+
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
     return app.fetch(request);
   }

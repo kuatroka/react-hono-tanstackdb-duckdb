@@ -1,0 +1,85 @@
+export type PerfSource = 'api:pg' | 'zero:cache' | 'zero-client';
+
+export type PerfTelemetry = Readonly<{
+  source: PerfSource;
+  label: string;
+  ms: number | null;
+  primaryLine: string;
+  secondaryLine?: string;
+}>;
+
+export function formatPerfLatencyMs(ms: number | null) {
+  if (ms == null || !Number.isFinite(ms)) return '…';
+  if (ms < 10) return `${ms.toFixed(2)}ms`;
+  if (ms < 100) return `${ms.toFixed(1)}ms`;
+  return `${ms.toFixed(0)}ms`;
+}
+
+export function toPerfSource(source: string): PerfSource {
+  if (source === 'api:pg' || source === 'zero:cache' || source === 'zero-client') {
+    return source;
+  }
+
+  if (source.startsWith('Zero:')) {
+    return 'zero-client';
+  }
+
+  return 'api:pg';
+}
+
+function normalizeLegacyLabel(source: string) {
+  return source
+    .replace(/^Zero:\s*/, '')
+    .replace(/^zero[.:]/i, '')
+    .trim() || 'data';
+}
+
+export function createPerfTelemetry({
+  label,
+  ms,
+  secondaryLabel,
+  secondaryMs,
+  source,
+}: {
+  label: string;
+  ms: number | null;
+  secondaryLabel?: string;
+  secondaryMs?: number | null;
+  source: PerfSource;
+}): PerfTelemetry {
+  const primaryLine = `${source} ${label}: ${formatPerfLatencyMs(ms)}`;
+  const secondaryLine = secondaryLabel
+    ? `${source} ${secondaryLabel}: ${formatPerfLatencyMs(secondaryMs ?? null)}`
+    : undefined;
+
+  return {
+    source,
+    label,
+    ms,
+    primaryLine,
+    secondaryLine,
+  };
+}
+
+export function createLegacyPerfTelemetry({
+  label,
+  ms,
+  renderMs,
+  source,
+}: {
+  label?: string;
+  ms: number | null;
+  renderMs?: number | null;
+  source: string;
+}): PerfTelemetry {
+  const perfSource = toPerfSource(source);
+  const resolvedLabel = label ?? normalizeLegacyLabel(source);
+
+  return createPerfTelemetry({
+    source: perfSource,
+    label: resolvedLabel,
+    ms,
+    secondaryLabel: renderMs !== undefined ? 'render' : undefined,
+    secondaryMs: renderMs,
+  });
+}

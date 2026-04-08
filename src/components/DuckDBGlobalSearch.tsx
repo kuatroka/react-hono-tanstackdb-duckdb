@@ -298,7 +298,7 @@ export function DuckDBGlobalSearch() {
           <div className="absolute right-2 top-1/2 -translate-y-1/2">
             <LatencyBadge
               latencyMs={queryTimeMs}
-              source={isUsingApi ? "rq-api" : "tsdb-indexeddb"}
+              source={isUsingApi ? "api-duckdb" : "tsdb-indexeddb"}
             />
           </div>
         )}

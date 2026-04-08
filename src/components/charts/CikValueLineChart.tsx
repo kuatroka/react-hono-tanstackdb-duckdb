@@ -17,7 +17,7 @@ interface CikValueLineChartProps {
   cikName?: string;
   dataLoadMs?: number;
   renderMs?: number;
-  source?: "tsdb-api" | "tsdb-indexeddb" | "tsdb-memory" | "unknown";
+  source?: "api-duckdb" | "tsdb-indexeddb" | "tsdb-memory" | "unknown";
   onRenderComplete?: (renderMs: number) => void;
 }
 

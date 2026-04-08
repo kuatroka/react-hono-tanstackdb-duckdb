@@ -1,13 +1,17 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from '@tanstack/react-db';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { DataTable, ColumnDef } from '@/components/DataTable';
+import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge } from '@/components/LatencyBadge';
 import { useContentReady } from '@/hooks/useContentReady';
-import { superinvestorsCollection, type Superinvestor } from '@/collections';
-
-const SUPERINVESTORS_TOTAL_ROWS = 14908;
+import type { PerfSource, PerfTelemetry } from '@/lib/perf/telemetry';
+import {
+  getSuperinvestorListLoadSource,
+  subscribeSuperinvestorListLoadSource,
+  superinvestorsCollection,
+  type Superinvestor,
+} from '@/collections';
 
 export function SuperinvestorsTablePage() {
   return <SuperinvestorsTableSurface />;
@@ -17,35 +21,32 @@ function SuperinvestorsTableSurface() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { page?: string; search?: string };
   const { onReady } = useContentReady();
-  const tablePageSize = 10;
-
-  const rawPage = searchParams.page;
-  const parsedPage = rawPage ? parseInt(rawPage, 10) : 1;
-  const currentPage = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
-
   const trimmedSearch = (searchParams.search ?? '').trim();
+  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
+  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
+  const [dataSource, setDataSource] = useState<PerfSource>(() => {
+    const source = getSuperinvestorListLoadSource();
+    return source === 'api' ? 'api-duckdb' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory';
+  });
 
-  // Use TanStack DB useLiveQuery for instant local queries
-  // Data is preloaded on app init, so queries execute against local collection
   const { data: superinvestorsData, isLoading } = useLiveQuery(
     (q) => q.from({ superinvestors: superinvestorsCollection }),
   );
 
-  // Filter superinvestors client-side based on search term
-  // This filtering happens instantly against local data
-  const filteredSuperinvestors = useMemo(() => {
-    if (!superinvestorsData) return [];
-    if (!trimmedSearch) return superinvestorsData;
-
-    const lowerSearch = trimmedSearch.toLowerCase();
-    return superinvestorsData.filter((investor: Superinvestor) =>
-      investor.cik.toLowerCase().includes(lowerSearch) ||
-      investor.cikName.toLowerCase().includes(lowerSearch)
-    );
-  }, [superinvestorsData, trimmedSearch]);
-
-  // Signal ready when data is available
   const readyCalledRef = useRef(false);
+  useEffect(() => {
+    const toPerfSource = (source: 'memory' | 'indexeddb' | 'api'): PerfSource => {
+      if (source === 'api') return 'api-duckdb';
+      if (source === 'indexeddb') return 'tsdb-indexeddb';
+      return 'tsdb-memory';
+    };
+
+    setDataSource(toPerfSource(getSuperinvestorListLoadSource()));
+    return subscribeSuperinvestorListLoadSource((source) => {
+      setDataSource(toPerfSource(source));
+    });
+  }, []);
+
   useEffect(() => {
     if (readyCalledRef.current) return;
     if (superinvestorsData !== undefined) {
@@ -54,17 +55,10 @@ function SuperinvestorsTableSurface() {
     }
   }, [superinvestorsData, onReady]);
 
-  const handlePageChange = (newPage: number) => {
-    navigate({
-      to: '/superinvestors',
-      search: { page: String(newPage), search: trimmedSearch || undefined },
-    });
-  };
-
   const handleSearchChange = (value: string) => {
     navigate({
       to: '/superinvestors',
-      search: { page: '1', search: value.trim() || undefined },
+      search: { search: value.trim() || undefined },
     });
   };
 
@@ -96,30 +90,36 @@ function SuperinvestorsTableSurface() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span className="text-3xl font-bold tracking-tight">Superinvestors</span>
-            <LatencyBadge latencyMs={isLoading ? undefined : 0} source="tsdb-indexeddb" />
-          </CardTitle>
-          <CardDescription>Browse and search institutional investors (13F filers)</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-3xl font-bold tracking-tight">Superinvestors</CardTitle>
+            <CardDescription>Browse and search institutional investors (13F filers)</CardDescription>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
+            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">Loading…</div>
           ) : (
-            <DataTable
-              data={filteredSuperinvestors || []}
+            <VirtualDataTable
+              data={superinvestorsData || []}
               columns={columns}
-              searchPlaceholder="Search superinvestors..."
-              defaultPageSize={tablePageSize}
               defaultSortColumn="cikName"
-              defaultSortDirection="asc"
-              initialPage={currentPage}
-              onPageChange={handlePageChange}
+              gridTemplateColumns="minmax(12rem, 1fr) minmax(22rem, 1.6fr)"
+              latencySource="tsdb-memory"
+              dataSource={dataSource}
+              onReady={onReady}
               onSearchChange={handleSearchChange}
+              onSearchTelemetryChange={setSearchTelemetry}
+              onTableTelemetryChange={setTableTelemetry}
+              searchDebounceMs={150}
+              searchPlaceholder="Search superinvestors..."
+              searchTelemetryLabel="search"
               searchValue={trimmedSearch}
-              searchDisabled={!!trimmedSearch}
-              totalCount={trimmedSearch ? filteredSuperinvestors?.length ?? 0 : SUPERINVESTORS_TOTAL_ROWS}
+              tableTelemetryLabel="virtual table"
             />
           )}
         </CardContent>

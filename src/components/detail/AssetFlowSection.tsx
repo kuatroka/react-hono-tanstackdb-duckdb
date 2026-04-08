@@ -17,7 +17,7 @@ interface AssetFlowLoadState {
 
 function mapAssetFlowDataSource(source: string): DataFlow {
   return source === "api"
-    ? "tsdb-api"
+    ? "api-duckdb"
     : source === "indexeddb"
       ? "tsdb-indexeddb"
       : "tsdb-memory";

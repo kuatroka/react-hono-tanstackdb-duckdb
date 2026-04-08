@@ -1,0 +1,96 @@
+import { useParams, Link } from '@tanstack/react-router';
+import { useContentReady } from '@/hooks/useContentReady';
+import { useEffect, useRef, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
+import {
+  type Superinvestor,
+  fetchSuperinvestorRecord,
+} from '@/collections';
+import { SuperinvestorChartSection } from '@/components/detail/SuperinvestorChartSection';
+
+export function SuperinvestorDetailPage() {
+  const { cik } = useParams({ strict: false }) as { cik?: string };
+  const { onReady } = useContentReady();
+  const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
+  const [recordSource, setRecordSource] = useState<DataFlow>('unknown');
+  const [record, setRecord] = useState<Superinvestor | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!cik) {
+      setRecord(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    const startedAt = performance.now();
+    setRecord(undefined);
+    setQueryTimeMs(null);
+    setRecordSource('unknown');
+
+    fetchSuperinvestorRecord(cik)
+      .then((superinvestor) => {
+        if (cancelled) return;
+        setRecord(superinvestor);
+        setQueryTimeMs(Math.round(performance.now() - startedAt));
+        setRecordSource(superinvestor ? 'tsdb-api' : 'unknown');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[SuperinvestorDetail] Failed to load superinvestor record:', error);
+        setRecord(null);
+        setQueryTimeMs(null);
+        setRecordSource('unknown');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cik]);
+
+  const readyCalledRef = useRef(false);
+  useEffect(() => {
+    readyCalledRef.current = false;
+  }, [cik]);
+
+  useEffect(() => {
+    if (readyCalledRef.current) return;
+    if (record !== undefined) {
+      readyCalledRef.current = true;
+      onReady();
+    }
+  }, [record, onReady]);
+
+  if (!cik) return <div className="p-6">Missing CIK.</div>;
+
+  if (record === undefined) {
+    return <div className="p-6">Loading…</div>;
+  }
+
+  if (!record) {
+    return <div className="p-6">Superinvestor not found.</div>;
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>{record.cikName}</span>
+            <LatencyBadge latencyMs={queryTimeMs ?? undefined} source={recordSource} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 text-lg">
+            <div><span className="font-semibold">CIK:</span> {record.cik}</div>
+          </div>
+          <div className="mt-6">
+            <Link to="/superinvestors" search={{ page: undefined, search: undefined }} className="link link-primary">Back to superinvestors</Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <SuperinvestorChartSection cik={record.cik} cikName={record.cikName} />
+    </div>
+  );
+}
