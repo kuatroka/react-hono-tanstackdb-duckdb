@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
 import { GridComponent, TooltipComponent, LegendComponent } from "echarts/components";
@@ -14,6 +14,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { type InvestorFlow } from "@/types";
+import { createDeferredRenderCompletion } from "./renderTiming";
 
 // Register only the modules this chart needs for tree shaking
 
@@ -78,7 +79,6 @@ function EmptyInvestorFlowCard({ ticker, title }: { ticker: string; title: strin
 export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const chartRef = useRef<echarts.EChartsType | null>(null);
-    const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
     const renderStartRef = useRef<number | null>(null);
     const prevDataSignatureRef = useRef<string>("");
 
@@ -98,34 +98,6 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker,
             prevDataSignatureRef.current = nextSignature;
         }
     }, [chartData]);
-
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const updateSize = () => {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            if (width > 0 && height > 0) {
-                setChartSize((current) => {
-                    if (current?.width === width && current?.height === height) {
-                        return current;
-                    }
-                    return { width, height };
-                });
-            }
-        };
-
-        updateSize();
-
-        const observer = new ResizeObserver(() => {
-            updateSize();
-        });
-
-        observer.observe(container);
-        return () => observer.disconnect();
-    }, []);
 
     const option = useMemo<echarts.EChartsCoreOption | null>(() => {
         if (chartData.length === 0) return null;
@@ -224,39 +196,69 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker,
 
     useEffect(() => {
         const container = containerRef.current;
-        if (!container || !option || !chartSize) return;
+        if (!container || !option) return;
 
-        const chartInstance =
-            echarts.getInstanceByDom(container) ??
-            echarts.init(container, undefined, {
-                renderer: "canvas",
-                width: chartSize.width,
-                height: chartSize.height,
-            });
-
-        chartRef.current = chartInstance;
-        chartInstance.resize({
-            width: chartSize.width,
-            height: chartSize.height,
+        const renderCompletion = createDeferredRenderCompletion({
+            renderStartRef,
+            onRenderComplete,
         });
 
-        const handleFinished = () => {
-            if (renderStartRef.current != null && onRenderComplete) {
-                const elapsed = Math.round(performance.now() - renderStartRef.current);
-                onRenderComplete(elapsed);
-                renderStartRef.current = null;
+        const ensureChart = () => {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            if (width <= 0 || height <= 0) {
+                return null;
             }
+
+            const chartInstance =
+                echarts.getInstanceByDom(container) ??
+                echarts.init(container, undefined, {
+                    renderer: "canvas",
+                    width,
+                    height,
+                });
+
+            chartRef.current = chartInstance;
+            chartInstance.resize({ width, height });
+            return chartInstance;
         };
 
-        chartInstance.off("finished", handleFinished);
-        chartInstance.on("finished", handleFinished);
-        chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
-        handleFinished();
+        const handleFinished = () => {
+            renderCompletion.schedule();
+        };
 
-        return () => {
+        const syncChart = () => {
+            const chartInstance = ensureChart();
+            if (!chartInstance) return;
+
             chartInstance.off("finished", handleFinished);
+            chartInstance.on("finished", handleFinished);
+            chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
+            handleFinished();
         };
-    }, [option, chartSize, onRenderComplete]);
+
+        syncChart();
+
+        const observer = new ResizeObserver(() => {
+            const chartInstance = chartRef.current;
+            if (chartInstance && !chartInstance.isDisposed()) {
+                chartInstance.resize({
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                });
+                return;
+            }
+
+            syncChart();
+        });
+
+        observer.observe(container);
+        return () => {
+            observer.disconnect();
+            renderCompletion.cancel();
+            chartRef.current?.off("finished", handleFinished);
+        };
+    }, [option, onRenderComplete]);
 
     useEffect(() => {
         return () => {

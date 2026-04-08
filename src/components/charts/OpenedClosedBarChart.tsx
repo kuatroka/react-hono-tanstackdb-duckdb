@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useRef, useEffect, useState } from "react";
+import { memo, useMemo, useRef, useEffect } from "react";
 import * as echarts from "echarts/core";
 import { BarChart } from "echarts/charts";
 import {
@@ -12,6 +12,7 @@ import { LegacyGridContainLabel } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
+import { createDeferredRenderCompletion } from "./renderTiming";
 
 // Register only the components we need for tree shaking
 echarts.use([
@@ -77,7 +78,6 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
 }: OpenedClosedBarChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
-  const [chartSize, setChartSize] = useState<{ width: number; height: number } | null>(null);
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
 
@@ -88,34 +88,6 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
       prevDataLengthRef.current = data.length;
     }
   }, [data]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const updateSize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-
-      if (width > 0 && height > 0) {
-        setChartSize((current) => {
-          if (current?.width === width && current?.height === height) {
-            return current;
-          }
-          return { width, height };
-        });
-      }
-    };
-
-    updateSize();
-
-    const observer = new ResizeObserver(() => {
-      updateSize();
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
 
   const chartData = useMemo(() => {
     return data.map((item) => ({
@@ -241,32 +213,32 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !option || !chartSize) return;
+    if (!container || !option) return;
 
-    const chartInstance =
-      echarts.getInstanceByDom(container) ??
-      echarts.init(container, undefined, {
-        renderer: "canvas",
-        width: chartSize.width,
-        height: chartSize.height,
-      });
-
-    chartRef.current = chartInstance;
-    chartInstance.resize({
-      width: chartSize.width,
-      height: chartSize.height,
-    });
-    chartInstance.setOption(option, {
-      notMerge: false,
-      lazyUpdate: false,
+    const renderCompletion = createDeferredRenderCompletion({
+      renderStartRef,
+      onRenderComplete,
     });
 
-    // Signal render complete after chart is set up
-    if (renderStartRef.current != null && onRenderComplete) {
-      const elapsed = Math.round(performance.now() - renderStartRef.current);
-      onRenderComplete(elapsed);
-      renderStartRef.current = null;
-    }
+    const ensureChart = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width <= 0 || height <= 0) {
+        return null;
+      }
+
+      const chartInstance =
+        echarts.getInstanceByDom(container) ??
+        echarts.init(container, undefined, {
+          renderer: "canvas",
+          width,
+          height,
+        });
+
+      chartRef.current = chartInstance;
+      chartInstance.resize({ width, height });
+      return chartInstance;
+    };
 
     const clickHandler = (params: OpenedClosedChartEvent) => {
       if (!onBarClick || !params.name || !params.seriesName) return;
@@ -292,22 +264,61 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
       }
     };
 
-    chartInstance.on('click', clickHandler);
-    chartInstance.on('mouseover', hoverHandler);
-    chartInstance.on('globalout', mouseOutHandler);
+    const handleFinished = () => {
+      renderCompletion.schedule();
+    };
 
+    const syncChart = () => {
+      const chartInstance = ensureChart();
+      if (!chartInstance) return;
+
+      chartInstance.off("finished", handleFinished);
+      chartInstance.on("finished", handleFinished);
+      chartInstance.off("click", clickHandler);
+      chartInstance.off("mouseover", hoverHandler);
+      chartInstance.off("globalout", mouseOutHandler);
+      chartInstance.on("click", clickHandler);
+      chartInstance.on("mouseover", hoverHandler);
+      chartInstance.on("globalout", mouseOutHandler);
+      chartInstance.setOption(option, {
+        notMerge: true,
+        lazyUpdate: true,
+      });
+      handleFinished();
+    };
+
+    syncChart();
+
+    const observer = new ResizeObserver(() => {
+      const chartInstance = chartRef.current;
+      if (chartInstance && !chartInstance.isDisposed()) {
+        chartInstance.resize({
+          width: container.clientWidth,
+          height: container.clientHeight,
+        });
+        return;
+      }
+
+      syncChart();
+    });
+
+    observer.observe(container);
     return () => {
+      observer.disconnect();
+      renderCompletion.cancel();
+
       try {
-        if (chartInstance && !chartInstance.isDisposed()) {
-          chartInstance.off('click', clickHandler);
-          chartInstance.off('mouseover', hoverHandler);
-          chartInstance.off('globalout', mouseOutHandler);
+        if (chartRef.current && !chartRef.current.isDisposed()) {
+          chartRef.current.off("finished", handleFinished);
+          chartRef.current.off("click", clickHandler);
+          chartRef.current.off("mouseover", hoverHandler);
+          chartRef.current.off("globalout", mouseOutHandler);
         }
       } catch {
         // ignore
       }
     };
-  }, [chartSize, onBarClick, onBarHover, onBarLeave, option]);
+  }, [onBarClick, onBarHover, onBarLeave, onRenderComplete, option]);
 
   useEffect(() => {
     return () => {

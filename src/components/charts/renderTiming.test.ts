@@ -88,6 +88,12 @@ describe("createDeferredRenderCompletion", () => {
 describe("ECharts latency timing contract", () => {
   const readChartFile = (name: string) =>
     readFileSync(join(import.meta.dir, name), "utf8");
+  const expectImperativeResizeLifecycle = (source: string) => {
+    expect(source).toContain("new ResizeObserver");
+    expect(source).toContain("resize({");
+    expect(source).not.toContain("setChartSize");
+    expect(source).not.toContain("const [chartSize");
+  };
 
   test("uses the shared deferred completion helper instead of synchronous post-setOption completion", () => {
     const openedClosedBarChart = readChartFile("OpenedClosedBarChart.tsx");
@@ -105,5 +111,15 @@ describe("ECharts latency timing contract", () => {
     expect(cikValueEchartsChart).toContain("createDeferredRenderCompletion");
     expect(cikValueEchartsChart).toContain("renderCompletion.schedule()");
     expect(cikValueEchartsChart).not.toContain("const elapsed = Math.round(performance.now() - renderStartRef.current)");
+  });
+
+  test("uses imperative resize observers instead of React chartSize state in the ECharts charts", () => {
+    const openedClosedBarChart = readChartFile("OpenedClosedBarChart.tsx");
+    const investorFlowChart = readChartFile("InvestorFlowChart.tsx");
+    const cikValueEchartsChart = readChartFile("CikValueEchartsChart.tsx");
+
+    expectImperativeResizeLifecycle(openedClosedBarChart);
+    expectImperativeResizeLifecycle(investorFlowChart);
+    expectImperativeResizeLifecycle(cikValueEchartsChart);
   });
 });
