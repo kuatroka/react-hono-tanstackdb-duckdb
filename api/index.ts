@@ -17,7 +17,7 @@ export const config = {
 
 export const app = new Hono().basePath("/api");
 
-// Data routes (formerly served via Zero, now via DuckDB/REST)
+// Data routes now all come from DuckDB/REST-backed handlers.
 app.route("/drilldown", drilldownRoutes);
 app.route("/duckdb-search", searchDuckdbRoutes);
 app.route("/duckdb-investor-drilldown", duckdbInvestorDrilldownRoutes);
@@ -47,7 +47,7 @@ function randomInt(max: number) {
 }
 
 // JWT secret - falls back to a default for development
-const JWT_SECRET = process.env.ZERO_AUTH_SECRET || process.env.JWT_SECRET || "dev-secret";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
 app.get("/login", async (c) => {
   const jwtPayload = {

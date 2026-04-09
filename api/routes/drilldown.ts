@@ -1,14 +1,18 @@
 import { Hono } from "hono";
-import { sql } from "../db";
+import { getDuckDBConnection } from "../duckdb";
 
 const drilldownRoutes = new Hono();
 
 // Base path for parquet files (inside Docker container)
 const PARQUET_BASE_PATH = "/app_data/TR_BY_TICKER_CONSOLIDATED";
 
+function escapeSqlLiteral(value: string) {
+  return value.replace(/'/g, "''");
+}
+
 /**
- * Build the parquet query with pg_duckdb syntax
- * Note: pg_duckdb requires r['column'] syntax for column access
+ * Build the parquet query with DuckDB-native parquet syntax.
+ * Note: the row alias still uses r['column'] access for consistency.
  */
 function buildDrilldownQuery(
   ticker: string,
@@ -16,12 +20,12 @@ function buildDrilldownQuery(
   action: string | null,
   limit: number
 ): string {
-  const parquetPath = `${PARQUET_BASE_PATH}/cusip_ticker=${ticker}/*.parquet`;
+  const parquetPath = `${PARQUET_BASE_PATH}/cusip_ticker=${escapeSqlLiteral(ticker)}/*.parquet`;
   
   let whereClause = "1=1";
   
   if (quarter) {
-    whereClause += ` AND r['quarter'] = '${quarter}'`;
+    whereClause += ` AND r['quarter'] = '${escapeSqlLiteral(quarter)}'`;
   }
   
   if (action) {
@@ -59,7 +63,7 @@ function buildDrilldownQuery(
  * GET /api/drilldown/:ticker
  * 
  * Query investor activity drill-down data for a specific ticker.
- * Uses pg_duckdb to read directly from partitioned Parquet files.
+ * Uses DuckDB native to read directly from partitioned Parquet files.
  * 
  * Query params:
  *   - quarter: Filter by quarter (e.g., "2024Q3")
@@ -75,9 +79,21 @@ drilldownRoutes.get("/:ticker", async (c) => {
   try {
     const startTime = performance.now();
 
-    // Build and execute raw SQL query with pg_duckdb
+    // Build and execute raw SQL query with DuckDB native parquet reading
     const query = buildDrilldownQuery(ticker, quarter, action, limit);
-    const result = await sql.unsafe(query);
+    const conn = await getDuckDBConnection();
+    const reader = await conn.runAndReadAll(query);
+    const result = reader.getRows().map((row: unknown[]) => ({
+      cusip: row[0] == null ? null : String(row[0]),
+      quarter: row[1] == null ? null : String(row[1]),
+      cik: row[2] == null ? null : String(row[2]),
+      did_open: Boolean(row[3]),
+      did_add: Boolean(row[4]),
+      did_reduce: Boolean(row[5]),
+      did_close: Boolean(row[6]),
+      did_hold: Boolean(row[7]),
+      cusip_ticker: row[8] == null ? null : String(row[8]),
+    }));
 
     const queryTime = performance.now() - startTime;
 
@@ -112,11 +128,11 @@ drilldownRoutes.get("/:ticker", async (c) => {
  * Build summary query for a ticker
  */
 function buildSummaryQuery(ticker: string, quarter: string | null): string {
-  const parquetPath = `${PARQUET_BASE_PATH}/cusip_ticker=${ticker}/*.parquet`;
+  const parquetPath = `${PARQUET_BASE_PATH}/cusip_ticker=${escapeSqlLiteral(ticker)}/*.parquet`;
   
   let whereClause = "1=1";
   if (quarter) {
-    whereClause += ` AND r['quarter'] = '${quarter}'`;
+    whereClause += ` AND r['quarter'] = '${escapeSqlLiteral(quarter)}'`;
   }
   
   return `
@@ -137,7 +153,7 @@ function buildSummaryQuery(ticker: string, quarter: string | null): string {
 
 /**
  * GET /api/drilldown/:ticker/summary
- * 
+ *
  * Get a summary of activity counts for a ticker, optionally filtered by quarter.
  */
 drilldownRoutes.get("/:ticker/summary", async (c) => {
@@ -148,7 +164,17 @@ drilldownRoutes.get("/:ticker/summary", async (c) => {
     const startTime = performance.now();
 
     const query = buildSummaryQuery(ticker, quarter);
-    const result = await sql.unsafe(query);
+    const conn = await getDuckDBConnection();
+    const reader = await conn.runAndReadAll(query);
+    const result = reader.getRows().map((row: unknown[]) => ({
+      quarter: row[0] == null ? null : String(row[0]),
+      open_count: Number(row[1]) || 0,
+      add_count: Number(row[2]) || 0,
+      reduce_count: Number(row[3]) || 0,
+      close_count: Number(row[4]) || 0,
+      hold_count: Number(row[5]) || 0,
+      total_count: Number(row[6]) || 0,
+    }));
 
     const queryTime = performance.now() - startTime;
 

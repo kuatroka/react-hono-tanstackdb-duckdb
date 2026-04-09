@@ -8,5 +8,5 @@ export const Route = createFileRoute("/_layout/assets/")({
     page: typeof search.page === "string" ? search.page : undefined,
     search: typeof search.search === "string" ? search.search : undefined,
   }),
-  // Removed Zero preloading - TanStack Query handles data fetching now
+  // TanStack Query handles route data fetching now.
 });

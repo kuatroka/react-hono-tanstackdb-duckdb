@@ -1,9 +1,7 @@
 export type PerfSource =
   | 'api-duckdb'
-  | 'api-postgres'
   | 'tsdb-indexeddb'
   | 'tsdb-memory'
-  | 'rq-memory'
   | 'indexeddb'
   | 'memory'
   | 'unknown';
@@ -29,14 +27,10 @@ export function formatPerfSourceLabel(source: PerfSource) {
   switch (source) {
     case 'api-duckdb':
       return 'API (DuckDB)';
-    case 'api-postgres':
-      return 'API (Postgres)';
     case 'tsdb-indexeddb':
       return 'TanStack DB (IndexedDB)';
     case 'tsdb-memory':
       return 'TanStack DB (memory)';
-    case 'rq-memory':
-      return 'React Query (memory)';
     case 'indexeddb':
       return 'IndexedDB';
     case 'memory':
@@ -52,11 +46,9 @@ export function getPerfSourceCategory(source: PerfSource): PerfSourceCategory {
     case 'indexeddb':
       return 'local';
     case 'tsdb-memory':
-    case 'rq-memory':
     case 'memory':
       return 'cache';
     case 'api-duckdb':
-    case 'api-postgres':
       return 'api';
     default:
       return 'unknown';
@@ -66,10 +58,8 @@ export function getPerfSourceCategory(source: PerfSource): PerfSourceCategory {
 export function toPerfSource(source: string): PerfSource {
   if (
     source === 'api-duckdb'
-    || source === 'api-postgres'
     || source === 'tsdb-indexeddb'
     || source === 'tsdb-memory'
-    || source === 'rq-memory'
     || source === 'indexeddb'
     || source === 'memory'
     || source === 'unknown'
@@ -81,26 +71,7 @@ export function toPerfSource(source: string): PerfSource {
     return 'api-duckdb';
   }
 
-  if (source === 'api:pg') {
-    return 'api-postgres';
-  }
-
-  if (source === 'zero:cache') {
-    return 'tsdb-indexeddb';
-  }
-
-  if (source === 'zero-client' || source.startsWith('Zero:')) {
-    return 'tsdb-memory';
-  }
-
   return 'unknown';
-}
-
-function normalizeLegacyLabel(source: string) {
-  return source
-    .replace(/^Zero:\s*/, '')
-    .replace(/^zero[.:]/i, '')
-    .trim() || 'data';
 }
 
 export function createPerfTelemetry({
@@ -143,8 +114,7 @@ export function createLegacyPerfTelemetry({
   source: string;
 }): PerfTelemetry {
   const perfSource = toPerfSource(source);
-  const normalizedLabel = normalizeLegacyLabel(source);
-  const resolvedLabel = label ?? (normalizedLabel === source ? 'data' : normalizedLabel);
+  const resolvedLabel = label ?? 'data';
 
   return createPerfTelemetry({
     source: perfSource,

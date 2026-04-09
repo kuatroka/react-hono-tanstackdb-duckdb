@@ -133,7 +133,7 @@ describe("asset detail browser smoke test", () => {
 
     const pageText = await page.locator("body").textContent();
 
-    expect(pageText).toContain("TanStack DB");
+    expect(pageText).toContain("Tanstack DB");
     expect(pageText).not.toContain("React Query");
 
     await page.close();
@@ -165,7 +165,7 @@ describe("asset detail browser smoke test", () => {
     const pageText = await page.locator("body").textContent();
 
     expect(pageText).not.toContain("All Assets Activity (ECharts)");
-    expect(pageText).toContain("zero-client virtual table:");
+    expect(pageText).toContain("virtual table:");
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
 

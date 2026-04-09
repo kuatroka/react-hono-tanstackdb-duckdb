@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "active": true,
+  "active": false,
   "skill": "ralph",
   "keyword": "$ralph",
   "phase": "planning",
@@ -41,5 +41,6 @@
     "exit_reason": "handoff"
   },
   "initialized_mode": "ralph",
-  "initialized_state_path": ".omx/state/ralph-state.json"
+  "initialized_state_path": ".omx/state/ralph-state.json",
+  "completed_at": "2026-04-08T23:44:18.671Z"
 }

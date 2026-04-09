@@ -1,5 +1,4 @@
-// Standalone types after Zero removal
-// These types were previously generated from Zero schema
+// Standalone app types for the DuckDB/TanStack DB data model.
 
 export interface Asset {
     id: string;

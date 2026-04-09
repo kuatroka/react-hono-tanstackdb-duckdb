@@ -20,14 +20,8 @@ Review, analyse, fix and self test. Use agent-browser tool to test UI. Interact 
 - **bun** rules url - https://bun.com/llms-rules.txt
 - **bun** docs - https://bun.sh/llms.txt
 - **bun** docs full - https://bun.sh/llms-full.txt
-- **zero** sync docs - https://zero.rocicorp.dev/llms.txt
-- **zero** sync full docs - https://zero.rocicorp.dev/llms-full.txt
 - **hono** docs - https://hono.dev/llms.txt
 - **hono** full docs - https://hono.dev/llms-full.txt
-
-## Drizzle ORM for schema management and migrations
-- Drizzle llm docs - https://orm.drizzle.team/llms.txt
-- Drizzle llm docs Full - https://orm.drizzle.team/llms-full.txt
 
 ## Analytics and main DB is Duckdb
 1. Duckdb docs - https://duckdb.org/llms.txt
@@ -40,11 +34,9 @@ Review, analyse, fix and self test. Use agent-browser tool to test UI. Interact 
 ### Key Commands
 ```bash
 
-bun run dev:db-up             # to start the dev Postgres container
-bun run dev:db-down           # to stop the dev Postgres container
-bun run dev:clean             # to delete data volumes Posgtres (use after stopping db)
-bun run db:generate           # Generate Drizzle migration only
-bun run db:migrate            # Apply migrations to database only
 bun run dev                   # launches the web app
+bun run build                 # builds the web app
+bun run start                 # starts the production server
+bun run benchmark:duckdb      # runs the DuckDB native benchmark
 
 ```

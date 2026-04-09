@@ -7,17 +7,17 @@ describe("LatencyBadge", () => {
     const html = renderToStaticMarkup(
       <LatencyBadge
         telemetry={{
-          source: "zero-client",
+          source: "tsdb-memory",
           label: "investorActivity: data",
           ms: 3.5,
-          primaryLine: "zero-client investorActivity: data: 3.50ms",
-          secondaryLine: "zero-client investorActivity: uPlot render: 1.20ms",
+          primaryLine: "TanStack DB (memory) investorActivity: data: 3.50ms",
+          secondaryLine: "TanStack DB (memory) investorActivity: uPlot render: 1.20ms",
         }}
       />,
     );
 
-    expect(html).toContain("zero-client investorActivity: data: 3.50ms");
-    expect(html).toContain("zero-client investorActivity: uPlot render: 1.20ms");
+    expect(html).toContain("TanStack DB (memory) investorActivity: data: 3.50ms");
+    expect(html).toContain("TanStack DB (memory) investorActivity: uPlot render: 1.20ms");
     expect(html).toContain("variant=\"secondary\"");
   });
 

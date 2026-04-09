@@ -67,7 +67,7 @@ describe("rerender isolation architecture", () => {
     expect(investorFlowChart).not.toContain("setChartSize(");
   });
 
-  test("table pages surface separate table and search telemetry badges instead of hardcoded zero-latency placeholders", () => {
+  test("table pages surface separate table and search telemetry badges instead of hardcoded latency placeholders", () => {
     const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
     const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
@@ -88,7 +88,7 @@ describe("rerender isolation architecture", () => {
     expect(virtualTable).toContain("onSearchTelemetryChange");
   });
 
-  test("card primitive pins border color to the shared border token so page shells match the Zero app", () => {
+  test("card primitive pins border color to the shared border token so page shells stay visually consistent", () => {
     const cardPrimitive = readProjectFile("src/components/ui/card.tsx");
 
     expect(cardPrimitive).toContain("border-border");
