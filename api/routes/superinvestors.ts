@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDuckDBConnection } from "../duckdb";
+import { API_LIMITS, ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
 
 const superinvestorsRoutes = new Hono();
 const MISSING_CIK_NAME_SENTINEL = "!!! no cik_name found !!!";
@@ -26,7 +27,7 @@ superinvestorsRoutes.get("/", async (c) => {
         const conn = await getDuckDBConnection();
 
         const sql = `
-      SELECT 
+      SELECT
         cik,
         cik_name as "cikName"
       FROM superinvestors
@@ -46,13 +47,11 @@ superinvestorsRoutes.get("/", async (c) => {
             };
         });
 
-        // Query completed in: Math.round((performance.now() - startTime) * 100) / 100 ms
-
         return c.json(results);
     } catch (error) {
         console.error("[DuckDB Superinvestors] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: "Superinvestors query failed", details: errorMessage }, 500);
+        return c.json({ error: ERROR_MESSAGES.ASSETS_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
     }
 });
 

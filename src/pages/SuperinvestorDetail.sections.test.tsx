@@ -50,7 +50,7 @@ function registerModuleMocks() {
     }),
   }));
 
-  spyOn(collectionsModule, "fetchSuperinvestorRecord").mockImplementation(
+  spyOn(collectionsModule, "fetchSuperinvestorRecordWithSource").mockImplementation(
     ((cik: string) => {
       fetchSuperinvestorRecordCalls.push(cik);
       return currentFetchSuperinvestorRecord(cik);
@@ -244,7 +244,10 @@ describe("superinvestor detail route split", () => {
   });
 
   test("calls onReady again when navigating to another superinvestor on the same route", async () => {
-    currentFetchSuperinvestorRecord = async (cik: string) => ({ cik, cikName: `Fund ${cik}` });
+    currentFetchSuperinvestorRecord = async (cik: string) => ({
+      record: { cik, cikName: `Fund ${cik}` } as Superinvestor,
+      source: 'api'
+    });
     params = { cik: "1001" };
 
     const { SuperinvestorDetailPage } = await import("@/pages/SuperinvestorDetail");
@@ -330,8 +333,12 @@ describe("superinvestor detail route split", () => {
     expect(tree.props).toMatchObject({
       cikName: "Fund 1001",
       dataLoadMs: 14,
-      source: "tsdb-api",
+      source: "api-duckdb",
     });
+    // The chart component receives additional props for functionality
+    expect(tree.props).toHaveProperty("data");
+    expect(tree.props).toHaveProperty("onRenderComplete");
+    expect(tree.props).toHaveProperty("renderMs");
     expect(tree.props).not.toHaveProperty("latencyBadge");
 
     harness.updateProps({ cik: "2002", cikName: "Fund 2002" });

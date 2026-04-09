@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDuckDBConnection } from "../duckdb";
+import { API_LIMITS, ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
 
 const assetsRoutes = new Hono();
 
@@ -10,14 +11,14 @@ const assetsRoutes = new Hono();
  * Used by TanStack DB collection for eager loading.
  */
 assetsRoutes.get("/", async (c) => {
-    const limit = Math.min(parseInt(c.req.query("limit") || "50000", 10), 50000);
+    const limit = Math.min(parseInt(c.req.query("limit") || String(API_LIMITS.MAX_ASSETS_LIMIT), 10), API_LIMITS.MAX_ASSETS_LIMIT);
     const offset = parseInt(c.req.query("offset") || "0", 10);
 
     try {
         const conn = await getDuckDBConnection();
 
         const sql = `
-      SELECT 
+      SELECT
         asset,
         asset_name as "assetName",
         cusip
@@ -36,13 +37,11 @@ assetsRoutes.get("/", async (c) => {
             cusip: row[2] as string | null,
         }));
 
-        // Query completed in: Math.round((performance.now() - startTime) * 100) / 100 ms
-
         return c.json(results);
     } catch (error) {
         console.error("[DuckDB Assets] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: "Assets query failed", details: errorMessage }, 500);
+        return c.json({ error: ERROR_MESSAGES.ASSETS_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
     }
 });
 
@@ -89,7 +88,7 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
         const rows = reader.getRows();
 
         if (rows.length === 0) {
-            return c.json({ error: "Asset not found" }, 404);
+            return c.json({ error: "Asset not found" }, HTTP_STATUS_CODES.NOT_FOUND);
         }
 
         const row = rows[0];
@@ -102,7 +101,7 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
     } catch (error) {
         console.error("[DuckDB Asset] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: "Asset query failed", details: errorMessage }, 500);
+        return c.json({ error: ERROR_MESSAGES.ASSET_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
     }
 });
 

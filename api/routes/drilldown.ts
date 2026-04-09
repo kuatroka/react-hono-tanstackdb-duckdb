@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDuckDBConnection } from "../duckdb";
+import { ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
 
 const drilldownRoutes = new Hono();
 
@@ -77,8 +78,6 @@ drilldownRoutes.get("/:ticker", async (c) => {
   const limit = parseInt(c.req.query("limit") || "500", 10);
 
   try {
-    const startTime = performance.now();
-
     // Build and execute raw SQL query with DuckDB native parquet reading
     const query = buildDrilldownQuery(ticker, quarter, action, limit);
     const conn = await getDuckDBConnection();
@@ -95,32 +94,29 @@ drilldownRoutes.get("/:ticker", async (c) => {
       cusip_ticker: row[8] == null ? null : String(row[8]),
     }));
 
-    const queryTime = performance.now() - startTime;
-
     return c.json({
       ticker,
       quarter,
       action,
       count: result.length,
-      queryTimeMs: Math.round(queryTime * 100) / 100,
       data: result,
     });
   } catch (error) {
     console.error("Drilldown query error:", error);
-    
+
     // Check if it's a "file not found" type error (ticker doesn't exist)
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (errorMessage.includes("No files found") || errorMessage.includes("does not exist")) {
-      return c.json({ 
+      return c.json({
         error: `No data found for ticker: ${ticker}`,
         ticker,
-      }, 404);
+      }, HTTP_STATUS_CODES.NOT_FOUND);
     }
 
-    return c.json({ 
-      error: "Failed to query drilldown data",
+    return c.json({
+      error: ERROR_MESSAGES.DRILLDOWN_QUERY_FAILED,
       details: errorMessage,
-    }, 500);
+    }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
   }
 });
 
@@ -161,8 +157,6 @@ drilldownRoutes.get("/:ticker/summary", async (c) => {
   const quarter = c.req.query("quarter") || null;
 
   try {
-    const startTime = performance.now();
-
     const query = buildSummaryQuery(ticker, quarter);
     const conn = await getDuckDBConnection();
     const reader = await conn.runAndReadAll(query);
@@ -176,29 +170,26 @@ drilldownRoutes.get("/:ticker/summary", async (c) => {
       total_count: Number(row[6]) || 0,
     }));
 
-    const queryTime = performance.now() - startTime;
-
     return c.json({
       ticker,
       quarter,
-      queryTimeMs: Math.round(queryTime * 100) / 100,
       summary: result,
     });
   } catch (error) {
     console.error("Drilldown summary error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     if (errorMessage.includes("No files found") || errorMessage.includes("does not exist")) {
-      return c.json({ 
+      return c.json({
         error: `No data found for ticker: ${ticker}`,
         ticker,
-      }, 404);
+      }, HTTP_STATUS_CODES.NOT_FOUND);
     }
 
-    return c.json({ 
-      error: "Failed to query drilldown summary",
+    return c.json({
+      error: ERROR_MESSAGES.DRILLDOWN_QUERY_FAILED,
       details: errorMessage,
-    }, 500);
+    }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
   }
 });
 
