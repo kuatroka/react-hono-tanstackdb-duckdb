@@ -6,12 +6,14 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useLiveQuery } from "@tanstack/react-db";
 import { InvestorActivityDrilldownTable } from "@/components/InvestorActivityDrilldownTable";
-import { assetActivityCollection } from "@/collections";
+import {
+  fetchAssetActivityData,
+  getAssetActivityFromCollection,
+  type AssetActivityData,
+} from "@/collections/asset-activity";
 import {
   backgroundLoadAllDrilldownData,
   fetchDrilldownBothActions,
@@ -27,20 +29,13 @@ export interface InvestorActivitySelection {
 
 interface AssetDrilldownSectionContextValue {
   setSelection: (next: InvestorActivitySelection) => void;
-  setHoverSelection: (next: InvestorActivitySelection | null) => void;
 }
 
-interface HoverSelectionStore {
-  getSnapshot: () => InvestorActivitySelection | null;
-  subscribe: (listener: () => void) => () => void;
-  set: (next: InvestorActivitySelection | null) => void;
-}
-
-type ActivityRowPreview = {
+interface ActivityRowPreview {
   quarter: string;
   numOpen?: number | null;
   numClose?: number | null;
-};
+}
 
 function getDefaultInvestorActivitySelection(rows: ActivityRowPreview[]): InvestorActivitySelection | null {
   if (rows.length === 0) return null;
@@ -60,8 +55,8 @@ function getDefaultInvestorActivitySelection(rows: ActivityRowPreview[]): Invest
     return { quarter: latestQuarter, action: "close" };
   }
 
-  for (let i = rows.length - 2; i >= 0; i--) {
-    const row = rows[i];
+  for (let index = rows.length - 2; index >= 0; index -= 1) {
+    const row = rows[index];
     if (!row?.quarter) continue;
 
     const hasOpen = Boolean(row.numOpen && row.numOpen > 0);
@@ -81,34 +76,6 @@ function getDefaultInvestorActivitySelection(rows: ActivityRowPreview[]): Invest
 
 const AssetDrilldownSectionContext = createContext<AssetDrilldownSectionContextValue | null>(null);
 
-function createHoverSelectionStore(): HoverSelectionStore {
-  let current: InvestorActivitySelection | null = null;
-  const listeners = new Set<() => void>();
-
-  return {
-    getSnapshot: () => current,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    set: (next) => {
-      if (
-        current?.quarter === next?.quarter
-        && current?.action === next?.action
-      ) {
-        return;
-      }
-
-      current = next;
-      for (const listener of listeners) {
-        listener();
-      }
-    },
-  };
-}
-
 export function useAssetDrilldownSection() {
   const context = useContext(AssetDrilldownSectionContext);
   if (!context) {
@@ -125,92 +92,61 @@ interface AssetDrilldownSectionProps {
   children: ReactNode;
 }
 
-interface AssetDrilldownInteractionPanelsProps {
+interface AssetDrilldownDetailsPanelProps {
   ticker: string;
   cusip: string | null;
   hasCusip: boolean;
   resolvedSelection: InvestorActivitySelection | null;
-  hoverSelectionStore: HoverSelectionStore;
 }
 
-function AssetDrilldownInteractionPanels({
+function areActivityRowsEqual(left: AssetActivityData[], right: AssetActivityData[]) {
+  if (left.length !== right.length) return false;
+  return left.every((row, index) => {
+    const other = right[index];
+    return other
+      && row.id === other.id
+      && row.quarter === other.quarter
+      && row.numOpen === other.numOpen
+      && row.numClose === other.numClose;
+  });
+}
+
+function getSortedAssetActivityRows(code: string, cusip: string | null, hasCusip: boolean) {
+  return [...getAssetActivityFromCollection(code, hasCusip ? cusip : null)].sort((left, right) =>
+    left.quarter.localeCompare(right.quarter),
+  );
+}
+
+function AssetDrilldownDetailsPanel({
   ticker,
   cusip,
   hasCusip,
   resolvedSelection,
-  hoverSelectionStore,
-}: AssetDrilldownInteractionPanelsProps) {
-  const hoverSelection = useSyncExternalStore(
-    hoverSelectionStore.subscribe,
-    hoverSelectionStore.getSnapshot,
-    hoverSelectionStore.getSnapshot,
-  );
-
-  if ((resolvedSelection || hoverSelection) && hasCusip && cusip) {
+}: AssetDrilldownDetailsPanelProps) {
+  if (!hasCusip) {
     return (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">
-              Click Interaction
-            </span>
-            {resolvedSelection && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Locked
-              </span>
-            )}
-          </div>
-          {resolvedSelection ? (
-            <InvestorActivityDrilldownTable
-              key={`click-${ticker}-${cusip}-${resolvedSelection.quarter}-${resolvedSelection.action}`}
-              ticker={ticker}
-              cusip={cusip}
-              quarter={resolvedSelection.quarter}
-              action={resolvedSelection.action}
-            />
-          ) : (
-            <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
-              Click a bar in the chart to see details
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-2 text-sm font-medium text-muted-foreground">
-            Hover Interaction
-          </div>
-          {hoverSelection ? (
-            <InvestorActivityDrilldownTable
-              ticker={ticker}
-              cusip={cusip}
-              quarter={hoverSelection.quarter}
-              action={hoverSelection.action}
-            />
-          ) : (
-            <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
-              Hover over a bar in the chart to see details
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (resolvedSelection || hoverSelection) {
-    return (
-      <div className="py-8 text-center text-muted-foreground">
+      <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
         No CUSIP available for this asset.
       </div>
     );
   }
 
+  if (!resolvedSelection || !cusip) {
+    return (
+      <div className="rounded-lg border border-border bg-card py-8 text-center text-muted-foreground">
+        Click a bar in the chart to see details
+      </div>
+    );
+  }
+
   return (
-    <div className="py-8 text-center text-muted-foreground">
-      Click or hover over a bar in the chart to see which superinvestors opened or closed positions.
-    </div>
+    <InvestorActivityDrilldownTable
+      key={`click-${ticker}-${cusip}-${resolvedSelection.quarter}-${resolvedSelection.action}`}
+      ticker={ticker}
+      cusip={cusip}
+      quarter={resolvedSelection.quarter}
+      action={resolvedSelection.action}
+    />
   );
 }
 
@@ -221,25 +157,48 @@ export function AssetDrilldownSection({
   hasCusip,
   children,
 }: AssetDrilldownSectionProps) {
-  const { data: activityCollectionData } = useLiveQuery((q) => q.from({ rows: assetActivityCollection }));
+  const [activityRows, setActivityRows] = useState<AssetActivityData[]>(() => {
+    if (!code) return [];
+    return getSortedAssetActivityRows(code, cusip, hasCusip);
+  });
   const [selection, setSelection] = useState<InvestorActivitySelection | null>(null);
   const [backgroundLoadProgress, setBackgroundLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
   const scrollYRef = useRef<number | null>(null);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundLoadStartedRef = useRef(false);
-  const backgroundLoadGenerationRef = useRef(0);
-  const hoverSelectionStore = useMemo(createHoverSelectionStore, []);
+  const eagerSelectionKeyRef = useRef<string | null>(null);
 
-  const activityRows = useMemo(() => {
-    if (!activityCollectionData) return [];
-    return activityCollectionData
-      .filter((row) => (
-        hasCusip
-          ? row.ticker === code && row.cusip === cusip
-          : row.ticker === code
-      ))
-      .sort((left, right) => left.quarter.localeCompare(right.quarter));
-  }, [activityCollectionData, code, cusip, hasCusip]);
+  useEffect(() => {
+    if (!code) {
+      setActivityRows([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fallbackRows = getSortedAssetActivityRows(code, cusip, hasCusip);
+    setActivityRows((currentRows) => areActivityRowsEqual(currentRows, fallbackRows) ? currentRows : fallbackRows);
+
+    void (async () => {
+      try {
+        const { rows } = await fetchAssetActivityData(code, hasCusip ? cusip : null);
+        const resolvedRows = rows.length > 0
+          ? rows
+          : fallbackRows;
+        if (!cancelled) {
+          const sortedRows = [...resolvedRows].sort((left, right) => left.quarter.localeCompare(right.quarter));
+          setActivityRows((currentRows) => areActivityRowsEqual(currentRows, sortedRows) ? currentRows : sortedRows);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("[AssetDrilldownSection] Failed to load asset activity:", error);
+          setActivityRows((currentRows) => areActivityRowsEqual(currentRows, fallbackRows) ? currentRows : fallbackRows);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code, cusip, hasCusip]);
 
   const defaultSelection = useMemo(() => {
     if (selection || activityRows.length === 0 || !code || !hasCusip || !cusip) return null;
@@ -255,21 +214,6 @@ export function AssetDrilldownSection({
     setSelection(next);
   }, []);
 
-  const handleHoverChange = useCallback((next: InvestorActivitySelection | null) => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-
-    if (next) {
-      hoverTimeoutRef.current = setTimeout(() => {
-        hoverSelectionStore.set(next);
-      }, 150);
-      return;
-    }
-
-    hoverSelectionStore.set(null);
-  }, [hoverSelectionStore]);
-
   useEffect(() => {
     if (scrollYRef.current == null) return;
     const y = scrollYRef.current;
@@ -284,22 +228,26 @@ export function AssetDrilldownSection({
   }, [selection]);
 
   useEffect(() => {
+    backgroundLoadStartedRef.current = false;
+    eagerSelectionKeyRef.current = null;
+    setSelection(null);
+    setBackgroundLoadProgress(null);
+  }, [code, cusip, hasCusip]);
+
+  useEffect(() => {
     return () => {
       clearAssetDetailRouteCaches();
     };
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-      hoverSelectionStore.set(null);
-    };
-  }, [hoverSelectionStore]);
-
-  useEffect(() => {
     if (!defaultSelection || !code || !hasCusip || !cusip) return;
+
+    const selectionKey = `${code}:${cusip}:${defaultSelection.quarter}`;
+    if (eagerSelectionKeyRef.current === selectionKey) {
+      return;
+    }
+    eagerSelectionKeyRef.current = selectionKey;
 
     fetchDrilldownBothActions(code, cusip, defaultSelection.quarter).catch((error) => {
       console.error("[AssetDrilldownSection] Failed eager drilldown load:", error);
@@ -312,7 +260,6 @@ export function AssetDrilldownSection({
     }
 
     backgroundLoadStartedRef.current = true;
-    const generation = backgroundLoadGenerationRef.current;
     let cancelled = false;
 
     const timeoutId = setTimeout(() => {
@@ -321,13 +268,13 @@ export function AssetDrilldownSection({
         cusip,
         [],
         (loaded, total) => {
-          if (cancelled || backgroundLoadGenerationRef.current !== generation) {
+          if (cancelled) {
             return;
           }
           setBackgroundLoadProgress({ loaded, total });
         },
       ).catch((error) => {
-        if (!cancelled && backgroundLoadGenerationRef.current === generation) {
+        if (!cancelled) {
           console.error("[AssetDrilldownSection] Failed background drilldown load:", error);
         }
       });
@@ -341,16 +288,13 @@ export function AssetDrilldownSection({
 
   const contextValue = useMemo<AssetDrilldownSectionContextValue>(() => ({
     setSelection: handleSelectionChange,
-    setHoverSelection: handleHoverChange,
-  }), [handleHoverChange, handleSelectionChange]);
+  }), [handleSelectionChange]);
 
   return (
     <AssetDrilldownSectionContext.Provider value={contextValue}>
-      {children}
-
-      <div className="mt-8 min-h-[200px]">
+      <div className="space-y-4">
         {backgroundLoadProgress && backgroundLoadProgress.loaded < backgroundLoadProgress.total && (
-          <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span>
               Pre-loading drill-down data: {backgroundLoadProgress.loaded}/{backgroundLoadProgress.total}
@@ -360,19 +304,24 @@ export function AssetDrilldownSection({
         )}
 
         {backgroundLoadProgress && backgroundLoadProgress.loaded === backgroundLoadProgress.total && (
-          <div className="mb-4 flex items-center gap-2 text-sm text-green-600">
+          <div className="flex items-center gap-2 text-sm text-green-600">
             <span>✓ All drill-down data loaded - clicks are now instant!</span>
           </div>
         )}
 
-        <AssetDrilldownInteractionPanels
-          ticker={ticker}
-          cusip={cusip}
-          hasCusip={hasCusip}
-          resolvedSelection={resolvedSelection}
-          hoverSelectionStore={hoverSelectionStore}
-        />
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="min-w-0">{children}</div>
+
+          <div className="min-w-0">
+            <AssetDrilldownDetailsPanel
+              ticker={ticker}
+              cusip={cusip}
+              hasCusip={hasCusip}
+              resolvedSelection={resolvedSelection}
+            />
+          </div>
+        </div>
       </div>
     </AssetDrilldownSectionContext.Provider>
   );
- }
+}

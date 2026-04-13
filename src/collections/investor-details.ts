@@ -53,7 +53,16 @@ export const investorDrilldownCollection = createCollection(
 )
 
 function getAllDrilldownRows(): InvestorDetail[] {
-    return Array.from(investorDrilldownCollection.entries()).map(([, value]) => value)
+    flushBufferedRowsIfReady()
+
+    const merged = new Map<string, InvestorDetail>()
+    for (const [id, value] of investorDrilldownCollection.entries()) {
+        merged.set(id, value)
+    }
+    for (const [id, value] of bufferedRows.entries()) {
+        merged.set(id, value)
+    }
+    return Array.from(merged.values())
 }
 
 const fetchedCombinations = new Set<string>()
@@ -63,6 +72,73 @@ const inFlightBothActionsFetches = new Map<string, Promise<{ rows: InvestorDetai
 const inFlightBulkFetches = new Map<string, Promise<void>>()
 
 const bulkFetchedPairs = new Set<string>()
+const bufferedRows = new Map<string, InvestorDetail>()
+
+function isSyncNotInitializedError(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('SyncNotInitializedError')
+}
+
+function flushBufferedRowsIfReady(): void {
+    if (bufferedRows.size === 0 || !investorDrilldownCollection.isReady()) {
+        return
+    }
+
+    const rows = Array.from(bufferedRows.values())
+    try {
+        investorDrilldownCollection.utils.writeUpsert(rows)
+        bufferedRows.clear()
+    } catch (error) {
+        if (!isSyncNotInitializedError(error)) {
+            throw error
+        }
+    }
+}
+
+function safeWriteUpsert(rows: InvestorDetail[]): void {
+    if (rows.length === 0) {
+        return
+    }
+
+    if (investorDrilldownCollection.isReady()) {
+        try {
+            investorDrilldownCollection.utils.writeUpsert(rows)
+            for (const row of rows) {
+                bufferedRows.delete(row.id)
+            }
+            return
+        } catch (error) {
+            if (!isSyncNotInitializedError(error)) {
+                throw error
+            }
+        }
+    }
+
+    for (const row of rows) {
+        bufferedRows.set(row.id, row)
+    }
+}
+
+function safeWriteDelete(ids: string[]): void {
+    if (ids.length === 0) {
+        return
+    }
+
+    for (const id of ids) {
+        bufferedRows.delete(id)
+    }
+
+    if (!investorDrilldownCollection.isReady()) {
+        return
+    }
+
+    try {
+        investorDrilldownCollection.utils.writeDelete(ids)
+    } catch (error) {
+        if (!isSyncNotInitializedError(error)) {
+            throw error
+        }
+    }
+}
 
 // Track if we've loaded from IndexedDB
 let indexedDBLoaded = false
@@ -89,7 +165,7 @@ export async function loadDrilldownFromIndexedDB(): Promise<boolean> {
             }
             
             // Restore rows to collection
-            investorDrilldownCollection.utils.writeUpsert(persisted.rows)
+            safeWriteUpsert(persisted.rows)
             
             // Restore fetched combinations
             for (const combo of persisted.fetchedCombinations) {
@@ -264,7 +340,7 @@ export async function fetchDrilldownBothActions(
         const existingIds = new Set(getAllDrilldownRows().map(r => r.id))
         const dedupedRows = rows.filter(r => !existingIds.has(r.id))
         if (dedupedRows.length > 0) {
-            investorDrilldownCollection.utils.writeUpsert(dedupedRows)
+            safeWriteUpsert(dedupedRows)
         }
 
         fetchedCombinations.add(`${ticker}-${cusip}-${quarter}-open`)
@@ -356,7 +432,7 @@ export async function backgroundLoadAllDrilldownData(
     const existingIds = new Set(getAllDrilldownRows().map(r => r.id))
     const dedupedRows = rows.filter(r => !existingIds.has(r.id))
     if (dedupedRows.length > 0) {
-        investorDrilldownCollection.utils.writeUpsert(dedupedRows)
+        safeWriteUpsert(dedupedRows)
     }
 
     // Mark fetched combinations so table reads are instant
@@ -400,9 +476,10 @@ export function getDrilldownDataFromCollection(
 export function clearAllDrilldownData(): void {
     const ids = getAllDrilldownRows().map((row) => row.id)
     if (ids.length > 0) {
-        investorDrilldownCollection.utils.writeDelete(ids)
+        safeWriteDelete(ids)
     }
 
+    bufferedRows.clear()
     fetchedCombinations.clear()
     inFlightBothActionsFetches.clear()
     inFlightBulkFetches.clear()

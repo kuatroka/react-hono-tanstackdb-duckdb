@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { chromium } from "playwright";
 import { execSync } from "child_process";
 
@@ -34,7 +35,7 @@ async function run() {
             // Get RSS (Resident Set Size) in KB, convert to MB
             const rssKb = execSync(`ps -o rss= -p ${rendererProcess.id}`).toString().trim();
             osMemory = parseInt(rssKb, 10) / 1024;
-        } catch (e) {
+        } catch {
             // Ignore if process not found or ps fails
         }
     }

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getDuckDBConnection } from "../duckdb";
+import { getCikQuarterly } from "../repositories/cik-quarterly-repository";
 
 const cikQuarterlyRoutes = new Hono();
 
@@ -12,10 +12,6 @@ export interface CikQuarterlyData {
     numAssets: number;
 }
 
-function escapeSqlLiteral(value: string) {
-    return value.replace(/'/g, "''");
-}
-
 /**
  * GET /api/cik-quarterly/:cik
  *
@@ -26,32 +22,7 @@ cikQuarterlyRoutes.get("/:cik", async (c) => {
     const cik = c.req.param("cik");
 
     try {
-        const conn = await getDuckDBConnection();
-
-        const sql = `
-            SELECT
-                cik,
-                quarter,
-                quarter_end_date,
-                ttl_value_per_cik_per_qtr,
-                ttl_value_per_cik_per_qtr_prc_chg,
-                num_assets_per_cik_per_qtr
-            FROM every_cik_qtr
-            WHERE cik = '${escapeSqlLiteral(cik)}'
-            ORDER BY quarter_end_date ASC
-        `;
-
-        const reader = await conn.runAndReadAll(sql);
-        const rows = reader.getRows();
-
-        const results: CikQuarterlyData[] = rows.map((row: unknown[]) => ({
-            cik: row[0] == null ? "" : String(row[0]),
-            quarter: row[1] == null ? "" : String(row[1]),
-            quarterEndDate: row[2] == null ? "" : String(row[2]),
-            totalValue: Number(row[3]) || 0,
-            totalValuePrcChg: row[4] != null ? Number(row[4]) : null,
-            numAssets: Number(row[5]) || 0,
-        }));
+        const results = await getCikQuarterly(c, cik);
 
         return c.json(results);
     } catch (error) {

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useLiveQuery } from "@tanstack/react-db";
 import { LatencyBadge } from "@/components/LatencyBadge";
 import { GlobalSearchInput } from "@/components/global-search/GlobalSearchInput";
 import { GlobalSearchResults } from "@/components/global-search/GlobalSearchResults";
@@ -78,22 +77,12 @@ export function DuckDBGlobalSearch() {
   const [isUsingApi, setIsUsingApi] = useState(false);
   const [apiResults, setApiResults] = useState<SearchResult[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [allItems, setAllItems] = useState<CollectionSearchResult[]>([]);
   const apiRequestSequenceRef = useRef(0);
 
   // 50ms debounce
   const debouncedQuery = useDebounce(query.trim(), 50);
   const shouldSearch = debouncedQuery.length >= 2;
-
-  // Use TanStack DB live query for reactive local search
-  // Pattern matches AssetsTable.tsx - no .select() needed
-  const { data: searchData } = useLiveQuery(
-    (q) => q.from({ searches: searchesCollection })
-  );
-
-  // Get all items from the collection
-  const allItems = useMemo(() => {
-    return (searchData ?? []) as CollectionSearchResult[];
-  }, [searchData]);
 
   // Build search index when data is available (one-time operation)
   const indexBuiltRef = useRef(false);
@@ -152,6 +141,9 @@ export function DuckDBGlobalSearch() {
       if (syncState.status !== 'complete') {
         await preloadSearches();
       }
+
+      const loadedItems = Array.from(searchesCollection.entries()).map(([, value]) => value as CollectionSearchResult);
+      setAllItems(loadedItems);
       setIsInitialized(true);
     } catch (error) {
       console.error('[Search] Search index load failed:', error);

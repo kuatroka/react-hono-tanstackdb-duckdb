@@ -52,7 +52,7 @@ export async function fetchAssetRecord(code: string, cusip?: string | null): Pro
 const inFlightAssetListLoads = new Map<string, Promise<Asset[]>>()
 
 export function createAssetsCollection(queryClient: QueryClient) {
-    return createCollection(
+    const collection = createCollection(
         queryCollectionOptions({
             queryKey: ['assets'],
             queryFn: async () => {
@@ -101,6 +101,9 @@ export function createAssetsCollection(queryClient: QueryClient) {
             syncMode: 'eager',
         })
     )
+
+    assetsCollection = collection
+    return collection
 }
 
 // Singleton instance - will be initialized in instances.ts

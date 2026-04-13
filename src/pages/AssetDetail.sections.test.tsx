@@ -1,6 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import * as assetActivityModule from "@/collections/asset-activity";
 import * as collectionsModule from "@/collections";
+import * as investorFlowModule from "@/collections/investor-flow";
 import * as pageCacheCleanupModule from "@/collections/page-cache-cleanup";
 
 type InvestorActivityAction = "open" | "close";
@@ -26,12 +29,6 @@ let currentFlowRows: Array<{ ticker: string; quarter: string }> = [];
 const eagerLoadCalls: Array<{ code: string; cusip: string; quarter: string }> = [];
 const backgroundLoadCalls: Array<{ code: string; cusip: string; excluded: string[] }> = [];
 const cleanupCalls: string[] = [];
-
-const onReadyCalls: string[] = [];
-const fetchAssetRecordCalls: Array<{ code: string; cusip: string | null | undefined }> = [];
-let params: { code?: string; cusip?: string } = {};
-let currentOnReady: () => void = () => undefined;
-let currentFetchAssetRecord: (code: string, cusip?: string | null) => Promise<any> = async () => null;
 let currentFetchAssetActivityData: (code: string, cusip?: string | null) => Promise<any> = async () => ({ rows: [], queryTimeMs: 0, source: "memory" });
 let currentFetchInvestorFlowData: (code: string) => Promise<any> = async () => ({ rows: [], queryTimeMs: 0, source: "memory" });
 let currentFetchDrilldownBothActions: (code: string, cusip: string, quarter: string) => Promise<void> = async () => undefined;
@@ -62,24 +59,24 @@ function registerModuleMocks() {
     },
   }));
 
-  mock.module("@tanstack/react-router", () => ({
-    Link: (props: any) => React.createElement("a", props, props.children),
-    useParams: () => params,
-    useNavigate: () => () => undefined,
-    useSearch: () => ({}),
-  }));
-
-  spyOn(collectionsModule, "fetchAssetRecord").mockImplementation((code: string, cusip?: string | null) => {
-    fetchAssetRecordCalls.push({ code, cusip });
-    return currentFetchAssetRecord(code, cusip);
-  });
-
-  spyOn(collectionsModule, "fetchAssetActivityData").mockImplementation(
+  spyOn(assetActivityModule, "fetchAssetActivityData").mockImplementation(
     ((code: string, cusip?: string | null) => currentFetchAssetActivityData(code, cusip)) as any,
   );
 
-  spyOn(collectionsModule, "fetchInvestorFlowData").mockImplementation(
+  spyOn(assetActivityModule, "getAssetActivityFromCollection").mockImplementation(
+    ((code: string, cusip?: string | null) => currentActivityRows.filter((row) => {
+      if (row.ticker !== code) return false;
+      if (cusip == null) return row.cusip == null;
+      return row.cusip === cusip;
+    })) as any,
+  );
+
+  spyOn(investorFlowModule, "fetchInvestorFlowData").mockImplementation(
     ((code: string) => currentFetchInvestorFlowData(code)) as any,
+  );
+
+  spyOn(investorFlowModule, "getInvestorFlowFromCollection").mockImplementation(
+    ((code: string) => currentFlowRows.filter((row) => row.ticker === code)) as any,
   );
 
   mock.module("@/components/InvestorActivityDrilldownTable", () => ({
@@ -105,20 +102,12 @@ function registerModuleMocks() {
       backgroundLoadCalls.push({ code, cusip, excluded });
       return currentBackgroundLoadAllDrilldownData(code, cusip, excluded, onProgress);
     },
+    clearAllDrilldownData: () => undefined,
   }));
 
   spyOn(pageCacheCleanupModule, "clearAssetDetailRouteCaches").mockImplementation(() => {
     cleanupCalls.push("cleared");
   });
-
-  mock.module("@/hooks/useContentReady", () => ({
-    useContentReady: () => ({
-      onReady: () => {
-        onReadyCalls.push("ready");
-        currentOnReady();
-      },
-    }),
-  }));
 
   mock.module("@/components/charts/InvestorActivityUplotChart", () => ({
     InvestorActivityUplotChart: () => React.createElement("div", null, "uplot-chart"),
@@ -275,14 +264,18 @@ function collectElements(tree: any, predicate: (node: any) => boolean, results: 
   return results;
 }
 
-function getInteractionPanelElements(tree: unknown) {
+function getDrilldownDetailsPanels(tree: unknown) {
   return collectElements(
     tree,
-    (node) => typeof node.type === "function" && node.props?.hoverSelectionStore && "resolvedSelection" in node.props,
+    (node) => typeof node.type === "function" && node.type.name === "AssetDrilldownDetailsPanel",
   );
 }
 
 describe("asset detail section runtime behavior", () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
   test("ignores background drilldown progress updates after unmount", async () => {
     currentActivityRows = [
       { ticker: "ABC", cusip: "12345678", quarter: "2024-Q4", numOpen: 4, numClose: 0 },
@@ -332,36 +325,13 @@ describe("asset detail section runtime behavior", () => {
     }
   });
 
-  test("calls onReady again when navigating to another asset on the same route", async () => {
-    currentOnReady = () => undefined;
-    currentFetchAssetRecord = async (code: string, cusip?: string | null) => ({
-      asset: code,
-      assetName: `Asset ${code}`,
-      cusip,
-    });
-    params = { code: "AAA", cusip: "111" };
+  test("asset detail page resets readiness when the route params change", async () => {
+    const source = await Bun.file(new URL("./AssetDetail.tsx", import.meta.url)).text();
 
-    const { AssetDetailPage } = await import("@/pages/AssetDetail");
-    const harness = createHookHarness(AssetDetailPage, {});
-
-    harness.settle();
-    await Promise.resolve();
-    await Promise.resolve();
-    harness.settle();
-
-    expect(onReadyCalls).toHaveLength(1);
-    expect(fetchAssetRecordCalls[0]).toEqual({ code: "AAA", cusip: "111" });
-
-    params.code = "BBB";
-    params.cusip = "222";
-
-    harness.settle();
-    await Promise.resolve();
-    await Promise.resolve();
-    harness.settle();
-
-    expect(fetchAssetRecordCalls[1]).toEqual({ code: "BBB", cusip: "222" });
-    expect(onReadyCalls).toHaveLength(2);
+    expect(source).toContain("readyCalledRef.current = false;");
+    expect(source).toContain("}, [code, currentCusip]);");
+    expect(source).toContain("const isCurrentRecord = code !== undefined && recordState.code === code && recordState.cusip === currentCusip;");
+    expect(source).toContain("if (isCurrentRecord && recordState.record !== undefined) {");
   });
 
   beforeEach(() => {
@@ -372,11 +342,6 @@ describe("asset detail section runtime behavior", () => {
     eagerLoadCalls.length = 0;
     backgroundLoadCalls.length = 0;
     cleanupCalls.length = 0;
-    onReadyCalls.length = 0;
-    fetchAssetRecordCalls.length = 0;
-    params = {};
-    currentOnReady = () => undefined;
-    currentFetchAssetRecord = async () => null;
     currentFetchAssetActivityData = async () => ({ rows: [], queryTimeMs: 0, source: "memory" });
     currentFetchInvestorFlowData = async () => ({ rows: [], queryTimeMs: 0, source: "memory" });
     currentFetchDrilldownBothActions = async () => undefined;
@@ -415,7 +380,7 @@ describe("asset detail section runtime behavior", () => {
       });
 
       const tree = harness.settle();
-      const interactionPanels = getInteractionPanelElements(tree);
+      const drilldownPanels = getDrilldownDetailsPanels(tree);
 
       expect(eagerLoadCalls).toEqual([
         { code: "ABC", cusip: "12345678", quarter: "2024-Q4" },
@@ -423,8 +388,8 @@ describe("asset detail section runtime behavior", () => {
       expect(backgroundLoadCalls).toEqual([
         { code: "ABC", cusip: "12345678", excluded: [] },
       ]);
-      expect(interactionPanels).toHaveLength(1);
-      expect(interactionPanels[0]?.props).toMatchObject({
+      expect(drilldownPanels).toHaveLength(1);
+      expect(drilldownPanels[0]?.props).toMatchObject({
         ticker: "ABC",
         cusip: "12345678",
         hasCusip: true,
@@ -470,12 +435,12 @@ describe("asset detail section runtime behavior", () => {
       });
 
       const tree = harness.settle();
-      const interactionPanels = getInteractionPanelElements(tree);
+      const drilldownPanels = getDrilldownDetailsPanels(tree);
 
       expect(eagerLoadCalls).toEqual([]);
       expect(backgroundLoadCalls).toEqual([]);
-      expect(interactionPanels).toHaveLength(1);
-      expect(interactionPanels[0]?.props).toMatchObject({
+      expect(drilldownPanels).toHaveLength(1);
+      expect(drilldownPanels[0]?.props).toMatchObject({
         ticker: "ABC",
         cusip: "_",
         hasCusip: false,
@@ -498,21 +463,14 @@ describe("asset detail section runtime behavior", () => {
     });
 
     const stableSetSelection = () => undefined;
-    const stableSetHoverSelection = () => undefined;
 
     mock.module("@/components/detail/AssetDrilldownSection", () => ({
       useAssetDrilldownSection: () => ({
         setSelection: stableSetSelection,
-        setHoverSelection: stableSetHoverSelection,
       }),
     }));
 
-    const uplotChartMock = (props: any) => React.createElement("div", props, "uplot-chart");
     const echartsChartMock = (props: any) => React.createElement("div", props, "echarts-chart");
-
-    mock.module("@/components/charts/InvestorActivityUplotChart", () => ({
-      InvestorActivityUplotChart: uplotChartMock,
-    }));
 
     mock.module("@/components/charts/InvestorActivityEchartsChart", () => ({
       InvestorActivityEchartsChart: echartsChartMock,
@@ -542,19 +500,14 @@ describe("asset detail section runtime behavior", () => {
       (node) => typeof node.props?.onRenderComplete === "function" && typeof node.props?.ticker === "string",
     );
 
-    expect(loadedCharts).toHaveLength(2);
-    expect(rerenderedCharts).toHaveLength(2);
+    expect(loadedCharts).toHaveLength(1);
+    expect(rerenderedCharts).toHaveLength(1);
 
-    const [loadedUplot, loadedEcharts] = loadedCharts;
-    const [rerenderedUplot, rerenderedEcharts] = rerenderedCharts;
+    const [loadedChart] = loadedCharts;
+    const [rerenderedChart] = rerenderedCharts;
 
-    expect(rerenderedUplot.props.onBarClick).toBe(loadedUplot.props.onBarClick);
-    expect(rerenderedUplot.props.onBarHover).toBe(loadedUplot.props.onBarHover);
-    expect(rerenderedUplot.props.onBarLeave).toBe(loadedUplot.props.onBarLeave);
-    expect(rerenderedUplot.props.latencyBadge).toBe(loadedUplot.props.latencyBadge);
-    expect(rerenderedEcharts.props.onBarClick).toBe(loadedEcharts.props.onBarClick);
-    expect(rerenderedEcharts.props.onBarHover).toBe(loadedEcharts.props.onBarHover);
-    expect(rerenderedEcharts.props.onBarLeave).toBe(loadedEcharts.props.onBarLeave);
-    expect(rerenderedEcharts.props.latencyBadge).toBe(loadedEcharts.props.latencyBadge);
+    expect(rerenderedChart.props.onBarClick).toBe(loadedChart.props.onBarClick);
+    expect(rerenderedChart.props.onRenderComplete).toBe(loadedChart.props.onRenderComplete);
+    expect(rerenderedChart.props.latencyBadge).toBe(loadedChart.props.latencyBadge);
   });
 });

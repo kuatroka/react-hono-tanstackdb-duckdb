@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { SignJWT } from "jose";
+import { duckDbLeaseMiddleware } from "./db/hono-db-middleware";
+import dbStatusRoutes from "./routes/db-status";
 import drilldownRoutes from "./routes/drilldown";
 import searchDuckdbRoutes from "./routes/search-duckdb";
 import duckdbInvestorDrilldownRoutes from "./routes/duckdb-investor-drilldown";
@@ -17,6 +19,8 @@ export const config = {
 
 export const app = new Hono().basePath("/api");
 
+app.use("*", duckDbLeaseMiddleware);
+
 // Data routes now all come from DuckDB/REST-backed handlers.
 app.route("/drilldown", drilldownRoutes);
 app.route("/duckdb-search", searchDuckdbRoutes);
@@ -27,6 +31,7 @@ app.route("/superinvestors", superinvestorsRoutes);
 app.route("/investor-flow", investorFlowRoutes);
 app.route("/cik-quarterly", cikQuarterlyRoutes);
 app.route("/data-freshness", dataFreshnessRoutes);
+app.route("/db-status", dbStatusRoutes);
 
 // See seed.sql
 // In real life you would of course authenticate the user however you like.

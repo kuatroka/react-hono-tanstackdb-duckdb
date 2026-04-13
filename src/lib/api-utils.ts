@@ -1,13 +1,10 @@
-import { HTTP_STATUS_CODES } from "./constants";
-
 /**
  * Standardized error response for API routes
  */
-export function apiErrorResponse<T>(
+export function apiErrorResponse(
   error: unknown,
   context: string,
-  defaultMessage: string,
-  statusCode: number = HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR
+  defaultMessage: string
 ) {
   console.error(`[${context}] Error:`, error);
 
@@ -33,14 +30,7 @@ export function apiErrorResponse<T>(
  * Wrapper for async route handlers with standardized error handling
  */
 export function asyncHandler<T>(
-  fn: (c: any) => Promise<T>
+  fn: (c: unknown) => Promise<T>
 ) {
-  return async (c: any) => {
-    try {
-      return await fn(c);
-    } catch (error) {
-      // This will be customized per route since error messages vary
-      throw error;
-    }
-  };
+  return async (c: unknown) => fn(c);
 }

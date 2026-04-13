@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getDuckDBConnection } from "../duckdb";
+import { listAssets, getAssetByCode } from "../repositories/assets-repository";
 import { API_LIMITS, ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
 
 const assetsRoutes = new Hono();
@@ -15,28 +15,7 @@ assetsRoutes.get("/", async (c) => {
     const offset = parseInt(c.req.query("offset") || "0", 10);
 
     try {
-        const conn = await getDuckDBConnection();
-
-        const sql = `
-      SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
-      FROM assets
-      ORDER BY asset_name ASC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-        const reader = await conn.runAndReadAll(sql);
-        const rows = reader.getRows();
-
-        const results = rows.map((row: unknown[], index: number) => ({
-            id: `${row[0]}-${row[2] || index}`,
-            asset: row[0] as string,
-            assetName: row[1] as string,
-            cusip: row[2] as string | null,
-        }));
-
+        const results = await listAssets(c, { limit, offset });
         return c.json(results);
     } catch (error) {
         console.error("[DuckDB Assets] Error:", error);
@@ -56,48 +35,13 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
     const cusip = c.req.param("cusip");
 
     try {
-        const conn = await getDuckDBConnection();
+        const asset = await getAssetByCode(c, { code, cusip: cusip || undefined });
 
-        const sql = cusip
-            ? `
-      SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
-      FROM assets
-      WHERE asset = ? AND cusip = ?
-      LIMIT 1
-    `
-            : `
-      SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
-      FROM assets
-      WHERE asset = ?
-      ORDER BY asset_name ASC
-      LIMIT 1
-    `;
-
-        const stmt = await conn.prepare(sql);
-        stmt.bindVarchar(1, code);
-        if (cusip) {
-            stmt.bindVarchar(2, cusip);
-        }
-        const reader = await stmt.runAndReadAll();
-        const rows = reader.getRows();
-
-        if (rows.length === 0) {
+        if (!asset) {
             return c.json({ error: "Asset not found" }, HTTP_STATUS_CODES.NOT_FOUND);
         }
 
-        const row = rows[0];
-        return c.json({
-            id: `${row[0]}-${row[2] || "none"}`,
-            asset: row[0] as string,
-            assetName: row[1] as string,
-            cusip: row[2] as string | null,
-        });
+        return c.json(asset);
     } catch (error) {
         console.error("[DuckDB Asset] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);

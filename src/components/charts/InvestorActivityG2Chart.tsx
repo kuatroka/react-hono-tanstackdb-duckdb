@@ -10,6 +10,12 @@ interface InvestorActivityG2ChartProps {
   ticker: string;
 }
 
+interface ChartDatum {
+  quarter: string;
+  type: "Opened" | "Closed";
+  value: number;
+}
+
 export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -17,7 +23,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return;
 
-    const chartData = data.flatMap((item) => {
+    const chartData: ChartDatum[] = data.flatMap((item) => {
       const quarter = item.quarter ?? "Unknown";
       return [
         {
@@ -44,7 +50,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
       height: 400,
     });
 
-    const option = {
+    const option: Parameters<Chart["options"]>[0] = {
       type: "interval",
       padding: { top: 40, right: 60, bottom: 80, left: 60 },
       data: chartData,
@@ -70,7 +76,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
         },
       },
       tooltip: {
-        title: (datum: any) => datum.quarter,
+        title: (datum: ChartDatum) => datum.quarter,
         valueFormatter: (value: number) =>
           `${Math.abs(value).toLocaleString()} investors`,
       },
@@ -85,7 +91,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
           },
         },
       ],
-    } as any;
+    };
 
     chart.options(option);
 

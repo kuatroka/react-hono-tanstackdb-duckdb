@@ -13,10 +13,11 @@ Review, analyse, fix and self test. Use agent-browser tool to test UI. Interact 
 - no browser console errors in the automated browser checks
 - no page errors in the automated browser checks
 - no server errors in the fresh verification runs
+- use react-scanner in dev to check unnecessary rerenders of unrelated ui components
 
 
 ## Tech Stack and javascript runtime 
-- **bun** as package manager, js runtime, bundler and test runner. Never use node.js 
+- **bun** as package manager, js runtime, bundler and test runner. Never use node.js. Instead of command 'npm' use 'bun', instead of 'npx' use 'bunx'
 - **bun** rules url - https://bun.com/llms-rules.txt
 - **bun** docs - https://bun.sh/llms.txt
 - **bun** docs full - https://bun.sh/llms-full.txt

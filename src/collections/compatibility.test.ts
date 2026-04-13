@@ -11,7 +11,7 @@ const packageJson = JSON.parse(
 
 describe('TanStack package compatibility', () => {
   test('uses the known-compatible TanStack dependency set for live collections', () => {
-    expect(packageJson.dependencies['@tanstack/db']).toBe('0.5.11')
+    expect(packageJson.dependencies['@tanstack/db']).toBe('0.6.4')
     expect(packageJson.dependencies['@tanstack/query-db-collection']).toBe('1.0.6')
     expect(packageJson.dependencies['@tanstack/query-persist-client-core']).toBe('5.91.11')
     expect(packageJson.dependencies['@tanstack/react-db']).toBe('0.1.55')

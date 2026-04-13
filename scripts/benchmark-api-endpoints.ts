@@ -104,7 +104,7 @@ async function main() {
   // Test if server is running
   try {
     await fetch(`${BASE_URL}/api/health`);
-  } catch (error) {
+  } catch {
     console.error(
       "❌ Server not running! Please start the server with 'bun run dev'"
     );

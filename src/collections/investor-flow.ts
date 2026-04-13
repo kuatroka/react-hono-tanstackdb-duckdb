@@ -35,13 +35,89 @@ export const investorFlowCollection = createCollection(
 
 const inFlightFetches = new Map<string, Promise<{ rows: InvestorFlowData[]; queryTimeMs: number; source: InvestorFlowSource }>>()
 const indexedDBLoadedTickers = new Set<string>()
+const bufferedRows = new Map<string, InvestorFlowData>()
+
+function isSyncNotInitializedError(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('SyncNotInitializedError')
+}
+
+function flushBufferedRowsIfReady(): void {
+    if (bufferedRows.size === 0 || !investorFlowCollection.isReady()) {
+        return
+    }
+
+    const rows = Array.from(bufferedRows.values())
+    try {
+        investorFlowCollection.utils.writeUpsert(rows)
+        bufferedRows.clear()
+    } catch (error) {
+        if (!isSyncNotInitializedError(error)) {
+            throw error
+        }
+    }
+}
+
+function safeWriteUpsert(rows: InvestorFlowData[]): void {
+    if (rows.length === 0) {
+        return
+    }
+
+    if (investorFlowCollection.isReady()) {
+        try {
+            investorFlowCollection.utils.writeUpsert(rows)
+            for (const row of rows) {
+                bufferedRows.delete(row.id)
+            }
+            return
+        } catch (error) {
+            if (!isSyncNotInitializedError(error)) {
+                throw error
+            }
+        }
+    }
+
+    for (const row of rows) {
+        bufferedRows.set(row.id, row)
+    }
+}
+
+function safeWriteDelete(ids: string[]): void {
+    if (ids.length === 0) {
+        return
+    }
+
+    for (const id of ids) {
+        bufferedRows.delete(id)
+    }
+
+    if (!investorFlowCollection.isReady()) {
+        return
+    }
+
+    try {
+        investorFlowCollection.utils.writeDelete(ids)
+    } catch (error) {
+        if (!isSyncNotInitializedError(error)) {
+            throw error
+        }
+    }
+}
 
 function normalizeTicker(ticker: string): string {
     return ticker.trim().toUpperCase()
 }
 
 function getAllInvestorFlowRows(): InvestorFlowData[] {
-    return Array.from(investorFlowCollection.entries()).map(([, value]) => value)
+    flushBufferedRowsIfReady()
+
+    const merged = new Map<string, InvestorFlowData>()
+    for (const [id, value] of investorFlowCollection.entries()) {
+        merged.set(id, value)
+    }
+    for (const [id, value] of bufferedRows.entries()) {
+        merged.set(id, value)
+    }
+    return Array.from(merged.values())
 }
 
 export function mapInvestorFlowRows(
@@ -87,7 +163,7 @@ export async function loadInvestorFlowFromIndexedDB(ticker: string): Promise<boo
     const existingIds = new Set(getAllInvestorFlowRows().map((row) => row.id))
     const newRows = persisted.rows.filter((row) => !existingIds.has(row.id))
     if (newRows.length > 0) {
-        investorFlowCollection.utils.writeUpsert(newRows)
+        safeWriteUpsert(newRows)
     }
     return true
 }
@@ -128,7 +204,7 @@ export async function fetchInvestorFlowData(
         const rows = mapInvestorFlowRows(normalizedTicker, Array.isArray(data.rows) ? data.rows : [])
 
         if (rows.length > 0) {
-            investorFlowCollection.utils.writeUpsert(rows)
+            safeWriteUpsert(rows)
             persistInvestorFlowData(normalizedTicker, rows).catch((error) => {
                 console.warn('[InvestorFlow] Failed to persist:', error)
             })
@@ -152,8 +228,9 @@ export async function fetchInvestorFlowData(
 export function clearAllInvestorFlowData(): void {
     const ids = getAllInvestorFlowRows().map((row) => row.id)
     if (ids.length > 0) {
-        investorFlowCollection.utils.writeDelete(ids)
+        safeWriteDelete(ids)
     }
+    bufferedRows.clear()
     indexedDBLoadedTickers.clear()
     inFlightFetches.clear()
 }

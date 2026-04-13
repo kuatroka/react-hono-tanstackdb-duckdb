@@ -1,13 +1,11 @@
 import { useMemo, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { useLiveQuery } from "@tanstack/react-db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import { DataTable, ColumnDef } from "@/components/DataTable";
 import {
   fetchDrilldownBothActions,
   getDrilldownDataFromCollection,
-  investorDrilldownCollection,
   loadDrilldownFromIndexedDB,
   isDrilldownIndexedDBLoaded,
   type InvestorDetail
@@ -49,35 +47,6 @@ export function InvestorActivityDrilldownTable({
   const [renderMs, setRenderMs] = useState<number | null>(null);
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
-
-  // Subscribe to the collection for this slice
-  const slice = useLiveQuery((q) =>
-    q
-      .from({ rows: investorDrilldownCollection })
-      .select(({ rows }) => rows)
-  );
-
-  // Track render timing when data changes
-  useEffect(() => {
-    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
-      renderStartRef.current = performance.now();
-      prevDataLengthRef.current = data.length;
-    }
-  }, [data]);
-
-  // Measure render time after paint
-  useEffect(() => {
-    if (renderStartRef.current != null && data.length > 0) {
-      const rafId = requestAnimationFrame(() => {
-        if (renderStartRef.current != null) {
-          const elapsed = Math.round(performance.now() - renderStartRef.current);
-          setRenderMs(elapsed);
-          renderStartRef.current = null;
-        }
-      });
-      return () => cancelAnimationFrame(rafId);
-    }
-  }, [data]);
 
   // Load from IndexedDB first, then fetch if missing
   useEffect(() => {
@@ -136,21 +105,42 @@ export function InvestorActivityDrilldownTable({
     };
   }, [enabled, ticker, cusip, quarter, action]);
 
-  // Keep data in sync with live query (instant updates once present)
+  // Refresh local data from collection-backed cache when selection changes
   useEffect(() => {
-    if (slice?.data && slice.data.length > 0) {
-      const filtered = slice.data.filter(
-        (r: InvestorDetail) => r.ticker === ticker && r.cusip === cusip && r.quarter === quarter && r.action === action
-      );
-      if (filtered.length > 0) {
-        setData(filtered);
-        setDataFlow("tsdb-memory");
-        if (queryTimeMs === null) setQueryTimeMs(0);
-      }
+    if (!enabled) {
+      return;
     }
-  }, [slice, queryTimeMs, ticker, cusip, quarter, action]);
 
-  // Transform data to display format
+    const localRows = getDrilldownDataFromCollection(ticker, cusip, quarter, action);
+    if (localRows && localRows.length > 0) {
+      setData(localRows);
+      setDataFlow("tsdb-memory");
+      setQueryTimeMs((current) => current ?? 0);
+      setIsError(false);
+    }
+  }, [enabled, ticker, cusip, quarter, action]);
+
+  // Track render timing when data changes
+  useEffect(() => {
+    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
+      renderStartRef.current = performance.now();
+      prevDataLengthRef.current = data.length;
+    }
+  }, [data]);
+
+  // Measure render time after paint
+  useEffect(() => {
+    if (renderStartRef.current != null && data.length > 0) {
+      const rafId = requestAnimationFrame(() => {
+        if (renderStartRef.current != null) {
+          const elapsed = Math.round(performance.now() - renderStartRef.current);
+          setRenderMs(elapsed);
+          renderStartRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [data]);
   const rows = useMemo(() => {
     console.debug(
       `[DrilldownTable] rendering ${data.length} rows for ${ticker} ${quarter} ${action}`

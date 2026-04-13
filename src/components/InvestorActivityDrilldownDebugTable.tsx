@@ -22,8 +22,16 @@ interface InvestorActivityDrilldownDebugTableProps {
 export function InvestorActivityDrilldownDebugTable({
   ticker,
 }: InvestorActivityDrilldownDebugTableProps) {
-  if (!import.meta.env.DEV) return null;
+  if (!import.meta.env.DEV) {
+    return null;
+  }
 
+  return <InvestorActivityDrilldownDebugTableDev ticker={ticker} />;
+}
+
+function InvestorActivityDrilldownDebugTableDev({
+  ticker,
+}: InvestorActivityDrilldownDebugTableProps) {
   const live = useLiveQuery((q) =>
     q
       .from({ rows: investorDrilldownCollection })
@@ -40,7 +48,7 @@ export function InvestorActivityDrilldownDebugTable({
       cikName: item.cikName,
       cusip: item.cusip,
     }));
-  }, [live]);
+  }, [live?.data, ticker]);
 
   const columns: ColumnDef<DebugDrilldownRow>[] = useMemo(
     () => [

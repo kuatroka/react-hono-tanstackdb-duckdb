@@ -34,18 +34,21 @@ describe("rerender isolation architecture", () => {
     expect(superinvestorDetail).not.toContain("latencyBadge={");
   });
 
-  test("asset drilldown hover interaction is isolated from provider-level React state", () => {
+  test("asset detail drilldown table replaces hover-driven state with a fixed details column", () => {
     const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
 
-    expect(assetDrilldown).toContain("useSyncExternalStore");
-    expect(assetDrilldown).not.toContain("const [hoverSelection, setHoverSelectionState] = useState");
+    expect(assetDrilldown).toContain("AssetDrilldownDetailsPanel");
+    expect(assetDrilldown).toContain("grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]");
+    expect(assetDrilldown).not.toContain("useSyncExternalStore");
+    expect(assetDrilldown).not.toContain("setHoverSelection");
+    expect(assetDrilldown).not.toContain("Hover Interaction");
   });
 
   test("superinvestor chart hover tooltip avoids React state updates", () => {
     const cikValueLineChart = readProjectFile("src/components/charts/CikValueLineChart.tsx");
 
     expect(cikValueLineChart).not.toContain("const [tooltip, setTooltip] = useState");
-    expect(cikValueLineChart).toContain("tooltipRef");
+    expect(cikValueLineChart).toContain("tooltip: {");
   });
 
   test("eCharts activity charts resize without making resize state part of the render path", () => {
@@ -98,8 +101,9 @@ describe("rerender isolation architecture", () => {
     const mainEntrypoint = readProjectFile("src/main.tsx");
     const htmlShell = readProjectFile("index.html");
 
+    expect(mainEntrypoint).toContain('import { scan } from "react-scan"');
     expect(mainEntrypoint).toContain("import.meta.env?.DEV");
-    expect(mainEntrypoint).toContain("https://unpkg.com/react-scan/dist/auto.global.js");
-    expect(htmlShell).not.toContain("react-scan/dist/auto.global.js");
+    expect(mainEntrypoint).toContain("scan({ enabled: true })");
+    expect(htmlShell).not.toContain("react-scan");
   });
 });

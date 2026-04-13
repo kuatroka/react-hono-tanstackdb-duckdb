@@ -1,44 +1,83 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLiveQuery } from '@tanstack/react-db';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LatencyBadge } from '@/components/LatencyBadge';
-import { useContentReady } from '@/hooks/useContentReady';
-import type { PerfSource, PerfTelemetry } from '@/lib/perf/telemetry';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import {
+  VirtualDataTable,
+  type ColumnDef,
+} from "@/components/VirtualDataTable";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { LatencyBadge } from "@/components/LatencyBadge";
+import { useContentReady } from "@/hooks/useContentReady";
+import type { PerfSource, PerfTelemetry } from "@/lib/perf/telemetry";
 import {
   getSuperinvestorListLoadSource,
   subscribeSuperinvestorListLoadSource,
   superinvestorsCollection,
   type Superinvestor,
-} from '@/collections';
-
+} from "@/collections/superinvestors";
 export function SuperinvestorsTablePage() {
   return <SuperinvestorsTableSurface />;
 }
 
 function SuperinvestorsTableSurface() {
   const navigate = useNavigate();
-  const searchParams = useSearch({ strict: false }) as { page?: string; search?: string };
+  const searchParams = useSearch({ strict: false }) as {
+    page?: string;
+    search?: string;
+  };
   const { onReady } = useContentReady();
-  const trimmedSearch = (searchParams.search ?? '').trim();
-  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
-  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
+  const trimmedSearch = (searchParams.search ?? "").trim();
+  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(
+    null,
+  );
+  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(
+    null,
+  );
+  const [superinvestorsData, setSuperinvestorsData] = useState<Superinvestor[] | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
     const source = getSuperinvestorListLoadSource();
-    return source === 'api' ? 'api-duckdb' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory';
+    return source === "api"
+      ? "api-duckdb"
+      : source === "indexeddb"
+        ? "tsdb-indexeddb"
+        : "tsdb-memory";
   });
 
-  const { data: superinvestorsData, isLoading } = useLiveQuery(
-    (q) => q.from({ superinvestors: superinvestorsCollection }),
-  );
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await superinvestorsCollection.preload();
+        if (cancelled) return;
+        setSuperinvestorsData(
+          Array.from(superinvestorsCollection.entries()).map(([, value]) => value),
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const readyCalledRef = useRef(false);
   useEffect(() => {
-    const toPerfSource = (source: 'memory' | 'indexeddb' | 'api'): PerfSource => {
-      if (source === 'api') return 'api-duckdb';
-      if (source === 'indexeddb') return 'tsdb-indexeddb';
-      return 'tsdb-memory';
+    const toPerfSource = (
+      source: "memory" | "indexeddb" | "api",
+    ): PerfSource => {
+      if (source === "api") return "api-duckdb";
+      if (source === "indexeddb") return "tsdb-indexeddb";
+      return "tsdb-memory";
     };
 
     setDataSource(toPerfSource(getSuperinvestorListLoadSource()));
@@ -57,52 +96,68 @@ function SuperinvestorsTableSurface() {
 
   const handleSearchChange = (value: string) => {
     navigate({
-      to: '/superinvestors',
+      to: "/superinvestors",
       search: { search: value.trim() || undefined },
     });
   };
 
-  const columns = useMemo<ColumnDef<Superinvestor>[]>(() => [
-    {
-      key: 'cik',
-      header: 'CIK',
-      sortable: true,
-      searchable: true,
-      clickable: true,
-      render: (value, row, isFocused) => (
-        <Link
-          to="/superinvestors/$cik"
-          params={{ cik: row.cik }}
-          className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? 'underline' : ''}`}
-        >
-          {String(value)}
-        </Link>
-      ),
-    },
-    {
-      key: 'cikName',
-      header: 'Name',
-      sortable: true,
-      searchable: true,
-    },
-  ], []);
+  const columns = useMemo<ColumnDef<Superinvestor>[]>(
+    () => [
+      {
+        key: "cik",
+        header: "CIK",
+        sortable: true,
+        searchable: true,
+        clickable: true,
+        render: (value, row, isFocused) => (
+          <Link
+            to="/superinvestors/$cik"
+            params={{ cik: row.cik }}
+            className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? "underline" : ""}`}
+          >
+            {String(value)}
+          </Link>
+        ),
+      },
+      {
+        key: "cikName",
+        header: "Name",
+        sortable: true,
+        searchable: true,
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div className="space-y-1">
-            <CardTitle className="text-3xl font-bold tracking-tight">Superinvestors</CardTitle>
-            <CardDescription>Browse and search institutional investors (13F filers)</CardDescription>
+            <CardTitle className="text-3xl font-bold tracking-tight">
+              Superinvestors
+            </CardTitle>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
-            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
+            {tableTelemetry ? (
+              <LatencyBadge
+                telemetry={tableTelemetry}
+                className="min-w-[11rem] justify-end"
+              />
+            ) : null}
+            {searchTelemetry ? (
+              <LatencyBadge
+                telemetry={searchTelemetry}
+                className="min-w-[11rem] justify-end"
+              />
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading…</div>
+            <div className="py-8 text-center text-muted-foreground">
+              Loading…
+            </div>
           ) : (
             <VirtualDataTable
               data={superinvestorsData || []}

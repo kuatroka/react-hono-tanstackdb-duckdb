@@ -1,11 +1,47 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createServer } from "node:net";
 import { chromium, type Browser, type Page } from "playwright";
-
-const port = 4120;
-const baseUrl = `http://127.0.0.1:${port}`;
 
 let serverProcess: Bun.Subprocess;
 let browser: Browser;
+let port = 4120;
+let baseUrl = `http://127.0.0.1:${port}`;
+
+async function getAvailablePort() {
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Failed to determine available port"));
+        return;
+      }
+
+      const resolvedPort = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(resolvedPort);
+      });
+    });
+  });
+}
+
+function startServer() {
+  return Bun.spawn(["bun", "api/server.ts"], {
+    cwd: import.meta.dir + "/..",
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NODE_ENV: "development",
+    },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+}
 
 function trackPageIssues(page: Page) {
   const pageErrors: string[] = [];
@@ -52,15 +88,9 @@ async function waitForServer(url: string, timeoutMs = 15_000) {
 
 describe("asset detail browser smoke test", () => {
   beforeAll(async () => {
-    serverProcess = Bun.spawn(["bun", "run", "dev"], {
-      cwd: import.meta.dir + "/..",
-      env: {
-        ...process.env,
-        PORT: String(port),
-      },
-      stdout: "inherit",
-      stderr: "inherit",
-    });
+    port = await getAvailablePort();
+    baseUrl = `http://127.0.0.1:${port}`;
+    serverProcess = startServer();
 
     await waitForServer(baseUrl);
     browser = await chromium.launch();
@@ -139,16 +169,23 @@ describe("asset detail browser smoke test", () => {
     await page.close();
   });
 
-  test("shows render latency on the uPlot chart on asset detail", async () => {
+  test("shows render latency and the ECharts-only asset detail layout", async () => {
     const page = await browser.newPage();
     const { pageErrors, consoleErrors } = trackPageIssues(page);
 
     await page.goto(`${baseUrl}/assets/BGRN/46435U440`, { waitUntil: "networkidle" });
-    await page.waitForSelector("text=Investor Activity for BGRN (uPlot)");
+    await page.waitForSelector("text=Investor Activity for BGRN (ECharts)");
+    await page.waitForSelector("text=Investor Flow for BGRN (ECharts)");
+    await page.waitForSelector("text=Superinvestors who");
+    await page.locator('[data-latency-part="render"]').first().waitFor();
 
-    const renderPartCount = await page.locator('[data-latency-part="render"]').count();
+    const pageText = await page.locator("body").textContent();
 
-    expect(renderPartCount).toBeGreaterThanOrEqual(4);
+    expect(pageText).toContain("Investor Activity for BGRN (ECharts)");
+    expect(pageText).toContain("Investor Flow for BGRN (ECharts)");
+    expect(pageText).toContain("Superinvestors who");
+    expect(pageText).not.toContain("(uPlot)");
+    expect(pageText).not.toContain("Hover over a bar");
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
 
