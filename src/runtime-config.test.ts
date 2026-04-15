@@ -44,11 +44,12 @@ describe("bun native runtime config", () => {
     expect(mainEntrypoint).toContain("import.meta.env?.DEV");
   });
 
-  test("defines the app-only VPS deployment contract for the sslip.io web app", () => {
+  test("defines the dev/prod-only deployment contract for the sslip.io web app", () => {
     const dockerfile = readProjectFile("Dockerfile");
     const compose = readProjectFile("infra/prod/docker-compose.yml");
     const envExample = readProjectFile("infra/prod/.env.example");
     const caddyTemplate = readProjectFile("infra/prod/Caddyfile.template");
+    const deployScript = readProjectFile("infra/prod/scripts/deploy.sh");
 
     expect(dockerfile).toContain("FROM oven/bun");
     expect(compose).toContain("services:");
@@ -62,5 +63,15 @@ describe("bun native runtime config", () => {
     expect(envExample).not.toContain("fintellectus-zero.206.168.212.173.sslip.io");
     expect(caddyTemplate).toContain("__APP_DOMAIN__");
     expect(caddyTemplate).not.toContain("__ZERO_DOMAIN__");
+    const rollbackScript = readProjectFile("infra/prod/scripts/rollback.sh");
+
+    expect(deployScript).toContain("APP_CURRENT_ALIAS_TAG");
+    expect(deployScript).toContain("APP_PREVIOUS_ALIAS_TAG");
+    expect(deployScript).not.toContain("git checkout main");
+    expect(deployScript).not.toContain("git pull --ff-only origin main");
+    expect(rollbackScript).toContain("PREVIOUS_CONTAINER_IMAGE");
+    expect(rollbackScript).toContain("PREVIOUS_APP_IMAGE");
+    expect(rollbackScript).toContain("healthcheck.sh");
+    expect(rollbackScript).not.toContain("git checkout main");
   });
 });

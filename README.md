@@ -107,10 +107,18 @@ bun run benchmark:all
 
 ## Deployment note
 
-The repository still contains `sst.config.ts` for an older SST/AWS deployment path, but the current rename pass does not change that configuration. If your deployment target is a private VPS, treat SST as legacy infrastructure until you explicitly remove or replace it.
+This project now uses a two-environment operating model:
+
+- **dev** — local Bun runtime with local services
+- **prod** — the VPS deploy target under `infra/prod/`
+
+There is no staging environment. Production deploys should be made from a specific commit or tagged release artifact, and rollbacks should reuse the previously deployed artifact instead of editing code in place.
+
+The repository still contains `sst.config.ts` for an older SST/AWS deployment path, but the current deployment workflow is the VPS flow in `infra/prod/`.
 
 ## Related docs
 
 - `docs/` for project notes and migration analysis
+- `infra/prod/` for the VPS deployment workflow
 - `sst.config.ts` for the legacy SST/AWS deployment configuration
 
