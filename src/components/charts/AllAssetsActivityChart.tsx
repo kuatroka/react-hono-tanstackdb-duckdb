@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "@tanstack/react-db";
 import { OpenedClosedBarChart } from "./OpenedClosedBarChart";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge } from "@/components/LatencyBadge";
 import { useMemo, useState } from "react";
 import { allAssetsActivityCollection } from "@/collections";
@@ -32,7 +32,6 @@ export function AllAssetsActivityChart({ onBarClick }: AllAssetsActivityChartPro
       <Card>
         <CardHeader>
           <CardTitle>All Assets Activity (ECharts)</CardTitle>
-          <CardDescription>Loading activity data...</CardDescription>
         </CardHeader>
         <CardContent className="h-[450px] flex items-center justify-center">
           <div className="text-muted-foreground">Loading...</div>
@@ -45,7 +44,6 @@ export function AllAssetsActivityChart({ onBarClick }: AllAssetsActivityChartPro
     <OpenedClosedBarChart
       data={sortedRows}
       title="All Assets Activity (ECharts)"
-      description="Total opened (green) and closed (red) positions across all assets by quarter"
       onBarClick={onBarClick}
       onRenderComplete={setRenderMs}
       latencyBadge={

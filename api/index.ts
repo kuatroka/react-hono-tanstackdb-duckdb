@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { SignJWT } from "jose";
-import { duckDbLeaseMiddleware } from "./db/hono-db-middleware";
-import dbStatusRoutes from "./routes/db-status";
 import drilldownRoutes from "./routes/drilldown";
 import searchDuckdbRoutes from "./routes/search-duckdb";
 import duckdbInvestorDrilldownRoutes from "./routes/duckdb-investor-drilldown";
@@ -19,9 +17,7 @@ export const config = {
 
 export const app = new Hono().basePath("/api");
 
-app.use("*", duckDbLeaseMiddleware);
-
-// Data routes now all come from DuckDB/REST-backed handlers.
+// Data routes (formerly served via Zero, now via DuckDB/REST)
 app.route("/drilldown", drilldownRoutes);
 app.route("/duckdb-search", searchDuckdbRoutes);
 app.route("/duckdb-investor-drilldown", duckdbInvestorDrilldownRoutes);
@@ -31,7 +27,6 @@ app.route("/superinvestors", superinvestorsRoutes);
 app.route("/investor-flow", investorFlowRoutes);
 app.route("/cik-quarterly", cikQuarterlyRoutes);
 app.route("/data-freshness", dataFreshnessRoutes);
-app.route("/db-status", dbStatusRoutes);
 
 // See seed.sql
 // In real life you would of course authenticate the user however you like.
@@ -52,7 +47,7 @@ function randomInt(max: number) {
 }
 
 // JWT secret - falls back to a default for development
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const JWT_SECRET = process.env.ZERO_AUTH_SECRET || process.env.JWT_SECRET || "dev-secret";
 
 app.get("/login", async (c) => {
   const jwtPayload = {

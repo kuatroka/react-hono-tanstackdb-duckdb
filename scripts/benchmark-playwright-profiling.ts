@@ -27,6 +27,12 @@ function formatMs(ms: number): string {
   return `${ms.toFixed(2)}ms`;
 }
 
+function percentile(arr: number[], p: number): number {
+  const sorted = [...arr].sort((a, b) => a - b);
+  const index = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, index)];
+}
+
 async function measurePageLoad(page: Page, url: string): Promise<PerformanceMetrics> {
   await page.goto(url, { waitUntil: "networkidle" });
 
@@ -201,8 +207,8 @@ async function benchmarkPage(
       console.log(`│ First Contentful Paint│ ${formatMs(avgFCP).padStart(8)} │`);
       console.log("└──────────────────────┴──────────┘");
     }
-  } catch (error: unknown) {
-    console.error(`   ❌ Error: ${String(error)}`);
+  } catch (error) {
+    console.error(`   ❌ Error: ${error}`);
   } finally {
     await context.close();
   }
@@ -221,7 +227,7 @@ async function main() {
     const page = await context.newPage();
     try {
       await page.goto(BASE_URL, { timeout: 5000 });
-    } catch {
+    } catch (error) {
       console.error("❌ Server not running! Please start the server with 'bun run dev'");
       await context.close();
       await browser.close();

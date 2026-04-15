@@ -44,78 +44,12 @@ export const assetActivityCollection = createCollection(
         getKey: (item) => item.id,
         enabled: false,
         staleTime: Infinity,
+        startSync: true,
     })
 )
 
 const inFlightFetches = new Map<string, Promise<{ rows: AssetActivityData[]; queryTimeMs: number; source: AssetActivitySource }>>()
 const indexedDBLoadedKeys = new Set<string>()
-const bufferedRows = new Map<string, AssetActivityData>()
-
-function isSyncNotInitializedError(error: unknown): boolean {
-    return error instanceof Error && error.message.includes('SyncNotInitializedError')
-}
-
-function flushBufferedRowsIfReady(): void {
-    if (bufferedRows.size === 0 || !assetActivityCollection.isReady()) {
-        return
-    }
-
-    const rows = Array.from(bufferedRows.values())
-    try {
-        assetActivityCollection.utils.writeUpsert(rows)
-        bufferedRows.clear()
-    } catch (error) {
-        if (!isSyncNotInitializedError(error)) {
-            throw error
-        }
-    }
-}
-
-function safeWriteUpsert(rows: AssetActivityData[]): void {
-    if (rows.length === 0) {
-        return
-    }
-
-    if (assetActivityCollection.isReady()) {
-        try {
-            assetActivityCollection.utils.writeUpsert(rows)
-            for (const row of rows) {
-                bufferedRows.delete(row.id)
-            }
-            return
-        } catch (error) {
-            if (!isSyncNotInitializedError(error)) {
-                throw error
-            }
-        }
-    }
-
-    for (const row of rows) {
-        bufferedRows.set(row.id, row)
-    }
-}
-
-function safeWriteDelete(ids: string[]): void {
-    if (ids.length === 0) {
-        return
-    }
-
-    for (const id of ids) {
-        bufferedRows.delete(id)
-    }
-
-    if (!assetActivityCollection.isReady()) {
-        return
-    }
-
-    try {
-        assetActivityCollection.utils.writeDelete(ids)
-    } catch (error) {
-        if (!isSyncNotInitializedError(error)) {
-            throw error
-        }
-    }
-}
 
 function makeAssetActivityKey(ticker: string, cusip?: string | null): string {
     const normalizedTicker = ticker.trim().toUpperCase()
@@ -124,16 +58,7 @@ function makeAssetActivityKey(ticker: string, cusip?: string | null): string {
 }
 
 function getAllAssetActivityRows(): AssetActivityData[] {
-    flushBufferedRowsIfReady()
-
-    const merged = new Map<string, AssetActivityData>()
-    for (const [id, value] of assetActivityCollection.entries()) {
-        merged.set(id, value)
-    }
-    for (const [id, value] of bufferedRows.entries()) {
-        merged.set(id, value)
-    }
-    return Array.from(merged.values())
+    return Array.from(assetActivityCollection.entries()).map(([, value]) => value)
 }
 
 export function getAssetActivityFromCollection(ticker: string, cusip?: string | null): AssetActivityData[] {
@@ -158,7 +83,7 @@ export async function loadAssetActivityFromIndexedDB(ticker: string, cusip?: str
     const existingIds = new Set(getAllAssetActivityRows().map((row) => row.id))
     const newRows = persisted.rows.filter((row) => !existingIds.has(row.id))
     if (newRows.length > 0) {
-        safeWriteUpsert(newRows)
+        assetActivityCollection.utils.writeUpsert(newRows)
     }
     return true
 }
@@ -225,7 +150,7 @@ export async function fetchAssetActivityData(
         })
 
         if (rows.length > 0) {
-            safeWriteUpsert(rows)
+            assetActivityCollection.utils.writeUpsert(rows)
             persistAssetActivityData(assetKey, rows).catch((error) => {
                 console.warn('[AssetActivity] Failed to persist:', error)
             })
@@ -249,9 +174,8 @@ export async function fetchAssetActivityData(
 export function clearAllAssetActivityData(): void {
     const ids = getAllAssetActivityRows().map((row) => row.id)
     if (ids.length > 0) {
-        safeWriteDelete(ids)
+        assetActivityCollection.utils.writeDelete(ids)
     }
-    bufferedRows.clear()
     indexedDBLoadedKeys.clear()
     inFlightFetches.clear()
 }

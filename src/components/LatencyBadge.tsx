@@ -15,7 +15,7 @@ export type LatencySource = DataFlow;
 export interface LatencyBadgeProps {
   /** @deprecated Use ms or dataLoadMs instead */
   latencyMs?: number | null;
-  /** Compact shorthand for the primary latency value */
+  /** Zero-style shorthand for the primary latency value */
   ms?: number | null;
   /** Time to load data from source (IndexedDB, API, or memory) */
   dataLoadMs?: number | null;

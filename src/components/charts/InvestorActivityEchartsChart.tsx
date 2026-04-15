@@ -41,7 +41,6 @@ export const InvestorActivityEchartsChart = memo(function InvestorActivityEchart
     <OpenedClosedBarChart
       data={chartData}
       title={`Investor Activity for ${ticker} (ECharts)`}
-      description="Click or hover over bars to see which superinvestors opened (green) or closed (red) positions"
       onBarClick={onBarClick}
       onBarHover={onBarHover}
       onBarLeave={onBarLeave}

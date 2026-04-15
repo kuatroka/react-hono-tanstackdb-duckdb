@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getInvestorDrilldown } from "../repositories/investor-drilldown-repository";
+import { getDuckDBConnection } from "../duckdb";
 
 const duckdbInvestorDrilldownRoutes = new Hono();
 
@@ -34,12 +34,74 @@ duckdbInvestorDrilldownRoutes.get("/", async (c) => {
 
   try {
     const startTime = performance.now();
-    const rows = await getInvestorDrilldown(c, {
-      ticker,
-      cusip,
-      quarter,
-      action: actionRaw as "open" | "close" | "both",
-      limit,
+    const conn = await getDuckDBConnection();
+
+    const escapedTicker = ticker.replace(/'/g, "''");
+    const escapedCusipClause = cusip ? `AND d.cusip = '${cusip.replace(/'/g, "''")}'` : "";
+    const escapedQuarterClause = quarter ? `AND d.quarter = '${quarter.replace(/'/g, "''")}'` : "";
+
+    const buildSelect = (actionCol: "did_open" | "did_close", actionLabel: "open" | "close") => `
+      SELECT
+        d.cusip,
+        d.quarter,
+        d.cik,
+        d.did_open,
+        d.did_add,
+        d.did_reduce,
+        d.did_close,
+        d.did_hold,
+        s.cik_name,
+        s.cik_ticker,
+        '${actionLabel}' as action_label
+      FROM cusip_quarter_investor_activity_detail d
+      LEFT JOIN superinvestors s ON s.cik = d.cik
+      WHERE d.ticker = '${escapedTicker}'
+        ${escapedCusipClause}
+        ${escapedQuarterClause}
+        AND d.${actionCol} = true
+      LIMIT ${limit}
+    `;
+
+    let sql: string;
+    if (actionRaw === "both") {
+      sql = `
+        (${buildSelect("did_open", "open")})
+        UNION ALL
+        (${buildSelect("did_close", "close")})
+      `;
+    } else {
+      const col = actionRaw === "open" ? "did_open" : "did_close";
+      sql = buildSelect(col as "did_open" | "did_close", actionRaw as "open" | "close");
+    }
+
+    const reader = await conn.runAndReadAll(sql);
+    const rawRows = reader.getRows();
+
+    const rows = rawRows.map((row: any[], index: number) => {
+      const rawCik = row[2];
+      let cik: string | null;
+      if (rawCik === null || rawCik === undefined) {
+        cik = null;
+      } else if (typeof rawCik === "bigint") {
+        cik = rawCik.toString();
+      } else {
+        cik = String(rawCik);
+      }
+
+      return {
+        id: index,
+        cusip: row[0] as string | null,
+        quarter: row[1] as string | null,
+        cik,
+        didOpen: row[3] as boolean | null,
+        didAdd: row[4] as boolean | null,
+        didReduce: row[5] as boolean | null,
+        didClose: row[6] as boolean | null,
+        didHold: row[7] as boolean | null,
+        cikName: row[8] as string | null,
+        cikTicker: row[9] as string | null,
+        action: row[10] as "open" | "close",
+      };
     });
 
     const queryTimeMs = Math.round((performance.now() - startTime) * 100) / 100;

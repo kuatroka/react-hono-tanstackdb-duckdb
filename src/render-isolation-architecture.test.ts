@@ -34,21 +34,18 @@ describe("rerender isolation architecture", () => {
     expect(superinvestorDetail).not.toContain("latencyBadge={");
   });
 
-  test("asset detail drilldown table replaces hover-driven state with a fixed details column", () => {
+  test("asset drilldown hover interaction is isolated from provider-level React state", () => {
     const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
 
-    expect(assetDrilldown).toContain("AssetDrilldownDetailsPanel");
-    expect(assetDrilldown).toContain("grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]");
-    expect(assetDrilldown).not.toContain("useSyncExternalStore");
-    expect(assetDrilldown).not.toContain("setHoverSelection");
-    expect(assetDrilldown).not.toContain("Hover Interaction");
+    expect(assetDrilldown).toContain("useSyncExternalStore");
+    expect(assetDrilldown).not.toContain("const [hoverSelection, setHoverSelectionState] = useState");
   });
 
   test("superinvestor chart hover tooltip avoids React state updates", () => {
     const cikValueLineChart = readProjectFile("src/components/charts/CikValueLineChart.tsx");
 
     expect(cikValueLineChart).not.toContain("const [tooltip, setTooltip] = useState");
-    expect(cikValueLineChart).toContain("tooltip: {");
+    expect(cikValueLineChart).toContain("tooltipRef");
   });
 
   test("eCharts activity charts resize without making resize state part of the render path", () => {
@@ -70,7 +67,7 @@ describe("rerender isolation architecture", () => {
     expect(investorFlowChart).not.toContain("setChartSize(");
   });
 
-  test("table pages surface separate table and search telemetry badges instead of hardcoded latency placeholders", () => {
+  test("table pages surface separate table and search telemetry badges instead of hardcoded zero-latency placeholders", () => {
     const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
     const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
@@ -91,7 +88,7 @@ describe("rerender isolation architecture", () => {
     expect(virtualTable).toContain("onSearchTelemetryChange");
   });
 
-  test("card primitive pins border color to the shared border token so page shells stay visually consistent", () => {
+  test("card primitive pins border color to the shared border token so page shells match the Zero app", () => {
     const cardPrimitive = readProjectFile("src/components/ui/card.tsx");
 
     expect(cardPrimitive).toContain("border-border");
@@ -101,9 +98,8 @@ describe("rerender isolation architecture", () => {
     const mainEntrypoint = readProjectFile("src/main.tsx");
     const htmlShell = readProjectFile("index.html");
 
-    expect(mainEntrypoint).toContain('import { scan } from "react-scan"');
     expect(mainEntrypoint).toContain("import.meta.env?.DEV");
-    expect(mainEntrypoint).toContain("scan({ enabled: true })");
-    expect(htmlShell).not.toContain("react-scan");
+    expect(mainEntrypoint).toContain("https://unpkg.com/react-scan/dist/auto.global.js");
+    expect(htmlShell).not.toContain("react-scan/dist/auto.global.js");
   });
 });

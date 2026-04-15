@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveQuery } from '@tanstack/react-db';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,32 +24,14 @@ function AssetsTableSurface() {
   const trimmedSearch = (searchParams.search ?? '').trim();
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
   const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
-  const [assetsData, setAssetsData] = useState<Asset[] | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
     const source = getAssetListLoadSource();
     return source === 'api' ? 'api-duckdb' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory';
   });
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await assetsCollection.preload();
-        if (cancelled) return;
-        setAssetsData(Array.from(assetsCollection.entries()).map(([, value]) => value));
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: assetsData, isLoading } = useLiveQuery(
+    (q) => q.from({ assets: assetsCollection }),
+  );
 
   const readyCalledRef = useRef(false);
   useEffect(() => {

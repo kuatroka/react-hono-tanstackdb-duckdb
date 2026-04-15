@@ -1,5 +1,4 @@
 import { app } from "./index";
-import { duckDbGenerationManager } from "./db/generation-manager";
 import spa from "../index.html";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -48,29 +47,6 @@ function handleProductionRequest(request: Request) {
 }
 
 console.log(`API server starting on port ${port}`);
-
-void duckDbGenerationManager.refreshIfNeeded("admin").catch((error) => {
-  console.error("Failed to initialize DuckDB generation manager", error);
-});
-
-async function shutdownDuckDbManager(signal: string) {
-  console.log(`Received ${signal}, draining DuckDB generations`);
-  try {
-    await duckDbGenerationManager.shutdown();
-  } catch (error) {
-    console.error("Failed to shutdown DuckDB generation manager", error);
-  } finally {
-    process.exit(0);
-  }
-}
-
-process.on("SIGINT", () => {
-  void shutdownDuckDbManager("SIGINT");
-});
-
-process.on("SIGTERM", () => {
-  void shutdownDuckDbManager("SIGTERM");
-});
 
 Bun.serve({
   port,

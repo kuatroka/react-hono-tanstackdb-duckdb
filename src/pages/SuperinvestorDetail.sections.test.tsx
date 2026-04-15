@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as collectionsModule from "@/collections";
 import * as pageCacheCleanupModule from "@/collections/page-cache-cleanup";
 
@@ -18,8 +17,13 @@ interface HookHarness {
   updateProps: (nextProps: any) => void;
 }
 
+const onReadyCalls: string[] = [];
+const fetchSuperinvestorRecordCalls: string[] = [];
 const fetchCikQuarterlyDataCalls: string[] = [];
 const cleanupCalls: string[] = [];
+let params: { cik?: string } = {};
+let currentOnReady: () => void = () => undefined;
+let currentFetchSuperinvestorRecord: (cik: string) => Promise<any> = async () => null;
 let currentFetchCikQuarterlyData: (cik: string) => Promise<any> = async () => ({
   rows: [],
   queryTimeMs: 0,
@@ -28,7 +32,30 @@ let currentFetchCikQuarterlyData: (cik: string) => Promise<any> = async () => ({
 let currentLiveQueryRows: CikQuarterlyRow[] = [];
 
 function registerModuleMocks() {
+  mock.module("@tanstack/react-router", () => ({
+    Link: (props: any) => React.createElement("a", props, props.children),
+    useParams: () => params,
+    useNavigate: () => () => undefined,
+    useSearch: () => ({}),
+  }));
+
   mock.module("@tanstack/react-db", () => ({}));
+
+  mock.module("@/hooks/useContentReady", () => ({
+    useContentReady: () => ({
+      onReady: () => {
+        onReadyCalls.push("ready");
+        currentOnReady();
+      },
+    }),
+  }));
+
+  spyOn(collectionsModule, "fetchSuperinvestorRecord").mockImplementation(
+    ((cik: string) => {
+      fetchSuperinvestorRecordCalls.push(cik);
+      return currentFetchSuperinvestorRecord(cik);
+    }) as any,
+  );
 
   spyOn(collectionsModule, "fetchCikQuarterlyData").mockImplementation(
     ((cik: string) => {
@@ -202,26 +229,42 @@ function collectElements(tree: any, predicate: (node: any) => boolean, results: 
 }
 
 describe("superinvestor detail route split", () => {
-  afterEach(() => {
-    mock.restore();
-  });
-
   beforeEach(() => {
     mock.restore();
     registerModuleMocks();
+    onReadyCalls.length = 0;
+    fetchSuperinvestorRecordCalls.length = 0;
     fetchCikQuarterlyDataCalls.length = 0;
     cleanupCalls.length = 0;
+    params = {};
+    currentOnReady = () => undefined;
+    currentFetchSuperinvestorRecord = async () => null;
     currentFetchCikQuarterlyData = async () => ({ queryTimeMs: 0, source: "memory" });
     currentLiveQueryRows = [];
   });
 
-  test("superinvestor detail page resets readiness when the route cik changes", async () => {
-    const source = await Bun.file(new URL("./SuperinvestorDetail.tsx", import.meta.url)).text();
+  test("calls onReady again when navigating to another superinvestor on the same route", async () => {
+    currentFetchSuperinvestorRecord = async (cik: string) => ({ cik, cikName: `Fund ${cik}` });
+    params = { cik: "1001" };
 
-    expect(source).toContain("readyCalledRef.current = false;");
-    expect(source).toContain("}, [cik]);");
-    expect(source).toContain("const isCurrentRecord = cik !== undefined && recordState.cik === cik;");
-    expect(source).toContain("if (isCurrentRecord && recordState.record !== undefined) {");
+    const { SuperinvestorDetailPage } = await import("@/pages/SuperinvestorDetail");
+    const harness = createHookHarness(SuperinvestorDetailPage, {});
+
+    harness.settle();
+    await Promise.resolve();
+    harness.settle();
+
+    expect(fetchSuperinvestorRecordCalls).toEqual(["1001"]);
+    expect(onReadyCalls).toHaveLength(1);
+
+    params.cik = "2002";
+
+    harness.settle();
+    await Promise.resolve();
+    harness.settle();
+
+    expect(fetchSuperinvestorRecordCalls).toEqual(["1001", "2002"]);
+    expect(onReadyCalls).toHaveLength(2);
   });
 
   test("chart section initializes from the active cik cache slice only", async () => {
@@ -287,12 +330,8 @@ describe("superinvestor detail route split", () => {
     expect(tree.props).toMatchObject({
       cikName: "Fund 1001",
       dataLoadMs: 14,
-      source: "api-duckdb",
+      source: "tsdb-api",
     });
-    // The chart component receives additional props for functionality
-    expect(tree.props).toHaveProperty("data");
-    expect(tree.props).toHaveProperty("onRenderComplete");
-    expect(tree.props).toHaveProperty("renderMs");
     expect(tree.props).not.toHaveProperty("latencyBadge");
 
     harness.updateProps({ cik: "2002", cikName: "Fund 2002" });

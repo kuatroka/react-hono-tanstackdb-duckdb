@@ -10,7 +10,7 @@ export const allAssetsActivityTiming = {
 }
 
 export function createAllAssetsActivityCollection(queryClient: QueryClient) {
-    const collection = createCollection(
+    return createCollection(
         queryCollectionOptions({
             queryKey: ['all-assets-activity'],
             queryFn: async () => {
@@ -27,9 +27,6 @@ export function createAllAssetsActivityCollection(queryClient: QueryClient) {
             syncMode: 'eager',
         })
     )
-
-    allAssetsActivityCollection = collection
-    return collection
 }
 
 export let allAssetsActivityCollection: ReturnType<typeof createAllAssetsActivityCollection>

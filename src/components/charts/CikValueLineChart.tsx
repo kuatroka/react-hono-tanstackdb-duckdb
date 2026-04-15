@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import * as echarts from "echarts/core";
-import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent } from "echarts/components";
-import { CanvasRenderer } from "echarts/renderers";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
+import uPlot from "uplot";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import type { CikQuarterlyData } from "@/collections";
-
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 interface CikValueLineChartProps {
   data: readonly CikQuarterlyData[];
@@ -26,42 +20,44 @@ interface CikValueLineChartProps {
   onRenderComplete?: (renderMs: number) => void;
 }
 
-interface LineTooltipParam {
-  axisValueLabel?: string;
-  seriesName?: string;
-  value?: number | string | null;
-}
-
-interface ChartPoint {
+interface TooltipData {
   quarter: string;
   value: number;
+  x: number;
+  y: number;
 }
 
-function parseQuarter(quarter: string) {
-  const match = quarter.match(/^(\d{4})-?Q(\d)$/);
-  if (!match) {
-    return { year: 0, quarter: 0 };
+function updateTooltip(
+  tooltipRef: RefObject<HTMLDivElement | null>,
+  tooltipQuarterRef: RefObject<HTMLDivElement | null>,
+  tooltipValueRef: RefObject<HTMLDivElement | null>,
+  next: TooltipData | null,
+) {
+  const tooltipElement = tooltipRef.current;
+  if (!tooltipElement) {
+    return;
   }
 
-  return {
-    year: Number(match[1]),
-    quarter: Number(match[2]),
-  };
-}
-
-function formatQuarterLabel(quarter: string) {
-  const match = quarter.match(/^(\d{4})-?Q(\d)$/);
-  if (!match) {
-    return quarter;
+  if (!next) {
+    tooltipElement.style.opacity = "0";
+    tooltipElement.style.visibility = "hidden";
+    return;
   }
 
-  const [, year, quarterNumber] = match;
-  return `Q${quarterNumber} '${year.slice(-2)}`;
+  tooltipElement.style.opacity = "1";
+  tooltipElement.style.visibility = "visible";
+  tooltipElement.style.left = `${next.x}px`;
+  tooltipElement.style.top = `${next.y - 10}px`;
+
+  if (tooltipQuarterRef.current) {
+    tooltipQuarterRef.current.textContent = next.quarter;
+  }
+
+  if (tooltipValueRef.current) {
+    tooltipValueRef.current.textContent = formatValue(next.value);
+  }
 }
 
-/**
- * Format large numbers for display (e.g., 1.2B, 500M, 25K)
- */
 function formatValue(value: number): string {
   if (value >= 1_000_000_000) {
     return `$${(value / 1_000_000_000).toFixed(1)}B`;
@@ -84,205 +80,182 @@ export function CikValueLineChart({
   onRenderComplete,
 }: CikValueLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<echarts.EChartsType | null>(null);
+  const chartRef = useRef<uPlot | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const tooltipQuarterRef = useRef<HTMLDivElement>(null);
+  const tooltipValueRef = useRef<HTMLDivElement>(null);
   const renderStartRef = useRef<number | null>(null);
 
-  const chartData = useMemo<ChartPoint[]>(() => {
-    if (data.length === 0) return [];
+  const chartData = useMemo(() => {
+    if (data.length === 0) return null;
 
-    return [...data]
-      .sort((left, right) => {
-        const parsedLeft = parseQuarter(left.quarter);
-        const parsedRight = parseQuarter(right.quarter);
-        if (parsedLeft.year !== parsedRight.year) {
-          return parsedLeft.year - parsedRight.year;
+    const sorted = [...data].sort((a, b) => {
+      const parseQuarter = (q: string) => {
+        const match = q.match(/(\d{4})[-]?Q(\d)/);
+        if (match) {
+          return { year: Number(match[1]), quarter: Number(match[2]) };
         }
-        return parsedLeft.quarter - parsedRight.quarter;
-      })
-      .map((point) => ({
-        quarter: point.quarter,
-        value: point.totalValue,
-      }));
+        return { year: 0, quarter: 0 };
+      };
+      const pA = parseQuarter(a.quarter);
+      const pB = parseQuarter(b.quarter);
+      if (pA.year !== pB.year) return pA.year - pB.year;
+      return pA.quarter - pB.quarter;
+    });
+
+    const labels = sorted.map((d) => d.quarter);
+    const values = sorted.map((d) => d.totalValue);
+    const indices = labels.map((_, idx) => idx);
+
+    return { labels, values, indices };
   }, [data]);
 
-  const option = useMemo<echarts.EChartsCoreOption | null>(() => {
-    if (chartData.length === 0) return null;
-
-    return {
-      animation: false,
-      grid: {
-        top: 48,
-        right: 32,
-        bottom: 72,
-        left: 56,
-        containLabel: true,
-      },
-      tooltip: {
-        trigger: "axis",
-        axisPointer: { type: "line" },
-        formatter: (params: LineTooltipParam[] | LineTooltipParam) => {
-          const point = Array.isArray(params) ? params[0] : params;
-          const quarter = point?.axisValueLabel ?? "";
-          const value = Number(point?.value ?? 0);
-
-          return [
-            `<strong>${quarter}</strong>`,
-            `${point?.seriesName ?? "Portfolio Value"}: ${formatValue(value)}`,
-          ].join("<br/>");
-        },
-      },
-      xAxis: {
-        type: "category",
-        data: chartData.map((point) => point.quarter),
-        boundaryGap: false,
-        axisLabel: {
-          hideOverlap: true,
-          formatter: (value: string) => formatQuarterLabel(value),
-        },
-      },
-      yAxis: {
-        type: "value",
-        axisLabel: {
-          formatter: (value: number) => formatValue(value),
-        },
-        splitLine: {
-          lineStyle: {
-            type: "dashed",
-            color: "rgba(148,163,184,0.3)",
-          },
-        },
-      },
-      series: [
-        {
-          name: "Portfolio Value",
-          type: "line",
-          data: chartData.map((point) => point.value),
-          smooth: true,
-          showSymbol: true,
-          symbol: "circle",
-          symbolSize: 6,
-          lineStyle: {
-            width: 2,
-            color: "hsl(213, 94%, 68%)",
-          },
-          itemStyle: {
-            color: "hsl(213, 94%, 68%)",
-          },
-          areaStyle: {
-            color: "rgba(59,130,246,0.15)",
-          },
-          emphasis: {
-            focus: "series",
-          },
-        },
-      ],
-    };
-  }, [chartData]);
-
   useEffect(() => {
-    if (chartData.length === 0) {
-      renderStartRef.current = null;
-      if (chartRef.current && !chartRef.current.isDisposed()) {
-        chartRef.current.dispose();
-      }
-      chartRef.current = null;
-      return;
-    }
+    if (!containerRef.current || !chartData) return;
 
     renderStartRef.current = performance.now();
-  }, [chartData]);
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !option) return;
+    const { labels, values, indices } = chartData;
+    const width = containerRef.current.clientWidth;
 
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    if (width <= 0 || height <= 0) return;
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const range = maxVal - minVal;
+    const padding = range > 0 ? range * 0.1 : maxVal * 0.1 || 1000;
+    const yMin = Math.max(0, minVal - padding);
+    const yMax = maxVal + padding;
 
-    const chart =
-      echarts.getInstanceByDom(container) ??
-      echarts.init(container, undefined, {
-        renderer: "canvas",
+    const chart = new uPlot(
+      {
         width,
-        height,
-      });
+        height: 300,
+        padding: [16, 16, 48, 16],
+        legend: { show: false },
+        cursor: {
+          drag: { x: false, y: false },
+          focus: { prox: 32 },
+        },
+        scales: {
+          x: { time: false, range: [-0.5, labels.length - 0.5] },
+          y: {
+            range: [yMin, yMax],
+          },
+        },
+        axes: [
+          {
+            stroke: "#6b7280",
+            grid: { stroke: "rgba(148,163,184,0.25)" },
+            ticks: { stroke: "rgba(148,163,184,0.25)" },
+            values: (_chart, ticks) => ticks.map((t) => {
+              const idx = Math.round(t);
+              if (Math.abs(t - idx) < 0.01 && idx >= 0 && idx < labels.length) {
+                return labels[idx];
+              }
+              return "";
+            }),
+            gap: 10,
+            size: 40,
+          },
+          {
+            stroke: "#6b7280",
+            grid: { stroke: "rgba(148,163,184,0.25)" },
+            ticks: { stroke: "rgba(148,163,184,0.25)" },
+            values: (_chart, ticks) => ticks.map((t) => formatValue(t)),
+            gap: 8,
+            size: 70,
+          },
+        ],
+        series: [
+          {},
+          {
+            label: "Portfolio Value",
+            stroke: "#3b82f6",
+            fill: "rgba(59,130,246,0.15)",
+            width: 2,
+            points: {
+              show: true,
+              size: 6,
+              fill: "#3b82f6",
+              stroke: "#3b82f6",
+            },
+          },
+        ],
+        hooks: {
+          setCursor: [
+            (u) => {
+              const idx = u.cursor.idx;
+              if (idx == null || idx < 0 || idx >= labels.length) {
+                updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, null);
+                return;
+              }
+
+              const quarter = labels[idx];
+              const value = values[idx];
+              const left = u.valToPos(idx, "x");
+              const top = u.valToPos(value, "y");
+
+              updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, {
+                quarter,
+                value,
+                x: left,
+                y: top,
+              });
+            },
+          ],
+        },
+      },
+      [indices, values],
+      containerRef.current
+    );
 
     chartRef.current = chart;
 
-    const handleChartFinished = () => {
-      if (renderStartRef.current == null || !onRenderComplete) {
-        return;
-      }
+    let rafId: number | null = null;
+    if (renderStartRef.current != null && onRenderComplete) {
+      rafId = requestAnimationFrame(() => {
+        if (renderStartRef.current == null) return;
+        const elapsed = Math.round(performance.now() - renderStartRef.current);
+        onRenderComplete(elapsed);
+        renderStartRef.current = null;
+      });
+    }
 
-      const elapsed = Math.round(performance.now() - renderStartRef.current);
-      onRenderComplete(elapsed);
-      renderStartRef.current = null;
-    };
-
-    chart.on("finished", handleChartFinished);
-    chart.resize({ width, height });
-    chart.setOption(option, {
-      notMerge: true,
-      lazyUpdate: false,
-    });
-
-    return () => {
-      try {
-        if (chart && !chart.isDisposed()) {
-          chart.off("finished", handleChartFinished);
-        }
-      } catch {
-        // ignore
-      }
-    };
-  }, [onRenderComplete, option]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const observer = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver(() => {
       if (chartRef.current && containerRef.current) {
-        chartRef.current.resize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
+        const nextWidth = containerRef.current.clientWidth;
+        chartRef.current.setSize({ width: nextWidth, height: 300 });
       }
     });
 
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
+    resizeObserver.observe(containerRef.current);
 
-  useEffect(() => {
     return () => {
-      try {
-        if (chartRef.current && !chartRef.current.isDisposed()) {
-          chartRef.current.dispose();
-        }
-      } catch {
-        // ignore
-      } finally {
-        chartRef.current = null;
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
       }
+      resizeObserver.disconnect();
+      updateTooltip(tooltipRef, tooltipQuarterRef, tooltipValueRef, null);
+      chartRef.current?.destroy();
+      chartRef.current = null;
     };
-  }, []);
+  }, [chartData, onRenderComplete]);
 
-  if (!chartData.length) {
+  if (!chartData || data.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Portfolio Value Over Time</CardTitle>
-          <CardDescription>No quarterly data available</CardDescription>
         </CardHeader>
       </Card>
     );
   }
 
-  const latestValue = chartData[chartData.length - 1]?.value ?? 0;
-  const earliestValue = chartData[0]?.value ?? 0;
-  const totalChange = earliestValue > 0 ? ((latestValue - earliestValue) / earliestValue) * 100 : 0;
+  const latestValue = chartData.values[chartData.values.length - 1];
+  const earliestValue = chartData.values[0];
+  const totalChange =
+    earliestValue > 0
+      ? ((latestValue - earliestValue) / earliestValue) * 100
+      : 0;
 
   return (
     <Card>
@@ -295,16 +268,19 @@ export function CikValueLineChart({
             source={source as DataFlow}
           />
         </CardTitle>
-        <CardDescription>
-          {data.length} quarters tracked • Latest: {formatValue(latestValue)} • Total change:{" "}
-          <span className={totalChange >= 0 ? "text-green-600" : "text-red-600"}>
-            {totalChange >= 0 ? "+" : ""}
-            {totalChange.toFixed(1)}%
-          </span>
-        </CardDescription>
       </CardHeader>
-      <CardContent className="h-[300px] w-full min-w-0">
-        <div ref={containerRef} className="h-full w-full min-w-0" />
+      <CardContent>
+        <div className="relative">
+          <div ref={containerRef} className="h-[300px] w-full" />
+          <div
+            ref={tooltipRef}
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 px-3 py-2 text-sm text-white shadow-lg"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <div ref={tooltipQuarterRef} className="font-semibold" />
+            <div ref={tooltipValueRef} />
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

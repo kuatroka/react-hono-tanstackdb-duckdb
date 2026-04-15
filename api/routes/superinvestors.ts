@@ -1,8 +1,16 @@
 import { Hono } from "hono";
-import { listSuperinvestors, getSuperinvestorByCik } from "../repositories/superinvestors-repository";
-import { ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
+import { getDuckDBConnection } from "../duckdb";
 
 const superinvestorsRoutes = new Hono();
+const MISSING_CIK_NAME_SENTINEL = "!!! no cik_name found !!!";
+
+function normalizeSuperinvestorName(name: string | null | undefined, cik: string) {
+    const trimmed = name?.trim();
+    if (!trimmed || trimmed === MISSING_CIK_NAME_SENTINEL) {
+        return `Unknown filer (${cik})`;
+    }
+    return trimmed;
+}
 
 /**
  * GET /api/superinvestors?limit=<n>&offset=<n>
@@ -15,12 +23,36 @@ superinvestorsRoutes.get("/", async (c) => {
     const offset = parseInt(c.req.query("offset") || "0", 10);
 
     try {
-        const results = await listSuperinvestors(c, { limit, offset });
+        const conn = await getDuckDBConnection();
+
+        const sql = `
+      SELECT 
+        cik,
+        cik_name as "cikName"
+      FROM superinvestors
+      ORDER BY cik_name ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+        const reader = await conn.runAndReadAll(sql);
+        const rows = reader.getRows();
+
+        const results = rows.map((row: any[]) => {
+            const cik = String(row[0]);
+            return {
+                id: cik,
+                cik,
+                cikName: normalizeSuperinvestorName(row[1] as string | null, cik),
+            };
+        });
+
+        // Query completed in: Math.round((performance.now() - startTime) * 100) / 100 ms
+
         return c.json(results);
     } catch (error) {
         console.error("[DuckDB Superinvestors] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: ERROR_MESSAGES.ASSETS_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
+        return c.json({ error: "Superinvestors query failed", details: errorMessage }, 500);
     }
 });
 
@@ -33,11 +65,33 @@ superinvestorsRoutes.get("/:cik", async (c) => {
     const cik = c.req.param("cik");
 
     try {
-        const result = await getSuperinvestorByCik(c, cik);
+        const conn = await getDuckDBConnection();
 
-        if (!result) {
+        const sql = `
+      SELECT 
+        cik,
+        cik_name as "cikName"
+      FROM superinvestors
+      WHERE cik = ?
+      LIMIT 1
+    `;
+
+        const stmt = await conn.prepare(sql);
+        stmt.bindVarchar(1, cik);
+        const reader = await stmt.runAndReadAll();
+        const rows = reader.getRows();
+
+        if (rows.length === 0) {
             return c.json({ error: "Superinvestor not found" }, 404);
         }
+
+        const row = rows[0];
+        const cikValue = String(row[0]);
+        const result = {
+            id: cikValue,
+            cik: cikValue,
+            cikName: normalizeSuperinvestorName(row[1] as string | null, cikValue),
+        };
 
         return c.json(result);
     } catch (error) {

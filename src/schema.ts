@@ -1,4 +1,5 @@
-// Re-export the app data types for compatibility with existing imports.
+// Re-export types after Zero removal
+// This file maintains backwards compatibility for imports using @/schema
 
 export type {
   Asset,

@@ -35,6 +35,12 @@ Install dependencies:
 bun install
 ```
 
+Start the local database services:
+
+```sh
+bun run dev:db-up
+```
+
 Start the application:
 
 ```sh
@@ -46,6 +52,12 @@ This starts:
 - the Bun-powered Hono API server
 - the CSS build watcher
 - the app entrypoint used for local development
+
+Stop the local database services:
+
+```sh
+bun run dev:db-down
+```
 
 ## Build
 
@@ -63,8 +75,23 @@ bun run start
 
 ## Database workflow
 
-The app reads analytics data from DuckDB and parquet-backed APIs. There is no
-separate bootstrap database workflow to run for normal development.
+Generate Drizzle migrations:
+
+```sh
+bun run db:generate
+```
+
+Apply migrations:
+
+```sh
+bun run db:migrate
+```
+
+Generate and apply migrations together:
+
+```sh
+bun run db:sync
+```
 
 ## Benchmarks
 
@@ -78,6 +105,12 @@ bun run benchmark:duckdb
 bun run benchmark:all
 ```
 
+## Deployment note
+
+The repository still contains `sst.config.ts` for an older SST/AWS deployment path, but the current rename pass does not change that configuration. If your deployment target is a private VPS, treat SST as legacy infrastructure until you explicitly remove or replace it.
+
 ## Related docs
 
 - `docs/` for project notes and migration analysis
+- `sst.config.ts` for the legacy SST/AWS deployment configuration
+

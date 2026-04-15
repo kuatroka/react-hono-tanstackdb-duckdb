@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DuckDBInstance } from "@duckdb/node-api";
 
 const DB_PATH = "/Users/yo_macbook/Documents/app_data/TR_05_DB/TR_05_DUCKDB_FILE.duckdb";
@@ -46,6 +45,8 @@ async function benchmarkQuery(connection: any, label: string, sql: string) {
   const max = Math.max(...times);
   const p50 = percentile(times, 50);
   const p95 = percentile(times, 95);
+  const p99 = percentile(times, 99);
+
   console.log("┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐");
   console.log("│   Stat   │   Avg    │   Min    │   Max    │   P50    │   P95    │");
   console.log("├──────────┼──────────┼──────────┼──────────┼──────────┼──────────┤");

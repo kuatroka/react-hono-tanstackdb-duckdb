@@ -1,7 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import type { Asset } from "@/collections/assets";
-import { fetchAssetRecord } from "@/collections/assets";
+import type { Asset } from "@/collections";
+import { fetchAssetRecord } from "@/collections";
 import { AssetActivitySection } from "@/components/detail/AssetActivitySection";
 import { AssetDrilldownSection } from "@/components/detail/AssetDrilldownSection";
 import { AssetFlowSection } from "@/components/detail/AssetFlowSection";
@@ -115,11 +115,8 @@ export function AssetDetailPage() {
             cusip={record.cusip}
             hasCusip={hasCusip}
           />
+          <AssetFlowSection code={code} ticker={record.asset} />
         </AssetDrilldownSection>
-      </div>
-
-      <div className="mt-8 px-4 sm:px-6 lg:px-8">
-        <AssetFlowSection code={code} ticker={record.asset} />
       </div>
     </>
   );

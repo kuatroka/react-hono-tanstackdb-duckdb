@@ -1,7 +1,7 @@
 "use client";
 
 import { ResponsiveBar } from "@nivo/bar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CusipQuarterInvestorActivity } from "@/schema";
 
 interface InvestorActivityNivoChartProps {
@@ -15,7 +15,6 @@ export function InvestorActivityNivoChart({ data, ticker }: InvestorActivityNivo
       <Card>
         <CardHeader>
           <CardTitle>Investor Activity for {ticker} (Nivo)</CardTitle>
-          <CardDescription>No activity data available</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -39,9 +38,6 @@ export function InvestorActivityNivoChart({ data, ticker }: InvestorActivityNivo
     <Card>
       <CardHeader>
         <CardTitle>Investor Activity for {ticker} (Nivo)</CardTitle>
-        <CardDescription>
-          Alternative rendering using Nivo with opened (green) vs closed (red) positions.
-        </CardDescription>
       </CardHeader>
       <CardContent className="h-[450px] w-full">
         <ResponsiveBar

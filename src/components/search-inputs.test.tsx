@@ -4,7 +4,7 @@ import { DataTable, type ColumnDef } from "./DataTable";
 import { GlobalSearchInput } from "./global-search/GlobalSearchInput";
 
 describe("search inputs", () => {
-  test("global search input matches the app placeholder and provides a stable form name", () => {
+  test("global search input matches the Zero app placeholder and provides a stable form name", () => {
     const html = renderToStaticMarkup(
       <GlobalSearchInput
         query=""

@@ -102,11 +102,13 @@ export const AssetFlowSection = memo(function AssetFlowSection({ code, ticker }:
   }
 
   return (
-    <InvestorFlowChart
-      data={flowRows}
-      ticker={ticker}
-      onRenderComplete={setFlowRenderMs}
-      latencyBadge={flowLatencyBadge}
-    />
+    <div className="h-[450px]">
+      <InvestorFlowChart
+        data={flowRows}
+        ticker={ticker}
+        onRenderComplete={setFlowRenderMs}
+        latencyBadge={flowLatencyBadge}
+      />
+    </div>
   );
 });

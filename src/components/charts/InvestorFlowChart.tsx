@@ -9,7 +9,6 @@ import uPlot from "uplot";
 import {
     Card,
     CardContent,
-    CardDescription,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -41,12 +40,10 @@ interface InvestorFlowTooltipParam {
 
 function InvestorFlowCard({
     title,
-    description,
     latencyBadge,
     children,
 }: {
     title: string;
-    description: string;
     latencyBadge?: React.ReactNode;
     children: React.ReactNode;
 }) {
@@ -57,9 +54,8 @@ function InvestorFlowCard({
                     <span>{title}</span>
                     {latencyBadge}
                 </CardTitle>
-                <CardDescription>{description}</CardDescription>
             </CardHeader>
-            <CardContent className="min-w-0">{children}</CardContent>
+            <CardContent className="h-[450px] min-w-0">{children}</CardContent>
         </Card>
     );
 }
@@ -69,7 +65,6 @@ function EmptyInvestorFlowCard({ ticker, title }: { ticker: string; title: strin
         <Card className="min-w-0">
             <CardHeader>
                 <CardTitle>{title} for {ticker}</CardTitle>
-                <CardDescription>No flow data available</CardDescription>
             </CardHeader>
         </Card>
     );
@@ -264,10 +259,9 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker,
     return (
         <InvestorFlowCard
             title={`Investor Flow for ${ticker} (ECharts)`}
-            description="Inflow and outflow per quarter rendered with ECharts."
             latencyBadge={latencyBadge}
         >
-            <div ref={containerRef} className="h-[400px] w-full min-w-0" />
+            <div ref={containerRef} className="h-full w-full min-w-0" />
         </InvestorFlowCard>
     );
 });
@@ -373,10 +367,9 @@ export const InvestorFlowUplotChart = memo(function InvestorFlowUplotChart({ dat
     return (
         <InvestorFlowCard
             title={`Investor Flow for ${ticker} (uPlot)`}
-            description="Inflow and outflow per quarter rendered with uPlot."
             latencyBadge={latencyBadge}
         >
-            <div ref={containerRef} className="h-[400px] w-full min-w-0" />
+            <div ref={containerRef} className="h-full w-full min-w-0" />
         </InvestorFlowCard>
     );
 });

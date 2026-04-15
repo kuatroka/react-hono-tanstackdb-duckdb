@@ -26,16 +26,7 @@ export {
     subscribeSuperinvestorListLoadSource,
     type SuperinvestorListLoadSource,
 } from './superinvestors'
-export {
-    type InvestorDetail,
-    investorDrilldownCollection,
-    fetchDrilldownBothActions,
-    backgroundLoadAllDrilldownData,
-    getDrilldownDataFromCollection,
-    loadDrilldownFromIndexedDB,
-    isDrilldownIndexedDBLoaded,
-    clearAllDrilldownData,
-} from './investor-details'
+export { type InvestorDetail, investorDrilldownCollection } from './investor-details'
 export {
     type AssetActivityData,
     assetActivityCollection,

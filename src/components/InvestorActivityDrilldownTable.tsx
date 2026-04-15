@@ -1,11 +1,13 @@
 import { useMemo, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useLiveQuery } from "@tanstack/react-db";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import { DataTable, ColumnDef } from "@/components/DataTable";
 import {
   fetchDrilldownBothActions,
   getDrilldownDataFromCollection,
+  investorDrilldownCollection,
   loadDrilldownFromIndexedDB,
   isDrilldownIndexedDBLoaded,
   type InvestorDetail
@@ -47,6 +49,35 @@ export function InvestorActivityDrilldownTable({
   const [renderMs, setRenderMs] = useState<number | null>(null);
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
+
+  // Subscribe to the collection for this slice
+  const slice = useLiveQuery((q) =>
+    q
+      .from({ rows: investorDrilldownCollection })
+      .select(({ rows }) => rows)
+  );
+
+  // Track render timing when data changes
+  useEffect(() => {
+    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
+      renderStartRef.current = performance.now();
+      prevDataLengthRef.current = data.length;
+    }
+  }, [data]);
+
+  // Measure render time after paint
+  useEffect(() => {
+    if (renderStartRef.current != null && data.length > 0) {
+      const rafId = requestAnimationFrame(() => {
+        if (renderStartRef.current != null) {
+          const elapsed = Math.round(performance.now() - renderStartRef.current);
+          setRenderMs(elapsed);
+          renderStartRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [data]);
 
   // Load from IndexedDB first, then fetch if missing
   useEffect(() => {
@@ -105,42 +136,21 @@ export function InvestorActivityDrilldownTable({
     };
   }, [enabled, ticker, cusip, quarter, action]);
 
-  // Refresh local data from collection-backed cache when selection changes
+  // Keep data in sync with live query (instant updates once present)
   useEffect(() => {
-    if (!enabled) {
-      return;
+    if (slice?.data && slice.data.length > 0) {
+      const filtered = slice.data.filter(
+        (r: InvestorDetail) => r.ticker === ticker && r.cusip === cusip && r.quarter === quarter && r.action === action
+      );
+      if (filtered.length > 0) {
+        setData(filtered);
+        setDataFlow("tsdb-memory");
+        if (queryTimeMs === null) setQueryTimeMs(0);
+      }
     }
+  }, [slice, queryTimeMs, ticker, cusip, quarter, action]);
 
-    const localRows = getDrilldownDataFromCollection(ticker, cusip, quarter, action);
-    if (localRows && localRows.length > 0) {
-      setData(localRows);
-      setDataFlow("tsdb-memory");
-      setQueryTimeMs((current) => current ?? 0);
-      setIsError(false);
-    }
-  }, [enabled, ticker, cusip, quarter, action]);
-
-  // Track render timing when data changes
-  useEffect(() => {
-    if (data.length > 0 && data.length !== prevDataLengthRef.current) {
-      renderStartRef.current = performance.now();
-      prevDataLengthRef.current = data.length;
-    }
-  }, [data]);
-
-  // Measure render time after paint
-  useEffect(() => {
-    if (renderStartRef.current != null && data.length > 0) {
-      const rafId = requestAnimationFrame(() => {
-        if (renderStartRef.current != null) {
-          const elapsed = Math.round(performance.now() - renderStartRef.current);
-          setRenderMs(elapsed);
-          renderStartRef.current = null;
-        }
-      });
-      return () => cancelAnimationFrame(rafId);
-    }
-  }, [data]);
+  // Transform data to display format
   const rows = useMemo(() => {
     console.debug(
       `[DrilldownTable] rendering ${data.length} rows for ${ticker} ${quarter} ${action}`
@@ -207,14 +217,6 @@ export function InvestorActivityDrilldownTable({
   const isInitialLoading = isLoading && !hasRows;
   const hasData = data.length > 0 || !isLoading;
 
-  const dataFlowLabel = (() => {
-    switch (dataFlow) {
-      case "tsdb-indexeddb": return "Loaded from IndexedDB";
-      case "tsdb-memory": return "Served from in-memory cache";
-      case "api-duckdb": return "Fetched from API (DuckDB)";
-      default: return "Loading...";
-    }
-  })();
 
   const latencyDisplay = (
     <LatencyBadge
@@ -232,14 +234,11 @@ export function InvestorActivityDrilldownTable({
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>{cardTitle}</span>
-        </CardTitle>
-        <CardDescription className="flex items-center justify-between">
-          <span>{dataFlowLabel}</span>
           {latencyDisplay}
-        </CardDescription>
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="relative min-h-[360px]" aria-busy={isInitialLoading}>
+        <div className="relative min-h-[450px]" aria-busy={isInitialLoading}>
           {isInitialLoading ? (
             <div className="flex h-full items-center justify-center py-8 text-muted-foreground">
               Loading drilldown…
@@ -261,9 +260,6 @@ export function InvestorActivityDrilldownTable({
           ) : hasData ? (
             <div className="flex h-full flex-col items-center justify-center py-8 text-center text-muted-foreground space-y-2">
               <p className="font-medium">No detailed data available for this selection.</p>
-              <p className="text-sm">
-                The aggregate chart shows activity, but individual investor details are not available for {ticker} in {quarter}.
-              </p>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center py-8 text-muted-foreground">

@@ -1,6 +1,6 @@
 
 import { Hono } from "hono";
-import { getInvestorFlow } from "../repositories/investor-flow-repository";
+import { getDuckDBConnection } from "../duckdb";
 
 const investorFlowRoutes = new Hono();
 
@@ -14,7 +14,29 @@ investorFlowRoutes.get("/", async (c) => {
     const ticker = tickerRaw.toUpperCase();
 
     try {
-        const rows = await getInvestorFlow(c, ticker);
+        const conn = await getDuckDBConnection();
+        const escapedTicker = ticker.replace(/'/g, "''");
+
+        // Query from cusip_quarter_investor_flow table
+        const sql = `
+      SELECT
+        quarter,
+        amt_inflow as inflow,
+        amt_outflow as outflow
+      FROM cusip_quarter_investor_flow
+      WHERE ticker = '${escapedTicker}'
+      ORDER BY quarter ASC
+    `;
+
+        const reader = await conn.runAndReadAll(sql);
+        const rawRows = reader.getRows();
+
+        // Map rows to objects
+        const rows = rawRows.map((row: any[]) => ({
+            quarter: row[0] as string,
+            inflow: Number(row[1]) || 0,
+            outflow: Number(row[2]) || 0,
+        }));
 
         return c.json({
             ticker,

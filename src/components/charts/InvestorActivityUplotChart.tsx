@@ -5,7 +5,6 @@ import uPlot from "uplot";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -218,7 +217,6 @@ export const InvestorActivityUplotChart = memo(function InvestorActivityUplotCha
       <Card>
         <CardHeader>
           <CardTitle>Investor Activity for {ticker} (uPlot)</CardTitle>
-          <CardDescription>No activity data available</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -231,9 +229,6 @@ export const InvestorActivityUplotChart = memo(function InvestorActivityUplotCha
           <span>Investor Activity for {ticker} (uPlot)</span>
           {latencyBadge}
         </CardTitle>
-        <CardDescription>
-          Alternative rendering using uPlot with opened (green) vs closed (red) positions.
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <div ref={containerRef} className="h-[400px] w-full" />

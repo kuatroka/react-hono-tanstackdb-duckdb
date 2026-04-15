@@ -4,7 +4,7 @@ import type { RouterContext } from "../router";
 import { ContentReadyProvider } from "@/hooks/useContentReady";
 import "@/index.css";
 
-const serverURL = import.meta.env?.VITE_PUBLIC_SERVER ?? "http://localhost:4000";
+const serverURL = import.meta.env?.VITE_PUBLIC_SERVER ?? "http://localhost:4848";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({

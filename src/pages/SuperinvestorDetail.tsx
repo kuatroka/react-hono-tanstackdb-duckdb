@@ -1,107 +1,104 @@
-import { Link, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import type { Superinvestor } from "@/collections";
-import { fetchSuperinvestorRecordWithSource } from "@/collections";
-import { SuperinvestorChartSection } from "@/components/detail/SuperinvestorChartSection";
-import { useContentReady } from "@/hooks/useContentReady";
-
-interface SuperinvestorDetailRecordState {
-  cik: string | undefined;
-  record: Superinvestor | null | undefined;
-}
+import { useParams, Link } from '@tanstack/react-router';
+import { useContentReady } from '@/hooks/useContentReady';
+import { useEffect, useRef, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LatencyBadge, type DataFlow } from '@/components/LatencyBadge';
+import {
+  type Superinvestor,
+  fetchSuperinvestorRecordWithSource,
+} from '@/collections';
+import { SuperinvestorChartSection } from '@/components/detail/SuperinvestorChartSection';
 
 export function SuperinvestorDetailPage() {
   const { cik } = useParams({ strict: false }) as { cik?: string };
   const { onReady } = useContentReady();
-  const [recordState, setRecordState] = useState<SuperinvestorDetailRecordState>({
-    cik: undefined,
-    record: undefined,
-  });
-  const readyCalledRef = useRef(false);
-
-  const isCurrentRecord = cik !== undefined && recordState.cik === cik;
+  const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
+  const [recordSource, setRecordSource] = useState<DataFlow>('unknown');
+  const [record, setRecord] = useState<Superinvestor | null | undefined>(undefined);
 
   useEffect(() => {
-    readyCalledRef.current = false;
-  }, [cik]);
-
-  useEffect(() => {
-    if (!cik) return;
+    if (!cik) {
+      setRecord(undefined);
+      return;
+    }
 
     let cancelled = false;
-    setRecordState({
-      cik,
-      record: undefined,
-    });
+    const startedAt = performance.now();
+    setRecord(undefined);
+    setQueryTimeMs(null);
+    setRecordSource('unknown');
 
-    void (async () => {
-      let nextRecord: Superinvestor | null = null;
-
-      try {
-        const result = await fetchSuperinvestorRecordWithSource(cik);
-        nextRecord = result.record;
-      } catch (error) {
-        if (!cancelled) {
-          console.error("[SuperinvestorDetail] Failed to load superinvestor record:", error);
-        }
-      }
-
-      if (!cancelled) {
-        setRecordState({
-          cik,
-          record: nextRecord,
-        });
-      }
-    })();
+    fetchSuperinvestorRecordWithSource(cik)
+      .then(({ record: superinvestor, source }) => {
+        if (cancelled) return;
+        setRecord(superinvestor);
+        setQueryTimeMs(Math.round(performance.now() - startedAt));
+        setRecordSource(
+          source === 'api'
+            ? 'api-duckdb'
+            : source === 'indexeddb'
+              ? 'tsdb-indexeddb'
+              : source === 'memory'
+                ? 'tsdb-memory'
+                : 'unknown',
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[SuperinvestorDetail] Failed to load superinvestor record:', error);
+        setRecord(null);
+        setQueryTimeMs(null);
+        setRecordSource('unknown');
+      });
 
     return () => {
       cancelled = true;
     };
   }, [cik]);
 
+  const readyCalledRef = useRef(false);
+  useEffect(() => {
+    readyCalledRef.current = false;
+  }, [cik]);
+
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (isCurrentRecord && recordState.record !== undefined) {
+    if (record !== undefined) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [isCurrentRecord, onReady, recordState.record]);
+  }, [record, onReady]);
 
   if (!cik) return <div className="p-6">Missing CIK.</div>;
 
-  if (!isCurrentRecord || recordState.record === undefined) {
+  if (record === undefined) {
     return <div className="p-6">Loading…</div>;
   }
 
-  if (!recordState.record) {
+  if (!record) {
     return <div className="p-6">Superinvestor not found.</div>;
   }
 
-  const record = recordState.record;
-
   return (
-    <>
-      <div className="grid w-full grid-cols-3 items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="text-left">
-          <Link
-            to="/superinvestors"
-            search={{ page: undefined, search: undefined }}
-            className="whitespace-nowrap text-primary hover:underline"
-          >
-            &larr; Back to superinvestors
-          </Link>
-        </div>
-        <div className="text-center">
-          <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-3xl font-bold">
-            ({record.cik}) {record.cikName}
-          </h1>
-        </div>
-        <div className="text-right" />
-      </div>
+    <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>{record.cikName}</span>
+            <LatencyBadge latencyMs={queryTimeMs ?? undefined} source={recordSource} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 text-lg">
+            <div><span className="font-semibold">CIK:</span> {record.cik}</div>
+          </div>
+          <div className="mt-6">
+            <Link to="/superinvestors" search={{ page: undefined, search: undefined }} className="link link-primary">Back to superinvestors</Link>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="mt-8 px-4 sm:px-6 lg:px-8">
-        <SuperinvestorChartSection cik={record.cik} cikName={record.cikName} />
-      </div>
-    </>
+      <SuperinvestorChartSection cik={record.cik} cikName={record.cikName} />
+    </div>
   );
 }

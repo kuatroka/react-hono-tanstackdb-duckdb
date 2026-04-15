@@ -2,18 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { Chart } from "@antv/g2";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CusipQuarterInvestorActivity } from "@/schema";
 
 interface InvestorActivityG2ChartProps {
   data: readonly CusipQuarterInvestorActivity[];
   ticker: string;
-}
-
-interface ChartDatum {
-  quarter: string;
-  type: "Opened" | "Closed";
-  value: number;
 }
 
 export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2ChartProps) {
@@ -23,7 +17,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return;
 
-    const chartData: ChartDatum[] = data.flatMap((item) => {
+    const chartData = data.flatMap((item) => {
       const quarter = item.quarter ?? "Unknown";
       return [
         {
@@ -50,7 +44,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
       height: 400,
     });
 
-    const option: Parameters<Chart["options"]>[0] = {
+    const option = {
       type: "interval",
       padding: { top: 40, right: 60, bottom: 80, left: 60 },
       data: chartData,
@@ -76,7 +70,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
         },
       },
       tooltip: {
-        title: (datum: ChartDatum) => datum.quarter,
+        title: (datum: any) => datum.quarter,
         valueFormatter: (value: number) =>
           `${Math.abs(value).toLocaleString()} investors`,
       },
@@ -91,7 +85,7 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
           },
         },
       ],
-    };
+    } as any;
 
     chart.options(option);
 
@@ -109,7 +103,6 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
       <Card>
         <CardHeader>
           <CardTitle>Investor Activity for {ticker} (G2)</CardTitle>
-          <CardDescription>No activity data available</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -119,9 +112,6 @@ export function InvestorActivityG2Chart({ data, ticker }: InvestorActivityG2Char
     <Card>
       <CardHeader>
         <CardTitle>Investor Activity for {ticker} (G2)</CardTitle>
-        <CardDescription>
-          Alternative rendering using AntV G2 with opened (green) vs closed (red) positions.
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <div ref={containerRef} className="h-[400px] w-full" />

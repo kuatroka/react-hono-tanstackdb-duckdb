@@ -2,7 +2,9 @@
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
-export type RouterContext = Record<never, never>;
+export interface RouterContext {
+  // Removed Zero dependency - using TanStack DB collections instead
+}
 
 export function createRouter() {
   const router = createTanStackRouter({

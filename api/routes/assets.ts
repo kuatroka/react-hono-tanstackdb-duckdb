@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { listAssets, getAssetByCode } from "../repositories/assets-repository";
-import { API_LIMITS, ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
+import { getDuckDBConnection } from "../duckdb";
 
 const assetsRoutes = new Hono();
 
@@ -11,16 +10,39 @@ const assetsRoutes = new Hono();
  * Used by TanStack DB collection for eager loading.
  */
 assetsRoutes.get("/", async (c) => {
-    const limit = Math.min(parseInt(c.req.query("limit") || String(API_LIMITS.MAX_ASSETS_LIMIT), 10), API_LIMITS.MAX_ASSETS_LIMIT);
+    const limit = Math.min(parseInt(c.req.query("limit") || "50000", 10), 50000);
     const offset = parseInt(c.req.query("offset") || "0", 10);
 
     try {
-        const results = await listAssets(c, { limit, offset });
+        const conn = await getDuckDBConnection();
+
+        const sql = `
+      SELECT 
+        asset,
+        asset_name as "assetName",
+        cusip
+      FROM assets
+      ORDER BY asset_name ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+        const reader = await conn.runAndReadAll(sql);
+        const rows = reader.getRows();
+
+        const results = rows.map((row: unknown[], index: number) => ({
+            id: `${row[0]}-${row[2] || index}`,
+            asset: row[0] as string,
+            assetName: row[1] as string,
+            cusip: row[2] as string | null,
+        }));
+
+        // Query completed in: Math.round((performance.now() - startTime) * 100) / 100 ms
+
         return c.json(results);
     } catch (error) {
         console.error("[DuckDB Assets] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: ERROR_MESSAGES.ASSETS_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
+        return c.json({ error: "Assets query failed", details: errorMessage }, 500);
     }
 });
 
@@ -35,17 +57,52 @@ assetsRoutes.get("/:code/:cusip?", async (c) => {
     const cusip = c.req.param("cusip");
 
     try {
-        const asset = await getAssetByCode(c, { code, cusip: cusip || undefined });
+        const conn = await getDuckDBConnection();
 
-        if (!asset) {
-            return c.json({ error: "Asset not found" }, HTTP_STATUS_CODES.NOT_FOUND);
+        const sql = cusip
+            ? `
+      SELECT
+        asset,
+        asset_name as "assetName",
+        cusip
+      FROM assets
+      WHERE asset = ? AND cusip = ?
+      LIMIT 1
+    `
+            : `
+      SELECT
+        asset,
+        asset_name as "assetName",
+        cusip
+      FROM assets
+      WHERE asset = ?
+      ORDER BY asset_name ASC
+      LIMIT 1
+    `;
+
+        const stmt = await conn.prepare(sql);
+        stmt.bindVarchar(1, code);
+        if (cusip) {
+            stmt.bindVarchar(2, cusip);
+        }
+        const reader = await stmt.runAndReadAll();
+        const rows = reader.getRows();
+
+        if (rows.length === 0) {
+            return c.json({ error: "Asset not found" }, 404);
         }
 
-        return c.json(asset);
+        const row = rows[0];
+        return c.json({
+            id: `${row[0]}-${row[2] || "none"}`,
+            asset: row[0] as string,
+            assetName: row[1] as string,
+            cusip: row[2] as string | null,
+        });
     } catch (error) {
         console.error("[DuckDB Asset] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: ERROR_MESSAGES.ASSET_QUERY_FAILED, details: errorMessage }, HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR);
+        return c.json({ error: "Asset query failed", details: errorMessage }, 500);
     }
 });
 
