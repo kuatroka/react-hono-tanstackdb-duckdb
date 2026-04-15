@@ -23,7 +23,6 @@ function SuperinvestorsTableSurface() {
   const { onReady } = useContentReady();
   const trimmedSearch = (searchParams.search ?? '').trim();
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
-  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
     const source = getSuperinvestorListLoadSource();
     return source === 'api' ? 'api-duckdb' : source === 'indexeddb' ? 'tsdb-indexeddb' : 'tsdb-memory';
@@ -96,7 +95,6 @@ function SuperinvestorsTableSurface() {
           </div>
           <div className="flex flex-col items-end gap-2">
             {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
-            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -112,11 +110,9 @@ function SuperinvestorsTableSurface() {
               dataSource={dataSource}
               onReady={onReady}
               onSearchChange={handleSearchChange}
-              onSearchTelemetryChange={setSearchTelemetry}
               onTableTelemetryChange={setTableTelemetry}
               searchDebounceMs={150}
               searchPlaceholder="Search superinvestors..."
-              searchTelemetryLabel="search"
               searchValue={trimmedSearch}
               tableTelemetryLabel="virtual table"
             />

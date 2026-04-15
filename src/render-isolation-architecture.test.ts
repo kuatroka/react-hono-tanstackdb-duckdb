@@ -34,11 +34,12 @@ describe("rerender isolation architecture", () => {
     expect(superinvestorDetail).not.toContain("latencyBadge={");
   });
 
-  test("asset drilldown hover interaction is isolated from provider-level React state", () => {
+  test("asset drilldown section keeps its selection state local and avoids hoisting it into the page", () => {
     const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
 
-    expect(assetDrilldown).toContain("useSyncExternalStore");
-    expect(assetDrilldown).not.toContain("const [hoverSelection, setHoverSelectionState] = useState");
+    expect(assetDrilldown).toContain("AssetDrilldownSectionContext");
+    expect(assetDrilldown).toContain("const [selection, setSelection] = useState");
+    expect(assetDrilldown).toContain("setSelection: handleSelectionChange");
   });
 
   test("superinvestor chart hover tooltip avoids React state updates", () => {
@@ -67,25 +68,25 @@ describe("rerender isolation architecture", () => {
     expect(investorFlowChart).not.toContain("setChartSize(");
   });
 
-  test("table pages surface separate table and search telemetry badges instead of hardcoded zero-latency placeholders", () => {
+  test("table pages keep only table telemetry in the card header while the search badge lives in the table header", () => {
     const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
     const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
 
     expect(assetsTable).toContain("const [tableTelemetry, setTableTelemetry]");
-    expect(assetsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(assetsTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(assetsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
-    expect(assetsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
-    expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
+    expect(assetsTable).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(assetsTable).not.toContain("searchTelemetryLabel=\"search\"");
 
     expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
-    expect(superinvestorsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(superinvestorsTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(superinvestorsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
-    expect(superinvestorsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
-    expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
+    expect(superinvestorsTable).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(superinvestorsTable).not.toContain("searchTelemetryLabel=\"search\"");
 
-    expect(virtualTable).toContain("onTableTelemetryChange");
-    expect(virtualTable).toContain("onSearchTelemetryChange");
+    expect(virtualTable).toContain("HeaderTelemetrySlot");
+    expect(virtualTable).not.toContain("searchTelemetryLabel");
   });
 
   test("card primitive pins border color to the shared border token so page shells match the Zero app", () => {
@@ -94,12 +95,13 @@ describe("rerender isolation architecture", () => {
     expect(cardPrimitive).toContain("border-border");
   });
 
-  test("react-scan is loaded only in development code paths", () => {
+  test("react-scan is loaded only in development or local-browser code paths", () => {
     const mainEntrypoint = readProjectFile("src/main.tsx");
     const htmlShell = readProjectFile("index.html");
 
+    expect(mainEntrypoint).toContain("react-scan/dist/auto.global.js");
+    expect(mainEntrypoint).toContain("window.location.hostname");
     expect(mainEntrypoint).toContain("import.meta.env?.DEV");
-    expect(mainEntrypoint).toContain("https://unpkg.com/react-scan/dist/auto.global.js");
     expect(htmlShell).not.toContain("react-scan/dist/auto.global.js");
   });
 });

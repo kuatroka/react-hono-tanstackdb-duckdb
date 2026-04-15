@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react';
 import { LatencyBadge } from '@/components/LatencyBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,6 @@ interface VirtualTableSearchInputProps {
   onFocus?: () => void;
   onTabToResults?: () => void;
   onValueChange: (value: string) => void;
-  autoFocus?: boolean;
   containerClassName?: string;
   inputClassName?: string;
 }
@@ -47,17 +46,15 @@ function VirtualTableSearchInput({
   onFocus,
   onTabToResults,
   onValueChange,
-  autoFocus = false,
   containerClassName = 'w-52 sm:w-64',
   inputClassName,
 }: VirtualTableSearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!autoFocus) return;
     const frameId = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frameId);
-  }, [autoFocus]);
+  }, []);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' && onArrowDown) {
@@ -85,7 +82,6 @@ function VirtualTableSearchInput({
     <div className={containerClassName}>
       <Input
         ref={inputRef}
-        autoFocus={autoFocus}
         name="virtual-table-search"
         type="search"
         placeholder={placeholder}
@@ -103,7 +99,7 @@ interface VirtualTableToolbarProps {
   telemetry?: PerfTelemetry | null;
 }
 
-function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
+const VirtualTableToolbar = memo(function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
   if (!telemetry) {
     return null;
   }
@@ -113,7 +109,19 @@ function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
       <LatencyBadge telemetry={telemetry} />
     </div>
   );
+});
+
+interface HeaderTelemetrySlotProps {
+  telemetry?: PerfTelemetry | null;
 }
+
+const HeaderTelemetrySlot = memo(function HeaderTelemetrySlot({ telemetry }: HeaderTelemetrySlotProps) {
+  return (
+    <div className="flex min-w-[11rem] items-center justify-end">
+      {telemetry ? <LatencyBadge telemetry={telemetry} className="justify-end" /> : <span className="h-8" />}
+    </div>
+  );
+});
 
 interface VirtualTableHeaderSearchProps {
   placeholder: string;
@@ -127,7 +135,7 @@ interface VirtualTableHeaderSearchProps {
   onTabToResults: () => void;
 }
 
-function VirtualTableHeaderSearch({
+const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
   placeholder,
   searchValue,
   tableContainerRef,
@@ -138,16 +146,11 @@ function VirtualTableHeaderSearch({
   onSearchValueChange,
   onTabToResults,
 }: VirtualTableHeaderSearchProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState(false);
+  const isExpanded = Boolean(searchValue) || manualExpanded;
 
   useEffect(() => {
-    if (searchValue) {
-      setIsExpanded(true);
-    }
-  }, [searchValue]);
-
-  useEffect(() => {
-    if (!isExpanded || searchValue.trim()) {
+    if (!manualExpanded || searchValue.trim()) {
       return;
     }
 
@@ -156,51 +159,48 @@ function VirtualTableHeaderSearch({
       if (tableContainerRef.current?.contains(target)) {
         return;
       }
-      setIsExpanded(false);
+      setManualExpanded(false);
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isExpanded, searchValue, tableContainerRef]);
+  }, [manualExpanded, searchValue, tableContainerRef]);
 
   const handleToggle = useCallback(() => {
     if (isExpanded && searchValue.trim()) {
       onSearchValueChange('');
       return;
     }
-    setIsExpanded((current) => !current);
+    setManualExpanded((current) => !current);
   }, [isExpanded, onSearchValueChange, searchValue]);
 
   return (
-    <div className="flex items-center justify-end border-b border-border bg-background px-4 py-2">
-      <div className="flex items-center gap-2">
-        {isExpanded ? (
-          <VirtualTableSearchInput
-            autoFocus
-            placeholder={placeholder}
-            value={searchValue}
-            onArrowDown={onArrowDown}
-            onArrowUp={onArrowUp}
-            onEnter={onEnter}
-            onFocus={onSearchFocus}
-            onTabToResults={onTabToResults}
-            onValueChange={onSearchValueChange}
-          />
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={handleToggle}
-          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={handleToggle}
+        className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+        aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
+      >
+        <Search className="h-4 w-4" />
+      </Button>
+      {isExpanded ? (
+        <VirtualTableSearchInput
+          placeholder={placeholder}
+          value={searchValue}
+          onArrowDown={onArrowDown}
+          onArrowUp={onArrowUp}
+          onEnter={onEnter}
+          onFocus={onSearchFocus}
+          onTabToResults={onTabToResults}
+          onValueChange={onSearchValueChange}
+        />
+      ) : null}
     </div>
   );
-}
+});
 
 interface VirtualDataTableProps<T extends { id: number | string }> {
   data: T[];
@@ -214,12 +214,10 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   onReady?: () => void;
   dataSource?: PerfSource;
   onSearchChange?: (value: string) => void;
-  onSearchTelemetryChange?: (searchTelemetry: PerfTelemetry | null) => void;
   onTableTelemetryChange?: (tableTelemetry: PerfTelemetry | null) => void;
   rowHeight?: number;
   searchDebounceMs?: number;
   searchPlaceholder?: string;
-  searchTelemetryLabel?: string;
   searchValue?: string;
   tableTelemetryLabel?: string;
   visibleRowCount?: number;
@@ -237,12 +235,10 @@ export function VirtualDataTable<T extends { id: number | string }>({
   onReady,
   dataSource,
   onSearchChange,
-  onSearchTelemetryChange,
   onTableTelemetryChange,
   rowHeight = DEFAULT_ROW_HEIGHT,
   searchDebounceMs = 150,
   searchPlaceholder = 'Search...',
-  searchTelemetryLabel = 'search',
   searchValue,
   tableTelemetryLabel = 'virtual table',
   visibleRowCount = DEFAULT_VISIBLE_ROW_COUNT,
@@ -261,23 +257,12 @@ export function VirtualDataTable<T extends { id: number | string }>({
   const resolvedSearchValue = isSearchControlled ? searchValue : internalSearchValue;
 
   useEffect(() => {
-    if (!isSearchControlled) {
-      return;
-    }
-    setInternalSearchValue(searchValue ?? '');
-  }, [isSearchControlled, searchValue]);
-
-  useEffect(() => {
     const timeoutId = setTimeout(() => {
       setCommittedSearch((resolvedSearchValue ?? '').trim());
     }, searchDebounceMs);
 
     return () => clearTimeout(timeoutId);
   }, [resolvedSearchValue, searchDebounceMs]);
-
-  useEffect(() => {
-    setFocusedRowIndex(-1);
-  }, [committedSearch, sortColumn, sortDirection]);
 
   const searchableColumns = useMemo(
     () => columns.filter((column) => column.searchable),
@@ -360,19 +345,15 @@ export function VirtualDataTable<T extends { id: number | string }>({
     }
 
     return createLegacyPerfTelemetry({
-      label: searchTelemetryLabel,
+      label: 'search',
       ms: searchLatencyMs,
       source: dataSource ?? latencySource,
     });
-  }, [committedSearch, dataSource, latencySource, searchLatencyMs, searchTelemetryLabel]);
+  }, [committedSearch, dataSource, latencySource, searchLatencyMs]);
 
   useEffect(() => {
     onTableTelemetryChange?.(tableTelemetry);
   }, [onTableTelemetryChange, tableTelemetry]);
-
-  useEffect(() => {
-    onSearchTelemetryChange?.(searchTelemetry);
-  }, [onSearchTelemetryChange, searchTelemetry]);
 
   useEffect(() => {
     if (!isTableReady || readyCalledRef.current) return;
@@ -395,13 +376,19 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [focusedRowIndex, virtualItems]);
 
   const handleSearchValueChange = useCallback((value: string) => {
+    setFocusedRowIndex(-1);
     if (!isSearchControlled) {
       setInternalSearchValue(value);
     }
     onSearchChange?.(value);
   }, [isSearchControlled, onSearchChange]);
 
+  const handleSearchFocus = useCallback(() => {
+    setFocusedRowIndex(-1);
+  }, []);
+
   const handleSort = useCallback((column: Extract<keyof T, string>) => {
+    setFocusedRowIndex(-1);
     if (column === sortColumn) {
       setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
       return;
@@ -447,6 +434,12 @@ export function VirtualDataTable<T extends { id: number | string }>({
     });
   }, []);
 
+  const handleSearchEnter = useCallback(() => {
+    focusFirstRow();
+    focusRowElement(0);
+    activateRowElement(0);
+  }, [activateRowElement, focusFirstRow, focusRowElement]);
+
   const activateFocusedRow = useCallback(() => {
     const activeElement = document.activeElement;
     const link = activeElement?.querySelector?.('a') ?? activeElement?.closest?.('a');
@@ -474,24 +467,23 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [activateFocusedRow, focusNextRow, focusPreviousRow]);
 
   return (
-    <div className="space-y-4" onKeyDown={handleKeyDown}>
+    <div className="space-y-4" onKeyDown={handleKeyDown} role="region" aria-label="Virtual data table">
       {!onTableTelemetryChange ? <VirtualTableToolbar telemetry={tableTelemetry} /> : null}
       <div ref={tableContainerRef} className="overflow-hidden rounded-lg border border-border bg-background">
-        <VirtualTableHeaderSearch
-          placeholder={searchPlaceholder}
-          searchValue={resolvedSearchValue ?? ''}
-          tableContainerRef={tableContainerRef}
-          onArrowDown={focusNextRow}
-          onArrowUp={focusPreviousRow}
-          onEnter={() => {
-            focusFirstRow();
-            focusRowElement(0);
-            activateRowElement(0);
-          }}
-          onSearchFocus={() => setFocusedRowIndex(-1)}
-          onSearchValueChange={handleSearchValueChange}
-          onTabToResults={focusFirstRow}
-        />
+        <div className="flex items-center justify-between border-b border-border bg-background px-4 py-2">
+          <VirtualTableHeaderSearch
+            placeholder={searchPlaceholder}
+            searchValue={resolvedSearchValue ?? ''}
+            tableContainerRef={tableContainerRef}
+            onArrowDown={focusNextRow}
+            onArrowUp={focusPreviousRow}
+            onEnter={handleSearchEnter}
+            onSearchFocus={handleSearchFocus}
+            onSearchValueChange={handleSearchValueChange}
+            onTabToResults={focusFirstRow}
+          />
+          <HeaderTelemetrySlot telemetry={searchTelemetry} />
+        </div>
         <div
           className="grid items-center border-b border-border bg-muted/30 px-4 py-3 text-sm font-medium text-muted-foreground"
           style={{ gridTemplateColumns }}

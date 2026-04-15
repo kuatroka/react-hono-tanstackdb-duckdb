@@ -119,7 +119,7 @@ export function createPerfTelemetry({
   const sourceLabel = formatPerfSourceLabel(source);
   const primaryLine = `${sourceLabel} ${label}: ${formatPerfLatencyMs(ms)}`;
   const secondaryLine = secondaryLabel
-    ? `${sourceLabel} ${secondaryLabel}: ${formatPerfLatencyMs(secondaryMs ?? null)}`
+    ? `${secondaryLabel}: ${formatPerfLatencyMs(secondaryMs ?? null)}`
     : undefined;
 
   return {

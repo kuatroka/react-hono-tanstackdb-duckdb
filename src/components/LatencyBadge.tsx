@@ -1,8 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import {
-  createLegacyPerfTelemetry,
   formatPerfSourceLabel,
   getPerfSourceCategory,
+  toPerfSource,
   type PerfSource,
   type PerfTelemetry,
 } from "@/lib/perf/telemetry";
@@ -41,20 +41,21 @@ function getLatencyTone(latencyMs: number): "good" | "warn" | "bad" {
   return "bad";
 }
 
-
-function SingleLatencyBadge({ 
-  latencyMs, 
-  source = "unknown", 
-  label, 
-  className 
-}: { 
-  latencyMs: number; 
-  source?: DataFlow; 
+function SingleLatencyBadge({
+  latencyMs,
+  source = "unknown",
+  label,
+  className,
+}: {
+  latencyMs: number;
+  source?: DataFlow;
   label?: string;
   className?: string;
 }) {
   const tone = getLatencyTone(latencyMs);
-  const category = getPerfSourceCategory(source);
+  const resolvedSource = toPerfSource(source as string);
+  const category = getPerfSourceCategory(resolvedSource);
+  const sourceLabel = label ?? formatPerfSourceLabel(resolvedSource);
 
   const toneClasses =
     tone === "good"
@@ -63,7 +64,6 @@ function SingleLatencyBadge({
         ? "ring-amber-500/30 border-amber-200/50"
         : "ring-rose-500/30 border-rose-200/50";
 
-  // Color by category: local (violet), cache (emerald), api (sky)
   const sourceClasses =
     category === "local"
       ? "text-violet-700 dark:text-violet-400"
@@ -81,16 +81,18 @@ function SingleLatencyBadge({
         "ring-1",
         toneClasses,
         sourceClasses,
-        className
+        className,
       )}
     >
-      <span>{formatLatency(latencyMs)}</span>
-      {label && <span className="opacity-90">({label})</span>}
+      <span className="inline-flex items-center gap-1">
+        <span className="opacity-90">{sourceLabel}:</span>
+        <span>{formatLatency(latencyMs)}</span>
+      </span>
     </Badge>
   );
 }
 
-export function LatencyBadge({ 
+export function LatencyBadge({
   latencyMs,
   ms,
   dataLoadMs,
@@ -104,22 +106,32 @@ export function LatencyBadge({
   const resolvedDataLoadMs = dataLoadMs ?? ms ?? latencyMs;
   const hasDataLoadMs = resolvedDataLoadMs != null && !Number.isNaN(resolvedDataLoadMs);
   const hasRenderMs = renderMs != null && !Number.isNaN(renderMs);
+  const resolvedSource = toPerfSource(source as string);
 
   if (telemetry) {
     const { ms: resolvedMs, primaryLine, secondaryLine } = telemetry;
 
     return (
       <Badge
-        variant="secondary"
+        variant="outline"
         className={cn(
-          "font-mono font-medium text-[11px] leading-none px-2 py-1 shrink-0 whitespace-nowrap",
+          "font-mono font-medium text-[11px] leading-none px-2 py-1 shrink-0 whitespace-nowrap bg-transparent inline-flex items-center gap-1",
           secondaryLine ? "flex flex-col items-start gap-0.5 py-1.5 leading-tight whitespace-nowrap" : undefined,
           className,
         )}
         title={resolvedMs == null ? primaryLine : `${primaryLine} (${resolvedMs.toFixed(2)}ms)`}
       >
-        <span>{primaryLine}</span>
-        {secondaryLine ? <span>{secondaryLine}</span> : null}
+        <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
+          <span>{primaryLine}</span>
+        </span>
+        {secondaryLine ? (
+          <>
+            <span className="opacity-40 text-muted-foreground">|</span>
+            <span className="inline-flex items-center gap-1 text-[goldenrod]">
+              <span>{secondaryLine}</span>
+            </span>
+          </>
+        ) : null}
       </Badge>
     );
   }
@@ -131,7 +143,6 @@ export function LatencyBadge({
   if (variant === "inline" && hasRenderMs) {
     const totalMs = (resolvedDataLoadMs ?? 0) + (renderMs ?? 0);
     const tone = getLatencyTone(totalMs);
-    const category = getPerfSourceCategory(source as DataFlow);
 
     const toneClasses =
       tone === "good"
@@ -140,14 +151,7 @@ export function LatencyBadge({
           ? "ring-amber-500/30 border-amber-200/50"
           : "ring-rose-500/30 border-rose-200/50";
 
-    const sourceClasses =
-      category === "local"
-        ? "text-violet-700 dark:text-violet-400"
-        : category === "cache"
-          ? "text-emerald-700 dark:text-emerald-400"
-          : category === "api"
-            ? "text-sky-700 dark:text-sky-400"
-            : "text-muted-foreground";
+    const hydrationSourceLabel = formatPerfSourceLabel(resolvedSource);
 
     return (
       <Badge
@@ -156,11 +160,11 @@ export function LatencyBadge({
           "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
           "ring-1",
           toneClasses,
-          className
+          className,
         )}
       >
         <span className="inline-flex items-center gap-1 text-teal-600 dark:text-teal-400">
-          <span className="opacity-90">data:</span>
+          <span className="opacity-90">{hydrationSourceLabel}:</span>
           <span>{resolvedDataLoadMs != null ? formatLatency(resolvedDataLoadMs) : "—"}</span>
         </span>
         <span className="opacity-40 text-muted-foreground">|</span>
@@ -171,8 +175,6 @@ export function LatencyBadge({
           <span className="opacity-90">render:</span>
           <span>{renderMs != null ? formatLatency(renderMs) : "—"}</span>
         </span>
-        <span className="opacity-40 text-muted-foreground">|</span>
-        <span className={cn("opacity-90", sourceClasses)}>{formatPerfSourceLabel(source as DataFlow)}</span>
       </Badge>
     );
   }
@@ -183,8 +185,8 @@ export function LatencyBadge({
         {hasDataLoadMs ? (
           <SingleLatencyBadge
             latencyMs={resolvedDataLoadMs}
-            source={source as DataFlow}
-            label={label ?? "data"}
+            source={resolvedSource}
+            label={label}
           />
         ) : null}
         {hasRenderMs ? (
@@ -198,15 +200,16 @@ export function LatencyBadge({
     );
   }
 
-  return (
-    <LatencyBadge
-      telemetry={createLegacyPerfTelemetry({
-        label,
-        ms: resolvedDataLoadMs,
-        renderMs,
-        source,
-      })}
-      className={className}
-    />
-  );
+  if (hasDataLoadMs) {
+    return (
+      <SingleLatencyBadge
+        latencyMs={resolvedDataLoadMs}
+        source={resolvedSource}
+        label={label}
+        className={className}
+      />
+    );
+  }
+
+  return null;
 }

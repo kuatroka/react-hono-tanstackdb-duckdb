@@ -3,8 +3,8 @@ services:
     image: ${APP_IMAGE:-fintellectus-tanstackdb-app:latest}
     container_name: ${APP_CONTAINER_NAME:-fintellectus_tanstackdb_app}
     build:
-      context: ../..
-      dockerfile: Dockerfile
+      context: ${APP_BUILD_CONTEXT:-../..}
+      dockerfile: ${APP_DOCKERFILE_PATH:-Dockerfile}
       target: runtime
     restart: unless-stopped
     ports:

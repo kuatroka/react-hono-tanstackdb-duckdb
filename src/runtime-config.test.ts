@@ -42,6 +42,8 @@ describe("bun native runtime config", () => {
 
     expect(rootRoute).toContain("import.meta.env?.VITE_PUBLIC_SERVER");
     expect(mainEntrypoint).toContain("import.meta.env?.DEV");
+    expect(mainEntrypoint).toContain("react-scan/dist/auto.global.js");
+    expect(mainEntrypoint).toContain("window.location.hostname");
   });
 
   test("defines the dev/prod-only deployment contract for the sslip.io web app", () => {

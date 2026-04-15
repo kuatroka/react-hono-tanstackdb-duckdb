@@ -4,7 +4,11 @@ import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "../app/router";
 import "uplot/dist/uPlot.min.css";
 
-if (import.meta.env?.DEV) {
+const isLocalDevelopment =
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+
+if (import.meta.env?.DEV || isLocalDevelopment) {
   const script = document.createElement("script");
   script.crossOrigin = "anonymous";
   script.src = "https://unpkg.com/react-scan/dist/auto.global.js";
