@@ -14,7 +14,7 @@ RETAIN_IMAGES_HELPER="${RETAIN_IMAGES_HELPER:-$REPO_ROOT/infra/prod/scripts/reta
 PRUNE_FAILED_WORKTREES_HELPER="${PRUNE_FAILED_WORKTREES_HELPER:-$REPO_ROOT/infra/prod/scripts/prune-failed-worktrees.sh}"
 WORKTREE_ROOT="${APP_DEPLOY_WORKTREE_ROOT:-$REPO_ROOT/.deploy-worktrees}"
 
-required_commands=(docker curl git)
+required_commands=(docker curl)
 for command in "${required_commands[@]}"; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Missing required command: $command" >&2
@@ -130,7 +130,14 @@ cleanup_worktree() {
 }
 trap cleanup_worktree EXIT
 
+has_git_repo="0"
 if [[ -d "$REPO_ROOT/.git" ]]; then
+  has_git_repo="1"
+  if ! command -v git >/dev/null 2>&1; then
+    echo "Missing required command: git" >&2
+    exit 1
+  fi
+
   if [[ -n "$deploy_git_ref" ]]; then
     git -C "$REPO_ROOT" fetch --all --tags --prune
     source_commit_sha="$(git -C "$REPO_ROOT" rev-parse --verify "${deploy_git_ref}^{commit}")"
@@ -142,21 +149,26 @@ if [[ -d "$REPO_ROOT/.git" ]]; then
   source_sha="$(git -C "$REPO_ROOT" rev-parse --short=12 "$source_commit_sha")"
   source_branch="$(git -C "$REPO_ROOT" branch --contains "$source_commit_sha" --format='%(refname:short)' | grep -E '^[^ ]+$' | head -n 1 || true)"
   source_tag="$(git -C "$REPO_ROOT" describe --tags --exact-match "$source_commit_sha" 2>/dev/null || true)"
+elif [[ -n "$deploy_git_ref" && "$deploy_git_ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+  # No .git directory present (common for VPS copies). If the deploy ref looks like a commit sha, use it as-is.
+  source_commit_sha="$deploy_git_ref"
+  source_sha="${deploy_git_ref:0:12}"
+  source_ref="$deploy_git_ref"
 fi
 
-if [[ -z "$source_commit_sha" ]]; then
+if [[ "$has_git_repo" == "1" && -z "$source_commit_sha" ]]; then
   echo "Unable to determine deployment commit SHA." >&2
   exit 1
 fi
 
 release_id="$explicit_release_id"
 if [[ -z "$release_id" ]]; then
-  if [[ -x "$RELEASE_HELPER" ]]; then
+  if [[ "$has_git_repo" == "1" && -x "$RELEASE_HELPER" ]]; then
     release_id="$(APP_RELEASE_PREFIX="$release_prefix" DEPLOY_GIT_REF="$source_ref" "$RELEASE_HELPER" --git-ref "$source_ref")"
   elif [[ -n "$source_sha" ]]; then
     release_id="${release_prefix}-$(date -u +%Y%m%d)-${source_sha:0:7}"
   else
-    release_id="${release_prefix}-$(date -u +%Y%m%dT%H%M%SZ)"
+    release_id="${release_prefix}-$(date -u +%Y%m%dT%H%M%SZ)-nogit"
   fi
 fi
 current_image="$IMAGE_REPOSITORY:$release_id"
@@ -210,13 +222,19 @@ export APP_GIT_SHA="${source_sha:-}"
 export APP_IMAGE="$current_image"
 export DEPLOY_GIT_REF="$source_ref"
 
-mkdir -p "$WORKTREE_ROOT"
-worktree_path="$WORKTREE_ROOT/$release_id"
-rm -rf "$worktree_path"
-git -C "$REPO_ROOT" worktree add --force --detach "$worktree_path" "$source_commit_sha" >/dev/null
+if [[ "$has_git_repo" == "1" ]]; then
+  mkdir -p "$WORKTREE_ROOT"
+  worktree_path="$WORKTREE_ROOT/$release_id"
+  rm -rf "$worktree_path"
+  git -C "$REPO_ROOT" worktree add --force --detach "$worktree_path" "$source_commit_sha" >/dev/null
 
-export APP_BUILD_CONTEXT="$worktree_path"
-export APP_DOCKERFILE_PATH="$worktree_path/Dockerfile"
+  export APP_BUILD_CONTEXT="$worktree_path"
+  export APP_DOCKERFILE_PATH="$worktree_path/Dockerfile"
+else
+  worktree_path=""
+  export APP_BUILD_CONTEXT="$REPO_ROOT"
+  export APP_DOCKERFILE_PATH="$REPO_ROOT/Dockerfile"
+fi
 
 cd "$REPO_ROOT"
 
