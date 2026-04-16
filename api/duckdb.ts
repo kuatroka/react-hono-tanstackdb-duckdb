@@ -8,6 +8,7 @@ let connectionInit: Promise<Awaited<ReturnType<DuckDBInstance["connect"]>>> | nu
 let lastFileMtime: number | null = null;
 let lastManifestVersion: number | null = null;
 let currentDbPath: string | null = null;
+let isReconnecting = false;
 
 /**
  * Get the file's modification time in milliseconds
@@ -28,7 +29,6 @@ async function hasFileChanged(): Promise<boolean> {
   // Check manifest version first (blue-green pattern)
   const currentVersion = getManifestVersion();
   if (currentVersion !== null && lastManifestVersion !== null && currentVersion !== lastManifestVersion) {
-    console.log(`[DuckDB] Manifest version changed: ${lastManifestVersion} -> ${currentVersion}`);
     return true;
   }
 
@@ -59,28 +59,6 @@ async function openConnection(): Promise<Awaited<ReturnType<DuckDBInstance["conn
   const conn = await instance.connect();
   console.log(`[DuckDB] Connected to ${currentDbPath} (version: ${lastManifestVersion}, mtime: ${lastFileMtime})`);
 
-  try {
-    const reader = await conn.runAndRead(
-      "SELECT current_setting('access_mode') AS access_mode"
-    );
-    await reader.readAll();
-    const rows = reader.getRowObjects();
-    console.log(
-      "[DuckDB] access_mode current_setting:",
-      rows?.[0]?.access_mode ?? rows?.[0]
-    );
-  } catch (err) {
-    try {
-      const reader = await conn.runAndRead("PRAGMA show;");
-      await reader.readAll();
-      const rows = reader.getRowObjects();
-      const accessRow = rows.find((r: any) => r.name === "access_mode");
-      console.log("[DuckDB] PRAGMA show access_mode row:", accessRow);
-    } catch (err2) {
-      console.warn("[DuckDB] Failed to log access_mode", err, err2);
-    }
-  }
-
   return conn;
 }
 
@@ -89,21 +67,59 @@ async function openConnection(): Promise<Awaited<ReturnType<DuckDBInstance["conn
  * Automatically reconnects if the DuckDB file has been modified (e.g., by ETL).
  */
 export async function getDuckDBConnection() {
+  if (isReconnecting) {
+    if (connectionInit) return connectionInit;
+  }
+
   // Check if file changed and reconnect if needed
-  if (connection && await hasFileChanged()) {
+  if (connection && !isReconnecting && await hasFileChanged()) {
     console.log("[DuckDB] File changed, reconnecting...");
-    await closeDuckDBConnection();
+    isReconnecting = true;
+    
+    // We don't close the old connection immediately because queries might be in flight.
+    // We just create a new one and replace the singleton.
+    connectionInit = openConnection()
+      .then((conn) => {
+        const oldConnection = connection;
+        connection = conn;
+        isReconnecting = false;
+        
+        // Try to close the old connection safely in the background after a delay
+        // to let in-flight queries finish.
+        if (oldConnection) {
+          setTimeout(() => {
+            try {
+              oldConnection.closeSync();
+              console.log("[DuckDB] Old connection closed successfully");
+            } catch (e) {
+              console.warn("[DuckDB] Failed to close old connection safely", e);
+            }
+          }, 10000); // 10 seconds grace period
+        }
+        
+        return conn;
+      })
+      .catch((err) => {
+        isReconnecting = false;
+        connectionInit = null;
+        throw err;
+      });
+      
+    return connectionInit;
   }
 
   if (connection) return connection;
 
   if (!connectionInit) {
+    isReconnecting = true;
     connectionInit = openConnection()
       .then((conn) => {
         connection = conn;
+        isReconnecting = false;
         return conn;
       })
       .catch((err) => {
+        isReconnecting = false;
         connectionInit = null;
         throw err;
       });
@@ -117,7 +133,9 @@ export async function getDuckDBConnection() {
  */
 export async function closeDuckDBConnection() {
   if (connection) {
-    connection.closeSync();
+    try {
+      connection.closeSync();
+    } catch(e) {}
     connection = null;
     instance = null;
     connectionInit = null;

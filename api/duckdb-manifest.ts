@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
 
 const DUCKDB_PATH = process.env.DUCKDB_PATH || "/Users/yo_macbook/Documents/app_data/TR_05_DB/TR_05_DUCKDB_FILE.duckdb";
@@ -36,10 +36,39 @@ export function readManifest(): DbManifest | null {
   }
 }
 
+function resolveFallbackDuckDbPath(): string {
+  if (existsSync(DUCKDB_PATH)) {
+    return DUCKDB_PATH;
+  }
+
+  const dir = dirname(DUCKDB_PATH);
+  const base = basename(DUCKDB_PATH, ".duckdb");
+  const candidates = [
+    join(dir, `${base}_a.duckdb`),
+    join(dir, `${base}_b.duckdb`),
+  ].filter((candidate) => existsSync(candidate));
+
+  if (candidates.length === 0) {
+    return DUCKDB_PATH;
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  return candidates.sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0];
+}
+
 export function getActiveDuckDbPath(): string {
   const manifest = readManifest();
 
   if (manifest === null) {
+    const fallbackPath = resolveFallbackDuckDbPath();
+    if (fallbackPath !== DUCKDB_PATH) {
+      console.log(`[DuckDB Manifest] No manifest found, using detected versioned DB file: ${fallbackPath}`);
+      return fallbackPath;
+    }
+
     console.log("[DuckDB Manifest] No manifest found, using DUCKDB_PATH fallback");
     return DUCKDB_PATH;
   }
