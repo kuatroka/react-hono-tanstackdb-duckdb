@@ -10,7 +10,7 @@ import {
 } from "echarts/components";
 import { LegacyGridContainLabel } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
 
 echarts.use([
@@ -293,7 +293,6 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
       <Card className="min-w-0">
         <CardHeader>
           <CardTitle>{title}</CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
         <CardContent className="min-w-0">
           <div className="h-[400px] flex items-center justify-center text-muted-foreground">
@@ -313,7 +312,6 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           <span>{title}</span>
           {latencyBadge}
         </CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent className="h-[450px] w-full min-w-0">
         <div ref={containerRef} className="h-full w-full min-w-0" />

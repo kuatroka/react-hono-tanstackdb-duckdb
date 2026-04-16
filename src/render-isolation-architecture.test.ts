@@ -93,12 +93,30 @@ describe("rerender isolation architecture", () => {
     expect(drilldownTable).toContain('from "@/components/VirtualDataTable"');
     expect(drilldownTable).toContain("<VirtualDataTable");
     expect(drilldownTable).not.toContain('from "@/components/DataTable"');
+    expect(drilldownTable).not.toContain("CardDescription");
+    expect(drilldownTable).not.toContain("Loaded from IndexedDB");
+    expect(drilldownTable).not.toContain("Served from in-memory cache");
+    expect(drilldownTable).not.toContain("Fetched from API (DuckDB)");
 
     expect(virtualTable).toContain("onTableTelemetryChange");
     expect(virtualTable).toContain("onSearchTelemetryChange");
     expect(virtualTable).toContain('justify-between gap-4 border-b border-border bg-background px-4 py-2');
     expect(virtualTable).toContain('flex min-w-0 flex-1 items-center justify-start gap-2');
     expect(virtualTable).toContain('searchTelemetry={searchTelemetry}');
+  });
+
+  test("chart and drilldown surfaces omit subtitle copy after the cleanup commit", () => {
+    const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
+    const drilldownTable = readProjectFile("src/components/InvestorActivityDrilldownTable.tsx");
+    const cikValueChart = readProjectFile("src/components/charts/CikValueLineChart.tsx");
+    const investorFlowChart = readProjectFile("src/components/charts/InvestorFlowChart.tsx");
+    const openedClosedChart = readProjectFile("src/components/charts/OpenedClosedBarChart.tsx");
+
+    expect(assetDrilldown).not.toContain("All drill-down data loaded - clicks are now instant!");
+    expect(drilldownTable).not.toContain("CardDescription");
+    expect(cikValueChart).not.toContain("CardDescription");
+    expect(investorFlowChart).not.toContain("CardDescription");
+    expect(openedClosedChart).not.toContain("CardDescription");
   });
 
   test("card primitive pins border color to the shared border token so page shells stay visually consistent", () => {

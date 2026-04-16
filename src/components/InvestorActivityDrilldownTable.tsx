@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import { VirtualDataTable, type ColumnDef } from "@/components/VirtualDataTable";
 import type { PerfTelemetry } from "@/lib/perf/telemetry";
@@ -209,15 +209,6 @@ export function InvestorActivityDrilldownTable({
   const isInitialLoading = isLoading && !hasRows;
   const hasData = data.length > 0 || !isLoading;
 
-  const dataFlowLabel = (() => {
-    switch (dataFlow) {
-      case "tsdb-indexeddb": return "Loaded from IndexedDB";
-      case "tsdb-memory": return "Served from in-memory cache";
-      case "api-duckdb": return "Fetched from API (DuckDB)";
-      default: return "Loading...";
-    }
-  })();
-
   const latencyDisplay = (
     <LatencyBadge
       dataLoadMs={queryTimeMs ?? undefined}
@@ -232,17 +223,14 @@ export function InvestorActivityDrilldownTable({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+        <CardTitle className="flex items-center justify-between gap-4">
           <span>{cardTitle}</span>
-        </CardTitle>
-        <CardDescription className="flex items-center justify-between gap-4">
-          <span>{dataFlowLabel}</span>
           <div className="flex flex-col items-end gap-2">
             {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
             {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
             {!tableTelemetry && !searchTelemetry ? latencyDisplay : null}
           </div>
-        </CardDescription>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="relative min-h-[360px]" aria-busy={isInitialLoading}>
@@ -273,9 +261,6 @@ export function InvestorActivityDrilldownTable({
           ) : hasData ? (
             <div className="flex h-full flex-col items-center justify-center py-8 text-center text-muted-foreground space-y-2">
               <p className="font-medium">No detailed data available for this selection.</p>
-              <p className="text-sm">
-                The aggregate chart shows activity, but individual investor details are not available for {ticker} in {quarter}.
-              </p>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center py-8 text-muted-foreground">

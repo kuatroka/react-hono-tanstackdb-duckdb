@@ -303,12 +303,6 @@ export function AssetDrilldownSection({
           </div>
         )}
 
-        {backgroundLoadProgress && backgroundLoadProgress.loaded === backgroundLoadProgress.total && (
-          <div className="flex items-center gap-2 text-sm text-green-600">
-            <span>✓ All drill-down data loaded - clicks are now instant!</span>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <div className="min-w-0">{children}</div>
 

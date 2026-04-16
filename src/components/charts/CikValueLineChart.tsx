@@ -8,7 +8,6 @@ import { CanvasRenderer } from "echarts/renderers";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -274,15 +273,10 @@ export function CikValueLineChart({
       <Card>
         <CardHeader>
           <CardTitle>Portfolio Value Over Time</CardTitle>
-          <CardDescription>No quarterly data available</CardDescription>
         </CardHeader>
       </Card>
     );
   }
-
-  const latestValue = chartData[chartData.length - 1]?.value ?? 0;
-  const earliestValue = chartData[0]?.value ?? 0;
-  const totalChange = earliestValue > 0 ? ((latestValue - earliestValue) / earliestValue) * 100 : 0;
 
   return (
     <Card>
@@ -295,13 +289,6 @@ export function CikValueLineChart({
             source={source as DataFlow}
           />
         </CardTitle>
-        <CardDescription>
-          {data.length} quarters tracked • Latest: {formatValue(latestValue)} • Total change:{" "}
-          <span className={totalChange >= 0 ? "text-green-600" : "text-red-600"}>
-            {totalChange >= 0 ? "+" : ""}
-            {totalChange.toFixed(1)}%
-          </span>
-        </CardDescription>
       </CardHeader>
       <CardContent className="h-[300px] w-full min-w-0">
         <div ref={containerRef} className="h-full w-full min-w-0" />
