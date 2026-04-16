@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 ENV_FILE="${PROD_ENV_FILE:-$REPO_ROOT/infra/prod/.env.example}"
 COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/infra/prod/docker-compose.yml}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 
 required_commands=(git docker curl)
 for command in "${required_commands[@]}"; do
@@ -30,9 +31,9 @@ compose() {
 cd "$REPO_ROOT"
 
 if [[ -d "$REPO_ROOT/.git" ]]; then
-  git fetch origin main
-  git checkout main
-  git pull --ff-only origin main
+  git fetch origin "$DEPLOY_BRANCH"
+  git checkout "$DEPLOY_BRANCH"
+  git pull --ff-only origin "$DEPLOY_BRANCH"
 else
   echo "Skipping git sync because $REPO_ROOT is not a git repository."
 fi
