@@ -5,14 +5,16 @@ import { DuckDbGenerationManager } from "./generation-manager";
 import { createDuckDbLeaseMiddleware } from "./hono-db-middleware";
 import { Hono } from "hono";
 
-function createSnapshot(version: number, active: "a" | "b" = "a"): ResolvedDbSnapshot {
+function createSnapshot(version: number, active: "a" | "b" = "a", overrides: Partial<ResolvedDbSnapshot> = {}): ResolvedDbSnapshot {
   return {
     mode: "manifest",
     manifestVersion: version,
     manifestActive: active,
     dbPath: `/tmp/test-${version}-${active}.duckdb`,
+    fileMtimeMs: version * 1000,
     source: "manifest",
     resolvedAt: Date.now(),
+    ...overrides,
   };
 }
 
@@ -129,6 +131,77 @@ describe("DuckDbGenerationManager", () => {
     status = await manager.getStatus();
     expect(status.drainingGenerationIds).toEqual([]);
     expect(retired).toEqual(["gen-1"]);
+  });
+
+  test("refreshes on acquireLease when legacy single-file database is overwritten in place", async () => {
+    const snapshots = [
+      createSnapshot(1, "a", {
+        mode: "legacy-single-file",
+        manifestVersion: null,
+        manifestActive: null,
+        dbPath: "/tmp/legacy.duckdb",
+        fileMtimeMs: 1000,
+        source: "fallback-env",
+      }),
+      createSnapshot(1, "a", {
+        mode: "legacy-single-file",
+        manifestVersion: null,
+        manifestActive: null,
+        dbPath: "/tmp/legacy.duckdb",
+        fileMtimeMs: 2000,
+        source: "fallback-env",
+      }),
+    ];
+    let snapshotIndex = 0;
+    const resolver = {
+      resolveSnapshot: () => snapshots[Math.min(snapshotIndex++, snapshots.length - 1)],
+      getLastManifestError: () => null,
+      getRuntimeMode: () => "legacy-single-file" as const,
+    } as unknown as ManifestResolver;
+
+    const createGenerationFn = async (snapshot: ResolvedDbSnapshot): Promise<DuckDbGeneration> => ({
+      id: `gen-${snapshot.fileMtimeMs}`,
+      snapshot,
+      state: "warming",
+      instance: {} as never,
+      inFlightRequests: 0,
+      createdAt: Date.now(),
+      activatedAt: null,
+      drainStartedAt: null,
+      retiredAt: null,
+      lastWarmupOkAt: null,
+      lastWarmupError: null,
+    });
+
+    const retired: string[] = [];
+    const manager = new DuckDbGenerationManager(
+      resolver,
+      createGenerationFn,
+      async (generation) => {
+        generation.lastWarmupOkAt = Date.now();
+      },
+      async (generation) => {
+        retired.push(generation.id);
+        generation.state = "retired";
+      }
+    );
+
+    const firstLease = await manager.acquireLease();
+    expect(firstLease.generationId).toBe("gen-2000");
+
+    const secondLease = await manager.acquireLease();
+    expect(secondLease.generationId).toBe("gen-2000");
+
+    let status = await manager.getStatus();
+    expect(status.activeGenerationId).toBe("gen-2000");
+    expect(status.drainingGenerationIds).toEqual([]);
+
+    await firstLease.close();
+    await secondLease.close();
+
+    status = await manager.getStatus();
+    expect(status.drainingGenerationIds).toEqual([]);
+    expect(retired).toContain("gen-1000");
   });
 });
 

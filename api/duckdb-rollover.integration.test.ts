@@ -10,6 +10,7 @@ function createSnapshot(version: number, active: "a" | "b" = "a"): ResolvedDbSna
     manifestVersion: version,
     manifestActive: active,
     dbPath: `/tmp/test-${version}-${active}.duckdb`,
+    fileMtimeMs: version * 1000,
     source: "manifest",
     resolvedAt: Date.now(),
   };

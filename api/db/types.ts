@@ -18,7 +18,8 @@ export interface ResolvedDbSnapshot {
   manifestVersion: number | null;
   manifestActive: ManifestActive | null;
   dbPath: string;
-  source: "manifest" | "fallback-env";
+  fileMtimeMs: number | null;
+  source: "manifest" | "fallback-env" | "fallback-versioned-file";
   resolvedAt: number;
 }
 

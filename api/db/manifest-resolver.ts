@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { getDuckDbRuntimeConfig } from "./config";
 import { ManifestResolutionError } from "./errors";
@@ -13,6 +13,38 @@ function getActivePathFor(duckdbPath: string, active: DbManifest["active"]) {
   const dir = dirname(duckdbPath);
   const base = basename(duckdbPath, ".duckdb");
   return join(dir, `${base}_${active}.duckdb`);
+}
+
+function getFileMtimeMs(path: string): number | null {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+function resolveFallbackDuckDbPath(duckdbPath: string): { path: string; source: "fallback-env" | "fallback-versioned-file" } {
+  if (existsSync(duckdbPath)) {
+    return { path: duckdbPath, source: "fallback-env" };
+  }
+
+  const dir = dirname(duckdbPath);
+  const base = basename(duckdbPath, ".duckdb");
+  const candidates = [
+    join(dir, `${base}_a.duckdb`),
+    join(dir, `${base}_b.duckdb`),
+  ].filter((candidate) => existsSync(candidate));
+
+  if (candidates.length === 0) {
+    return { path: duckdbPath, source: "fallback-env" };
+  }
+
+  if (candidates.length === 1) {
+    return { path: candidates[0], source: "fallback-versioned-file" };
+  }
+
+  const newest = candidates.sort((left, right) => (getFileMtimeMs(right) ?? 0) - (getFileMtimeMs(left) ?? 0))[0];
+  return { path: newest, source: "fallback-versioned-file" };
 }
 
 export class ManifestResolver {
@@ -63,12 +95,14 @@ export class ManifestResolver {
         }
 
         const config = getDuckDbRuntimeConfig();
+        const fallback = resolveFallbackDuckDbPath(config.duckdbPath);
         const snapshot: ResolvedDbSnapshot = {
           mode: "legacy-single-file",
           manifestVersion: null,
           manifestActive: null,
-          dbPath: config.duckdbPath,
-          source: "fallback-env",
+          dbPath: fallback.path,
+          fileMtimeMs: getFileMtimeMs(fallback.path),
+          source: fallback.source,
           resolvedAt,
         };
         this.runtimeMode = "legacy-single-file";
@@ -78,11 +112,13 @@ export class ManifestResolver {
       }
 
       const config = getDuckDbRuntimeConfig();
+      const dbPath = getActivePathFor(config.duckdbPath, manifest.active);
       const snapshot: ResolvedDbSnapshot = {
         mode: "manifest",
         manifestVersion: manifest.version,
         manifestActive: manifest.active,
-        dbPath: getActivePathFor(config.duckdbPath, manifest.active),
+        dbPath,
+        fileMtimeMs: getFileMtimeMs(dbPath),
         source: "manifest",
         resolvedAt,
       };
@@ -97,12 +133,14 @@ export class ManifestResolver {
       }
 
       const config = getDuckDbRuntimeConfig();
+      const fallback = resolveFallbackDuckDbPath(config.duckdbPath);
       const snapshot: ResolvedDbSnapshot = {
         mode: "legacy-single-file",
         manifestVersion: null,
         manifestActive: null,
-        dbPath: config.duckdbPath,
-        source: "fallback-env",
+        dbPath: fallback.path,
+        fileMtimeMs: getFileMtimeMs(fallback.path),
+        source: fallback.source,
         resolvedAt,
       };
       this.runtimeMode = "legacy-single-file";

@@ -17,7 +17,8 @@ function snapshotsEqual(a: ResolvedDbSnapshot | null, b: ResolvedDbSnapshot | nu
     a.mode === b.mode &&
     a.manifestVersion === b.manifestVersion &&
     a.manifestActive === b.manifestActive &&
-    a.dbPath === b.dbPath
+    a.dbPath === b.dbPath &&
+    a.fileMtimeMs === b.fileMtimeMs
   );
 }
 
@@ -152,6 +153,7 @@ export class DuckDbGenerationManager {
 
   async acquireLease(): Promise<DuckDbLease> {
     await this.ensureInitialized();
+    await this.refreshIfNeeded("request");
 
     const generation = this.activeGeneration;
     if (!generation) {

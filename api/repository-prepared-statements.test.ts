@@ -43,6 +43,7 @@ function createContext(connectionFactory: () => {
       manifestVersion: 1,
       manifestActive: "a",
       dbPath: "/tmp/test.duckdb",
+      fileMtimeMs: Date.now(),
       source: "manifest",
       resolvedAt: Date.now(),
     },
