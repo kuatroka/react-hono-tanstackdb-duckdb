@@ -5,18 +5,25 @@ import { API_LIMITS, ERROR_MESSAGES, HTTP_STATUS_CODES } from "@/lib/constants";
 const assetsRoutes = new Hono();
 
 /**
- * GET /api/assets?limit=<n>&offset=<n>
+ * GET /api/assets?limit=<n>&offset=<n>&search=<query>&sort=asset|assetName|cusip&direction=asc|desc
  *
- * Returns all assets from the DuckDB assets table.
- * Used by TanStack DB collection for eager loading.
+ * Returns paged asset rows from DuckDB for infinite virtualized loading.
  */
 assetsRoutes.get("/", async (c) => {
-    const limit = Math.min(parseInt(c.req.query("limit") || String(API_LIMITS.MAX_ASSETS_LIMIT), 10), API_LIMITS.MAX_ASSETS_LIMIT);
+    const limit = Math.min(parseInt(c.req.query("limit") || String(API_LIMITS.MAX_PAGE_SIZE), 10), API_LIMITS.MAX_ASSETS_LIMIT);
     const offset = parseInt(c.req.query("offset") || "0", 10);
+    const search = c.req.query("search") || undefined;
+    const sort = c.req.query("sort") as "asset" | "assetName" | "cusip" | undefined;
+    const direction = c.req.query("direction") === "desc" ? "desc" : "asc";
 
     try {
-        const results = await listAssets(c, { limit, offset });
-        return c.json(results);
+        const rows = await listAssets(c, { limit, offset, search, sort, direction });
+        const nextOffset = rows.length === limit ? offset + rows.length : null;
+        return c.json({
+            rows,
+            nextOffset,
+            source: "api-duckdb",
+        });
     } catch (error) {
         console.error("[DuckDB Assets] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -27,8 +27,8 @@ function registerModuleMocks() {
     LatencyBadge: () => null,
   }));
 
-  mock.module("@/components/DataTable", () => ({
-    DataTable: () => null,
+  mock.module("@/components/VirtualDataTable", () => ({
+    VirtualDataTable: () => null,
   }));
 
   mock.module("@/collections/investor-details", () => ({
@@ -59,5 +59,14 @@ describe("InvestorActivityDrilldownTable", () => {
         action="open"
       />,
     )).not.toThrow();
+  });
+
+  test("uses the virtualized table instead of the paginated DataTable", async () => {
+    const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain('from "@/components/VirtualDataTable"');
+    expect(source).toContain("<VirtualDataTable");
+    expect(source).not.toContain('from "@/components/DataTable"');
+    expect(source).not.toContain("<DataTable");
   });
 });

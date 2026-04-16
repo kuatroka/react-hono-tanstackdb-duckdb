@@ -23,12 +23,13 @@ describe("route search isolation", () => {
     const source = readProjectFile("pages/AssetsTable.tsx");
 
     expect(source).toContain("const trimmedSearch = (searchParams.search ?? '').trim();");
-    expect(source).toContain("await assetsCollection.preload()");
-    expect(source).toContain("Array.from(assetsCollection.entries()).map(([, value]) => value)");
+    expect(source).toContain("useInfiniteQuery");
+    expect(source).toContain("queryKey: ['assets', trimmedSearch, sortColumn, sortDirection]");
     expect(source).toContain("to: '/assets'");
     expect(source).toContain("search: { search: value.trim() || undefined }");
+    expect(source).toContain("onLoadMore={assetsQuery.fetchNextPage}");
     expect(source).toContain("searchPlaceholder=\"Search assets...\"");
-    expect(source).toContain("defaultSortColumn=\"assetName\"");
+    expect(source).toContain("defaultSortColumn={DEFAULT_SORT_COLUMN}");
   });
 
   test("superinvestors route trims URL search state and forwards normalized search updates", () => {

@@ -9,22 +9,48 @@ export interface AssetRow {
   cusip: string | null;
 }
 
-export async function listAssets(c: DuckDbLeaseContext, params: { limit: number; offset: number }) {
+export interface ListAssetsParams {
+  limit: number;
+  offset: number;
+  search?: string;
+  sort?: "asset" | "assetName" | "cusip";
+  direction?: "asc" | "desc";
+}
+
+export async function listAssets(c: DuckDbLeaseContext, params: ListAssetsParams) {
   const lease = getDuckDbLease(c);
   return lease.run("assets.list", async (connection: DuckDbConnection) => {
+    const sortColumn = params.sort === "asset" ? "asset" : params.sort === "cusip" ? "cusip" : "asset_name";
+    const sortDirection = params.direction === "desc" ? "DESC" : "ASC";
+    const query = (params.search ?? "").trim();
+    const hasSearch = query.length > 0;
+
     const sql = `
       SELECT
         asset,
         asset_name as "assetName",
         cusip
       FROM assets
-      ORDER BY asset_name ASC
-      LIMIT ${params.limit} OFFSET ${params.offset}
+      ${hasSearch ? "WHERE LOWER(asset) LIKE ? OR LOWER(asset_name) LIKE ? OR LOWER(COALESCE(cusip, '')) LIKE ?" : ""}
+      ORDER BY ${sortColumn} ${sortDirection}
+      LIMIT ? OFFSET ?
     `;
 
-    const rows = await runAndGetRows(connection, sql);
+    const stmt = await connection.prepare(sql);
+    let bindIndex = 1;
+    if (hasSearch) {
+      const pattern = `%${query.toLowerCase()}%`;
+      stmt.bindVarchar(bindIndex++, pattern);
+      stmt.bindVarchar(bindIndex++, pattern);
+      stmt.bindVarchar(bindIndex++, pattern);
+    }
+    stmt.bindInteger(bindIndex++, params.limit);
+    stmt.bindInteger(bindIndex++, params.offset);
+
+    const reader = await stmt.runAndReadAll();
+    const rows = reader.getRows();
     return rows.map((row: unknown[], index: number) => ({
-      id: `${row[0]}-${row[2] || index}`,
+      id: `${row[0]}-${row[2] || params.offset + index}`,
       asset: row[0] as string,
       assetName: row[1] as string,
       cusip: row[2] as string | null,

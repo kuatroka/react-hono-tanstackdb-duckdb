@@ -73,12 +73,15 @@ describe("rerender isolation architecture", () => {
   test("table pages surface separate table and search telemetry badges instead of hardcoded latency placeholders", () => {
     const assetsTable = readProjectFile("src/pages/AssetsTable.tsx");
     const superinvestorsTable = readProjectFile("src/pages/SuperinvestorsTable.tsx");
+    const drilldownTable = readProjectFile("src/components/InvestorActivityDrilldownTable.tsx");
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
 
     expect(assetsTable).toContain("const [tableTelemetry, setTableTelemetry]");
-    expect(assetsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(assetsTable).toContain("useInfiniteQuery");
     expect(assetsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
-    expect(assetsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(assetsTable).toContain("onLoadMore={assetsQuery.fetchNextPage}");
+    expect(assetsTable).toContain("hasNextPage={assetsQuery.hasNextPage}");
+    expect(assetsTable).not.toContain("await assetsCollection.preload()");
     expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
     expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
@@ -87,8 +90,15 @@ describe("rerender isolation architecture", () => {
     expect(superinvestorsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
     expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
+    expect(drilldownTable).toContain('from "@/components/VirtualDataTable"');
+    expect(drilldownTable).toContain("<VirtualDataTable");
+    expect(drilldownTable).not.toContain('from "@/components/DataTable"');
+
     expect(virtualTable).toContain("onTableTelemetryChange");
     expect(virtualTable).toContain("onSearchTelemetryChange");
+    expect(virtualTable).toContain('justify-between gap-4 border-b border-border bg-background px-4 py-2');
+    expect(virtualTable).toContain('flex min-w-0 flex-1 items-center justify-start gap-2');
+    expect(virtualTable).toContain('searchTelemetry={searchTelemetry}');
   });
 
   test("card primitive pins border color to the shared border token so page shells stay visually consistent", () => {

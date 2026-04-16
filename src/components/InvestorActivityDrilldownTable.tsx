@@ -2,7 +2,8 @@ import { useMemo, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
-import { DataTable, ColumnDef } from "@/components/DataTable";
+import { VirtualDataTable, type ColumnDef } from "@/components/VirtualDataTable";
+import type { PerfTelemetry } from "@/lib/perf/telemetry";
 import {
   fetchDrilldownBothActions,
   getDrilldownDataFromCollection,
@@ -47,6 +48,8 @@ export function InvestorActivityDrilldownTable({
   const [renderMs, setRenderMs] = useState<number | null>(null);
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
+  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
+  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
 
   // Load from IndexedDB first, then fetch if missing
   useEffect(() => {
@@ -201,7 +204,6 @@ export function InvestorActivityDrilldownTable({
     return null;
   }
 
-  const totalCount = rows.length;
   const titleAction = action === "open" ? "opened" : "closed";
   const hasRows = rows.length > 0;
   const isInitialLoading = isLoading && !hasRows;
@@ -233,9 +235,13 @@ export function InvestorActivityDrilldownTable({
         <CardTitle className="flex items-center justify-between">
           <span>{cardTitle}</span>
         </CardTitle>
-        <CardDescription className="flex items-center justify-between">
+        <CardDescription className="flex items-center justify-between gap-4">
           <span>{dataFlowLabel}</span>
-          {latencyDisplay}
+          <div className="flex flex-col items-end gap-2">
+            {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
+            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
+            {!tableTelemetry && !searchTelemetry ? latencyDisplay : null}
+          </div>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -249,14 +255,20 @@ export function InvestorActivityDrilldownTable({
               Failed to load drilldown data
             </div>
           ) : hasRows ? (
-            <DataTable
+            <VirtualDataTable
               data={rows}
               columns={columns}
               searchPlaceholder="Filter superinvestors..."
-              defaultPageSize={10}
               defaultSortColumn="cikName"
               defaultSortDirection="asc"
-              totalCount={totalCount}
+              gridTemplateColumns="minmax(18rem, 1.8fr) minmax(8rem, 0.8fr) minmax(10rem, 0.9fr) minmax(8rem, 0.7fr)"
+              latencySource="tsdb-memory"
+              dataSource={dataFlow}
+              onSearchTelemetryChange={setSearchTelemetry}
+              onTableTelemetryChange={setTableTelemetry}
+              tableTelemetryLabel="drilldown table"
+              searchTelemetryLabel="search"
+              visibleRowCount={8}
             />
           ) : hasData ? (
             <div className="flex h-full flex-col items-center justify-center py-8 text-center text-muted-foreground space-y-2">

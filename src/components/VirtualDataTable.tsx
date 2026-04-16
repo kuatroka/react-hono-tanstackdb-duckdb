@@ -118,6 +118,7 @@ function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
 interface VirtualTableHeaderSearchProps {
   placeholder: string;
   searchValue: string;
+  searchTelemetry?: PerfTelemetry | null;
   tableContainerRef: React.RefObject<HTMLDivElement | null>;
   onArrowDown: () => void;
   onArrowUp: () => void;
@@ -130,6 +131,7 @@ interface VirtualTableHeaderSearchProps {
 function VirtualTableHeaderSearch({
   placeholder,
   searchValue,
+  searchTelemetry,
   tableContainerRef,
   onArrowDown,
   onArrowUp,
@@ -172,8 +174,18 @@ function VirtualTableHeaderSearch({
   }, [isExpanded, onSearchValueChange, searchValue]);
 
   return (
-    <div className="flex items-center justify-end border-b border-border bg-background px-4 py-2">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-2">
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleToggle}
+          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
+        >
+          <Search className="h-4 w-4" />
+        </Button>
         {isExpanded ? (
           <VirtualTableSearchInput
             autoFocus
@@ -187,16 +199,9 @@ function VirtualTableHeaderSearch({
             onValueChange={onSearchValueChange}
           />
         ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={handleToggle}
-          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
+      </div>
+      <div className="flex min-h-8 items-center justify-end">
+        {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-center" /> : null}
       </div>
     </div>
   );
@@ -210,11 +215,15 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   emptyStateLabel?: string;
   getRowKey?: (row: T) => Key;
   gridTemplateColumns: string;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
   latencySource?: PerfSource;
+  onLoadMore?: () => void | Promise<unknown>;
   onReady?: () => void;
   dataSource?: PerfSource;
   onSearchChange?: (value: string) => void;
   onSearchTelemetryChange?: (searchTelemetry: PerfTelemetry | null) => void;
+  onSortChange?: (column: Extract<keyof T, string>, direction: SortDirection) => void;
   onTableTelemetryChange?: (tableTelemetry: PerfTelemetry | null) => void;
   rowHeight?: number;
   searchDebounceMs?: number;
@@ -233,11 +242,15 @@ export function VirtualDataTable<T extends { id: number | string }>({
   emptyStateLabel = 'No results found',
   getRowKey,
   gridTemplateColumns,
+  hasNextPage = false,
+  isFetchingNextPage = false,
   latencySource = 'tsdb-memory',
+  onLoadMore,
   onReady,
   dataSource,
   onSearchChange,
   onSearchTelemetryChange,
+  onSortChange,
   onTableTelemetryChange,
   rowHeight = DEFAULT_ROW_HEIGHT,
   searchDebounceMs = 150,
@@ -403,12 +416,17 @@ export function VirtualDataTable<T extends { id: number | string }>({
 
   const handleSort = useCallback((column: Extract<keyof T, string>) => {
     if (column === sortColumn) {
-      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+      setSortDirection((current) => {
+        const nextDirection = current === 'asc' ? 'desc' : 'asc';
+        onSortChange?.(column, nextDirection);
+        return nextDirection;
+      });
       return;
     }
     setSortColumn(column);
     setSortDirection('asc');
-  }, [sortColumn]);
+    onSortChange?.(column, 'asc');
+  }, [onSortChange, sortColumn]);
 
   const focusFirstRow = useCallback(() => {
     if (orderedData.length === 0) return;
@@ -473,6 +491,21 @@ export function VirtualDataTable<T extends { id: number | string }>({
     }
   }, [activateFocusedRow, focusNextRow, focusPreviousRow]);
 
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage || !onLoadMore) {
+      return;
+    }
+
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) {
+      return;
+    }
+
+    if (lastItem.index >= Math.max(orderedData.length - 5, 0)) {
+      void onLoadMore();
+    }
+  }, [hasNextPage, isFetchingNextPage, onLoadMore, orderedData.length, virtualItems]);
+
   return (
     <div className="space-y-4" onKeyDown={handleKeyDown}>
       {!onTableTelemetryChange ? <VirtualTableToolbar telemetry={tableTelemetry} /> : null}
@@ -480,6 +513,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
         <VirtualTableHeaderSearch
           placeholder={searchPlaceholder}
           searchValue={resolvedSearchValue ?? ''}
+          searchTelemetry={searchTelemetry}
           tableContainerRef={tableContainerRef}
           onArrowDown={focusNextRow}
           onArrowUp={focusPreviousRow}
@@ -524,36 +558,43 @@ export function VirtualDataTable<T extends { id: number | string }>({
               {emptyStateLabel}
             </div>
           ) : (
-            <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
-              {virtualItems.map((virtualRow) => {
-                const row = orderedData[virtualRow.index];
-                const rowKey = getRowKey ? getRowKey(row) : row.id;
-                return (
-                  <div
-                    key={String(rowKey)}
-                    ref={(element) => {
-                      rowRefs.current[virtualRow.index] = element;
-                    }}
-                    data-row-index={virtualRow.index}
-                    tabIndex={0}
-                    onFocus={() => setFocusedRowIndex(virtualRow.index)}
-                    className={cn('absolute left-0 right-0 border-b border-border bg-background px-4 outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined)}
-                    style={{
-                      height: rowHeight,
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    <div className="grid h-full items-center gap-4 hover:bg-muted/20" style={{ gridTemplateColumns }}>
-                      {columns.map((column) => (
-                        <div key={String(column.key)} className={cn('min-w-0 truncate text-sm', column.className)}>
-                          {column.render ? column.render(row[column.key], row, focusedRowIndex === virtualRow.index) : String(row[column.key] ?? '')}
-                        </div>
-                      ))}
+            <>
+              <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualItems.map((virtualRow) => {
+                  const row = orderedData[virtualRow.index];
+                  const rowKey = getRowKey ? getRowKey(row) : row.id;
+                  return (
+                    <div
+                      key={String(rowKey)}
+                      ref={(element) => {
+                        rowRefs.current[virtualRow.index] = element;
+                      }}
+                      data-row-index={virtualRow.index}
+                      tabIndex={0}
+                      onFocus={() => setFocusedRowIndex(virtualRow.index)}
+                      className={cn('absolute left-0 right-0 border-b border-border bg-background px-4 outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined)}
+                      style={{
+                        height: rowHeight,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="grid h-full items-center gap-4 hover:bg-muted/20" style={{ gridTemplateColumns }}>
+                        {columns.map((column) => (
+                          <div key={String(column.key)} className={cn('min-w-0 truncate text-sm', column.className)}>
+                            {column.render ? column.render(row[column.key], row, focusedRowIndex === virtualRow.index) : String(row[column.key] ?? '')}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              {hasNextPage || isFetchingNextPage ? (
+                <div className="flex items-center justify-center border-t border-border px-4 py-3 text-sm text-muted-foreground">
+                  {isFetchingNextPage ? 'Loading more…' : 'Scroll to load more'}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
