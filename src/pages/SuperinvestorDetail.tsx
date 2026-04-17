@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Superinvestor } from "@/collections";
 import { fetchSuperinvestorRecordWithSource } from "@/collections";
 import { SuperinvestorChartSection } from "@/components/detail/SuperinvestorChartSection";
-import { useContentReady } from "@/hooks/useContentReady";
+import { useMarkContentReady } from "@/hooks/useContentReady";
 
 interface SuperinvestorDetailRecordState {
   cik: string | undefined;
@@ -12,7 +12,7 @@ interface SuperinvestorDetailRecordState {
 
 export function SuperinvestorDetailPage() {
   const { cik } = useParams({ strict: false }) as { cik?: string };
-  const { onReady } = useContentReady();
+  const onReady = useMarkContentReady();
   const [recordState, setRecordState] = useState<SuperinvestorDetailRecordState>({
     cik: undefined,
     record: undefined,

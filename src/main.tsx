@@ -3,9 +3,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "../app/router";
+import { shouldEnableReactScan } from "./lib/runtime-env";
 import "uplot/dist/uPlot.min.css";
 
-if (import.meta.env?.DEV) {
+if (
+  shouldEnableReactScan({
+    hostname: globalThis.location?.hostname,
+    importMetaEnvDev: import.meta.env?.DEV,
+  })
+) {
   scan({ enabled: true });
 }
 

@@ -161,9 +161,6 @@ export function InvestorActivityDrilldownTable({
     }
   }, [action, data, quarter, ticker]);
   const rows = useMemo(() => {
-    console.debug(
-      `[DrilldownTable] rendering ${data.length} rows for ${ticker} ${quarter} ${action}`
-    );
     return data.map((item: InvestorDetail) => ({
       id: item.id,
       cik: item.cik,
@@ -173,7 +170,7 @@ export function InvestorActivityDrilldownTable({
       quarter: item.quarter,
       action: item.action,
     }));
-  }, [action, data, quarter, ticker]);
+  }, [data]);
 
   const columns: ColumnDef<InvestorActivityDrilldownRow>[] = useMemo(
     () => [
@@ -278,7 +275,8 @@ export function InvestorActivityDrilldownTable({
               onTableTelemetryChange={setTableTelemetry}
               tableTelemetryLabel="drilldown table"
               searchTelemetryLabel="search"
-              visibleRowCount={8}
+              clientPageSize={100}
+              visibleRowCount={10}
             />
           ) : hasData ? (
             <div className="flex h-full flex-col items-center justify-center py-8 text-center text-muted-foreground space-y-2">

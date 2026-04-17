@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { useContentReady } from '@/hooks/useContentReady';
+import { useMarkContentReady } from '@/hooks/useContentReady';
 
 export function UserProfile() {
-  const { onReady } = useContentReady();
+  const onReady = useMarkContentReady();
   
   // Signal ready immediately for static page
   useEffect(() => {

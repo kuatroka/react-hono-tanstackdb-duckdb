@@ -77,17 +77,28 @@ describe("rerender isolation architecture", () => {
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
 
     expect(assetsTable).toContain("const [tableTelemetry, setTableTelemetry]");
-    expect(assetsTable).toContain("useInfiniteQuery");
+    expect(assetsTable).toContain("await assetsCollection.preload()");
+    expect(assetsTable).toContain("Array.from(assetsCollection.entries())");
+    expect(assetsTable).toContain("useMarkContentReady");
+    expect(assetsTable).toContain("subscribeAssetListLoadSource");
     expect(assetsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
-    expect(assetsTable).toContain("onLoadMore={assetsQuery.fetchNextPage}");
-    expect(assetsTable).toContain("hasNextPage={assetsQuery.hasNextPage}");
-    expect(assetsTable).not.toContain("await assetsCollection.preload()");
+    expect(assetsTable).toContain("clientPageSize={100}");
+    expect(assetsTable).not.toContain("onReady={onReady}");
+    expect(assetsTable).not.toContain("useSearch");
+    expect(assetsTable).not.toContain("useNavigate");
+    expect(assetsTable).not.toContain("onSearchChange={handleSearchChange}");
+    expect(assetsTable).not.toContain("searchValue={trimmedSearch}");
+    expect(assetsTable).not.toContain("useInfiniteQuery");
     expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
     expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(superinvestorsTable).toContain("useMarkContentReady");
     expect(superinvestorsTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(superinvestorsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
     expect(superinvestorsTable).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(superinvestorsTable).toContain("clientPageSize={100}");
+    expect(superinvestorsTable).not.toContain("onReady={onReady}");
+    expect(superinvestorsTable).not.toContain("useSearch");
     expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
     expect(drilldownTable).toContain("const [tableTelemetry, setTableTelemetry]");
@@ -100,9 +111,15 @@ describe("rerender isolation architecture", () => {
     expect(drilldownTable).not.toContain("Loaded from IndexedDB");
     expect(drilldownTable).not.toContain("Served from in-memory cache");
     expect(drilldownTable).not.toContain("Fetched from API (DuckDB)");
+    expect(drilldownTable).toContain("clientPageSize={100}");
+    expect(drilldownTable).toContain("visibleRowCount={10}");
 
     expect(virtualTable).toContain("onTableTelemetryChange");
     expect(virtualTable).toContain("onSearchTelemetryChange");
+    expect(virtualTable).toContain("draftSearchValue");
+    expect(virtualTable).toContain("revealedRowCount");
+    expect(virtualTable).toContain("DEFAULT_MIN_SEARCH_CHARACTERS = 2");
+    expect(virtualTable).toContain("normalizedSearch");
     expect(virtualTable).toContain('justify-between gap-4 border-b border-border bg-background px-4 py-2');
     expect(virtualTable).toContain('flex min-w-0 flex-1 items-center justify-start gap-2');
     expect(virtualTable).toContain('searchTelemetry={searchTelemetry}');
@@ -131,10 +148,13 @@ describe("rerender isolation architecture", () => {
   test("react-scan is loaded only in development code paths", () => {
     const mainEntrypoint = readProjectFile("src/main.tsx");
     const htmlShell = readProjectFile("index.html");
+    const runtimeEnv = readProjectFile("src/lib/runtime-env.ts");
 
     expect(mainEntrypoint).toContain('import { scan } from "react-scan"');
-    expect(mainEntrypoint).toContain("import.meta.env?.DEV");
+    expect(mainEntrypoint).toContain("shouldEnableReactScan");
+    expect(mainEntrypoint).toContain("globalThis.location?.hostname");
     expect(mainEntrypoint).toContain("scan({ enabled: true })");
+    expect(runtimeEnv).toContain("LOCAL_DEV_HOSTS");
     expect(htmlShell).not.toContain("react-scan");
   });
 });

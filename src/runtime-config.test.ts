@@ -50,10 +50,13 @@ describe("bun native runtime config", () => {
   test("guards frontend env access so Bun runtime does not crash in the browser", () => {
     const rootRoute = readProjectFile("app/routes/__root.tsx");
     const mainEntrypoint = readProjectFile("src/main.tsx");
+    const runtimeEnv = readProjectFile("src/lib/runtime-env.ts");
 
     expect(rootRoute).toContain("import.meta.env?.VITE_PUBLIC_SERVER");
     expect(rootRoute).toContain("http://localhost:4000");
-    expect(mainEntrypoint).toContain("import.meta.env?.DEV");
+    expect(mainEntrypoint).toContain("shouldEnableReactScan");
+    expect(mainEntrypoint).toContain("globalThis.location?.hostname");
+    expect(runtimeEnv).toContain('new Set(["localhost", "127.0.0.1", "::1", "[::1]"])');
   });
 
   test("defines the app-only VPS deployment contract for the sslip.io web app", () => {

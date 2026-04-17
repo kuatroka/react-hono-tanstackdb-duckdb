@@ -5,7 +5,7 @@ import { fetchAssetRecord } from "@/collections/assets";
 import { AssetActivitySection } from "@/components/detail/AssetActivitySection";
 import { AssetDrilldownSection } from "@/components/detail/AssetDrilldownSection";
 import { AssetFlowSection } from "@/components/detail/AssetFlowSection";
-import { useContentReady } from "@/hooks/useContentReady";
+import { useMarkContentReady } from "@/hooks/useContentReady";
 
 interface AssetDetailRecordState {
   code: string | undefined;
@@ -15,7 +15,7 @@ interface AssetDetailRecordState {
 
 export function AssetDetailPage() {
   const { code, cusip } = useParams({ strict: false }) as { code?: string; cusip?: string };
-  const { onReady } = useContentReady();
+  const onReady = useMarkContentReady();
   const hasCusip = Boolean(cusip && cusip !== "_");
   const currentCusip = hasCusip ? cusip : null;
   const [recordState, setRecordState] = useState<AssetDetailRecordState>({

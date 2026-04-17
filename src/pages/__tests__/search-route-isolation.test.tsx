@@ -19,27 +19,26 @@ describe("route search isolation", () => {
     expect(globalSearch).not.toContain("export interface SearchResult");
   });
 
-  test("assets route trims URL search state and forwards normalized search updates", () => {
+  test("assets route keeps table search local so typing does not fan out through router state", () => {
     const source = readProjectFile("pages/AssetsTable.tsx");
 
-    expect(source).toContain("const trimmedSearch = (searchParams.search ?? '').trim();");
-    expect(source).toContain("useInfiniteQuery");
-    expect(source).toContain("queryKey: ['assets', trimmedSearch, sortColumn, sortDirection]");
-    expect(source).toContain("to: '/assets'");
-    expect(source).toContain("search: { search: value.trim() || undefined }");
-    expect(source).toContain("onLoadMore={assetsQuery.fetchNextPage}");
+    expect(source).toContain("await assetsCollection.preload()");
+    expect(source).toContain("clientPageSize={100}");
+    expect(source).not.toContain("useSearch");
+    expect(source).not.toContain("useNavigate");
     expect(source).toContain("searchPlaceholder=\"Search assets...\"");
     expect(source).toContain("defaultSortColumn={DEFAULT_SORT_COLUMN}");
   });
 
-  test("superinvestors route trims URL search state and forwards normalized search updates", () => {
+  test("superinvestors route keeps table search inside the virtual table instead of mutating router state", () => {
     const source = readProjectFile("pages/SuperinvestorsTable.tsx");
 
-    expect(source).toContain('const trimmedSearch = (searchParams.search ?? "").trim();');
     expect(source).toContain("await superinvestorsCollection.preload()");
     expect(source).toContain("Array.from(superinvestorsCollection.entries()).map(([, value]) => value)");
-    expect(source).toContain('to: "/superinvestors"');
-    expect(source).toContain('search: { search: value.trim() || undefined }');
+    expect(source).toContain("clientPageSize={100}");
+    expect(source).not.toContain("useSearch");
+    expect(source).not.toContain("useNavigate");
+    expect(source).not.toContain("onSearchChange=");
     expect(source).toContain('searchPlaceholder="Search superinvestors..."');
     expect(source).toContain('defaultSortColumn="cikName"');
   });

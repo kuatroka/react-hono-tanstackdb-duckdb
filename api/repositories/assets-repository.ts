@@ -1,6 +1,5 @@
 import type { DuckDbConnection } from "@duckdb/node-api";
 import { getDuckDbLease, type DuckDbLeaseContext } from "../db/lease-context";
-import { runAndGetRows } from "../db/query-runner";
 
 export interface AssetRow {
   id: string;

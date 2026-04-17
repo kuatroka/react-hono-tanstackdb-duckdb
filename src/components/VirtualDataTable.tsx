@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react';
 import { LatencyBadge } from '@/components/LatencyBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,78 @@ type SortDirection = 'asc' | 'desc';
 
 const DEFAULT_VISIBLE_ROW_COUNT = 10;
 const DEFAULT_ROW_HEIGHT = 52;
+const DEFAULT_CLIENT_PAGE_SIZE = 100;
+const DEFAULT_MIN_SEARCH_CHARACTERS = 2;
+
+const SearchGlyph = memo(function SearchGlyph() {
+  return <Search className="h-4 w-4" />;
+});
+
+interface SearchToggleButtonProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+const SearchToggleButton = memo(function SearchToggleButton({
+  isExpanded,
+  onToggle,
+}: SearchToggleButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      onClick={onToggle}
+      className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+      aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
+    >
+      <SearchGlyph />
+    </Button>
+  );
+});
+
+interface SortIndicatorProps {
+  direction: SortDirection;
+}
+
+const SortIndicator = memo(function SortIndicator({ direction }: SortIndicatorProps) {
+  return direction === 'asc'
+    ? <ChevronUp className="h-4 w-4 shrink-0" />
+    : <ChevronDown className="h-4 w-4 shrink-0" />;
+});
+
+interface SortHeaderButtonProps {
+  columnKey: string;
+  header: string;
+  isSorted: boolean;
+  sortDirection: SortDirection;
+  headerClassName?: string;
+  onSort: (columnKey: string) => void;
+}
+
+const SortHeaderButton = memo(function SortHeaderButton({
+  columnKey,
+  header,
+  isSorted,
+  sortDirection,
+  headerClassName,
+  onSort,
+}: SortHeaderButtonProps) {
+  const handleClick = useCallback(() => {
+    onSort(columnKey);
+  }, [columnKey, onSort]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={cn('flex min-w-0 items-center gap-2 truncate text-left transition-colors hover:text-foreground', headerClassName)}
+    >
+      <span className="truncate">{header}</span>
+      {isSorted ? <SortIndicator direction={sortDirection} /> : null}
+    </button>
+  );
+});
 
 export interface ColumnDef<T> {
   key: Extract<keyof T, string>;
@@ -103,7 +175,7 @@ interface VirtualTableToolbarProps {
   telemetry?: PerfTelemetry | null;
 }
 
-function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
+const VirtualTableToolbar = memo(function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
   if (!telemetry) {
     return null;
   }
@@ -113,7 +185,7 @@ function VirtualTableToolbar({ telemetry }: VirtualTableToolbarProps) {
       <LatencyBadge telemetry={telemetry} />
     </div>
   );
-}
+});
 
 interface VirtualTableHeaderSearchProps {
   placeholder: string;
@@ -128,7 +200,7 @@ interface VirtualTableHeaderSearchProps {
   onTabToResults: () => void;
 }
 
-function VirtualTableHeaderSearch({
+const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
   placeholder,
   searchValue,
   searchTelemetry,
@@ -166,26 +238,13 @@ function VirtualTableHeaderSearch({
   }, [isExpanded, searchValue, tableContainerRef]);
 
   const handleToggle = useCallback(() => {
-    if (isExpanded && searchValue.trim()) {
-      onSearchValueChange('');
-      return;
-    }
     setIsExpanded((current) => !current);
-  }, [isExpanded, onSearchValueChange, searchValue]);
+  }, []);
 
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-2">
       <div className="flex min-w-0 flex-1 items-center justify-start gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={handleToggle}
-          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
+        <SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />
         {isExpanded ? (
           <VirtualTableSearchInput
             autoFocus
@@ -205,7 +264,7 @@ function VirtualTableHeaderSearch({
       </div>
     </div>
   );
-}
+});
 
 interface VirtualDataTableProps<T extends { id: number | string }> {
   data: T[];
@@ -226,6 +285,8 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   onSortChange?: (column: Extract<keyof T, string>, direction: SortDirection) => void;
   onTableTelemetryChange?: (tableTelemetry: PerfTelemetry | null) => void;
   rowHeight?: number;
+  clientPageSize?: number;
+  minimumSearchCharacters?: number;
   searchDebounceMs?: number;
   searchPlaceholder?: string;
   searchTelemetryLabel?: string;
@@ -253,10 +314,12 @@ export function VirtualDataTable<T extends { id: number | string }>({
   onSortChange,
   onTableTelemetryChange,
   rowHeight = DEFAULT_ROW_HEIGHT,
+  clientPageSize = DEFAULT_CLIENT_PAGE_SIZE,
+  minimumSearchCharacters = DEFAULT_MIN_SEARCH_CHARACTERS,
   searchDebounceMs = 150,
   searchPlaceholder = 'Search...',
   searchTelemetryLabel = 'search',
-  searchValue,
+  searchValue = '',
   tableTelemetryLabel = 'virtual table',
   visibleRowCount = DEFAULT_VISIBLE_ROW_COUNT,
 }: VirtualDataTableProps<T>) {
@@ -264,33 +327,36 @@ export function VirtualDataTable<T extends { id: number | string }>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const readyCalledRef = useRef(false);
-  const [internalSearchValue, setInternalSearchValue] = useState(searchValue ?? '');
-  const [committedSearch, setCommittedSearch] = useState((searchValue ?? '').trim());
+  const [draftSearchValue, setDraftSearchValue] = useState(searchValue);
+  const [committedSearch, setCommittedSearch] = useState(searchValue.trim());
   const [sortColumn, setSortColumn] = useState<Extract<keyof T, string>>(defaultSortColumn);
   const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortDirection);
   const [focusedRowIndex, setFocusedRowIndex] = useState(-1);
   const [isTableReady, setIsTableReady] = useState(false);
-  const isSearchControlled = searchValue !== undefined;
-  const resolvedSearchValue = isSearchControlled ? searchValue : internalSearchValue;
+  const [revealedRowCount, setRevealedRowCount] = useState(() => Math.min(data.length, clientPageSize));
 
   useEffect(() => {
-    if (!isSearchControlled) {
-      return;
-    }
-    setInternalSearchValue(searchValue ?? '');
-  }, [isSearchControlled, searchValue]);
+    const nextCommittedSearch = searchValue.trim();
+    setDraftSearchValue((current) => current === searchValue ? current : searchValue);
+    setCommittedSearch((current) => current === nextCommittedSearch ? current : nextCommittedSearch);
+  }, [searchValue]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setCommittedSearch((resolvedSearchValue ?? '').trim());
+      setFocusedRowIndex(-1);
+      setCommittedSearch(draftSearchValue.trim());
     }, searchDebounceMs);
 
     return () => clearTimeout(timeoutId);
-  }, [resolvedSearchValue, searchDebounceMs]);
+  }, [draftSearchValue, searchDebounceMs]);
+
+  const normalizedSearch = useMemo(() => {
+    return committedSearch.length >= minimumSearchCharacters ? committedSearch : '';
+  }, [committedSearch, minimumSearchCharacters]);
 
   useEffect(() => {
-    setFocusedRowIndex(-1);
-  }, [committedSearch, sortColumn, sortDirection]);
+    onSearchChange?.(normalizedSearch);
+  }, [normalizedSearch, onSearchChange]);
 
   const searchableColumns = useMemo(
     () => columns.filter((column) => column.searchable),
@@ -298,8 +364,8 @@ export function VirtualDataTable<T extends { id: number | string }>({
   );
 
   const filteredData = useMemo(() => {
-    if (!committedSearch) return data;
-    const query = committedSearch.toLowerCase();
+    if (!normalizedSearch) return data;
+    const query = normalizedSearch.toLowerCase();
     return data.filter((row) =>
       searchableColumns.some((column) => {
         const value = row[column.key];
@@ -307,9 +373,9 @@ export function VirtualDataTable<T extends { id: number | string }>({
         return String(value).toLowerCase().includes(query);
       }),
     );
-  }, [committedSearch, data, searchableColumns]);
+  }, [data, normalizedSearch, searchableColumns]);
 
-  const hasSearch = committedSearch.length > 0;
+  const hasSearch = normalizedSearch.length > 0;
   const shouldReorderRows = hasSearch || sortColumn !== defaultSortColumn || sortDirection !== defaultSortDirection;
   const orderedData = useMemo(() => {
     if (!shouldReorderRows) {
@@ -330,11 +396,21 @@ export function VirtualDataTable<T extends { id: number | string }>({
         : String(bVal).localeCompare(String(aVal));
     });
     return sorted;
-  }, [defaultSortColumn, defaultSortDirection, filteredData, hasSearch, shouldReorderRows, sortColumn, sortDirection]);
+  }, [filteredData, shouldReorderRows, sortColumn, sortDirection]);
 
   const tableLatencyResetKey = `${String(sortColumn)}:${sortDirection}:${data.length}:${shouldReorderRows}`;
-  const searchLatencyResetKey = committedSearch;
+  const searchLatencyResetKey = normalizedSearch;
   const readyResetKey = `${tableLatencyResetKey}:${searchLatencyResetKey}:${orderedData.length}`;
+  const hasRemotePagination = Boolean(onLoadMore || hasNextPage);
+
+  useEffect(() => {
+    if (hasRemotePagination) {
+      setRevealedRowCount(orderedData.length);
+      return;
+    }
+
+    setRevealedRowCount(Math.min(orderedData.length, clientPageSize));
+  }, [clientPageSize, hasRemotePagination, orderedData.length, readyResetKey]);
 
   useEffect(() => {
     readyCalledRef.current = false;
@@ -352,7 +428,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   const searchLatencyMs = useLatencyMs({
     isReady: isTableReady,
     resetKey: searchLatencyResetKey,
-    enabled: Boolean(latencySource && committedSearch),
+    enabled: Boolean(latencySource && normalizedSearch),
   });
 
   const tableTelemetry = useMemo(() => {
@@ -368,7 +444,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [dataSource, latencySource, tableLatencyMs, tableTelemetryLabel]);
 
   const searchTelemetry = useMemo(() => {
-    if (!latencySource || !committedSearch || searchLatencyMs == null) {
+    if (!latencySource || !normalizedSearch || searchLatencyMs == null) {
       return null;
     }
 
@@ -377,7 +453,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
       ms: searchLatencyMs,
       source: dataSource ?? latencySource,
     });
-  }, [committedSearch, dataSource, latencySource, searchLatencyMs, searchTelemetryLabel]);
+  }, [dataSource, latencySource, normalizedSearch, searchLatencyMs, searchTelemetryLabel]);
 
   useEffect(() => {
     onTableTelemetryChange?.(tableTelemetry);
@@ -393,8 +469,16 @@ export function VirtualDataTable<T extends { id: number | string }>({
     onReady?.();
   }, [isTableReady, onReady]);
 
+  const visibleData = useMemo(() => {
+    if (hasRemotePagination) {
+      return orderedData;
+    }
+
+    return orderedData.slice(0, revealedRowCount);
+  }, [hasRemotePagination, orderedData, revealedRowCount]);
+
   const virtualizer = useVirtualizer({
-    count: orderedData.length,
+    count: visibleData.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => rowHeight,
     overscan: 8,
@@ -408,24 +492,26 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [focusedRowIndex, virtualItems]);
 
   const handleSearchValueChange = useCallback((value: string) => {
-    if (!isSearchControlled) {
-      setInternalSearchValue(value);
-    }
-    onSearchChange?.(value);
-  }, [isSearchControlled, onSearchChange]);
+    setDraftSearchValue(value);
+  }, []);
 
-  const handleSort = useCallback((column: Extract<keyof T, string>) => {
+  const handleSearchFocus = useCallback(() => {
+    setFocusedRowIndex(-1);
+  }, []);
+
+  const handleSort = useCallback((column: string) => {
+    setFocusedRowIndex(-1);
     if (column === sortColumn) {
       setSortDirection((current) => {
         const nextDirection = current === 'asc' ? 'desc' : 'asc';
-        onSortChange?.(column, nextDirection);
+        onSortChange?.(column as Extract<keyof T, string>, nextDirection);
         return nextDirection;
       });
       return;
     }
-    setSortColumn(column);
+    setSortColumn(column as Extract<keyof T, string>);
     setSortDirection('asc');
-    onSortChange?.(column, 'asc');
+    onSortChange?.(column as Extract<keyof T, string>, 'asc');
   }, [onSortChange, sortColumn]);
 
   const focusFirstRow = useCallback(() => {
@@ -465,6 +551,12 @@ export function VirtualDataTable<T extends { id: number | string }>({
     });
   }, []);
 
+  const handleSearchEnter = useCallback(() => {
+    focusFirstRow();
+    focusRowElement(0);
+    activateRowElement(0);
+  }, [activateRowElement, focusFirstRow, focusRowElement]);
+
   const activateFocusedRow = useCallback(() => {
     const activeElement = document.activeElement;
     const link = activeElement?.querySelector?.('a') ?? activeElement?.closest?.('a');
@@ -492,7 +584,10 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [activateFocusedRow, focusNextRow, focusPreviousRow]);
 
   useEffect(() => {
-    if (!hasNextPage || isFetchingNextPage || !onLoadMore) {
+    const canLoadMoreRemoteRows = hasNextPage && !isFetchingNextPage && Boolean(onLoadMore);
+    const hasMoreClientRows = !hasRemotePagination && revealedRowCount < orderedData.length;
+
+    if (!canLoadMoreRemoteRows && !hasMoreClientRows) {
       return;
     }
 
@@ -501,28 +596,41 @@ export function VirtualDataTable<T extends { id: number | string }>({
       return;
     }
 
-    if (lastItem.index >= Math.max(orderedData.length - 5, 0)) {
+    if (lastItem.index >= Math.max(visibleData.length - 5, 0)) {
+      if (hasMoreClientRows) {
+        setRevealedRowCount((current) => Math.min(current + clientPageSize, orderedData.length));
+        return;
+      }
+
       void onLoadMore();
     }
-  }, [hasNextPage, isFetchingNextPage, onLoadMore, orderedData.length, virtualItems]);
+  }, [
+    clientPageSize,
+    hasNextPage,
+    hasRemotePagination,
+    isFetchingNextPage,
+    onLoadMore,
+    orderedData.length,
+    revealedRowCount,
+    virtualItems,
+    visibleData.length,
+  ]);
+
+  const showLoadMoreHint = hasNextPage || isFetchingNextPage || (!hasRemotePagination && visibleData.length < orderedData.length);
 
   return (
-    <div className="space-y-4" onKeyDown={handleKeyDown}>
+    <div className="space-y-4" role="presentation" onKeyDown={handleKeyDown}>
       {!onTableTelemetryChange ? <VirtualTableToolbar telemetry={tableTelemetry} /> : null}
       <div ref={tableContainerRef} className="overflow-hidden rounded-lg border border-border bg-background">
         <VirtualTableHeaderSearch
           placeholder={searchPlaceholder}
-          searchValue={resolvedSearchValue ?? ''}
+          searchValue={draftSearchValue}
           searchTelemetry={searchTelemetry}
           tableContainerRef={tableContainerRef}
           onArrowDown={focusNextRow}
           onArrowUp={focusPreviousRow}
-          onEnter={() => {
-            focusFirstRow();
-            focusRowElement(0);
-            activateRowElement(0);
-          }}
-          onSearchFocus={() => setFocusedRowIndex(-1)}
+          onEnter={handleSearchEnter}
+          onSearchFocus={handleSearchFocus}
           onSearchValueChange={handleSearchValueChange}
           onTabToResults={focusFirstRow}
         />
@@ -540,20 +648,20 @@ export function VirtualDataTable<T extends { id: number | string }>({
               );
             }
             return (
-              <button
+              <SortHeaderButton
                 key={String(column.key)}
-                type="button"
-                onClick={() => handleSort(column.key)}
-                className={cn('flex min-w-0 items-center gap-2 truncate text-left transition-colors hover:text-foreground', column.headerClassName)}
-              >
-                <span className="truncate">{column.header}</span>
-                {isSorted ? sortDirection === 'asc' ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" /> : null}
-              </button>
+                columnKey={String(column.key)}
+                header={column.header}
+                isSorted={isSorted}
+                sortDirection={sortDirection}
+                headerClassName={column.headerClassName}
+                onSort={handleSort}
+              />
             );
           })}
         </div>
         <div ref={viewportRef} className="overflow-y-auto" style={{ height: rowHeight * visibleRowCount }}>
-          {orderedData.length === 0 ? (
+          {visibleData.length === 0 ? (
             <div className="flex h-full items-center justify-center px-4 text-sm text-muted-foreground">
               {emptyStateLabel}
             </div>
@@ -561,7 +669,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
             <>
               <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualItems.map((virtualRow) => {
-                  const row = orderedData[virtualRow.index];
+                  const row = visibleData[virtualRow.index];
                   const rowKey = getRowKey ? getRowKey(row) : row.id;
                   return (
                     <div
@@ -589,7 +697,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
                   );
                 })}
               </div>
-              {hasNextPage || isFetchingNextPage ? (
+              {showLoadMoreHint ? (
                 <div className="flex items-center justify-center border-t border-border px-4 py-3 text-sm text-muted-foreground">
                   {isFetchingNextPage ? 'Loading more…' : 'Scroll to load more'}
                 </div>

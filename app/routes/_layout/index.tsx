@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useContentReady } from "@/hooks/useContentReady";
+import { useMarkContentReady } from "@/hooks/useContentReady";
 
 export const Route = createFileRoute("/_layout/")({
   component: Home,
@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_layout/")({
 });
 
 function Home() {
-  const { onReady } = useContentReady();
+  const onReady = useMarkContentReady();
 
   // Signal ready immediately for static page
   useEffect(() => {

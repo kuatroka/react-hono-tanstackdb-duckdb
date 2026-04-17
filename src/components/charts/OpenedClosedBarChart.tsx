@@ -25,7 +25,6 @@ echarts.use([
 interface OpenedClosedBarChartProps {
   data: readonly QuarterlyActivityPoint[];
   title: string;
-  description?: string;
   onBarClick?: (selection: { quarter: string; action: "open" | "close" }) => void;
   onBarHover?: (selection: { quarter: string; action: "open" | "close" }) => void;
   onBarLeave?: () => void;
@@ -48,7 +47,6 @@ interface OpenedClosedTooltipParam {
 export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   data,
   title,
-  description,
   onBarClick,
   onBarHover,
   onBarLeave,

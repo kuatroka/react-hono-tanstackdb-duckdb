@@ -1,8 +1,8 @@
 import { GlobalNav } from "./global-nav";
-import { useContentReady } from "@/hooks/useContentReady";
+import { useContentReadyState } from "@/hooks/useContentReady";
 
 export function SiteLayout({ children }: { children: React.ReactNode }) {
-  const { isReady } = useContentReady();
+  const isReady = useContentReadyState();
 
   return (
     <>

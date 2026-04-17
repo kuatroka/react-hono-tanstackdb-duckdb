@@ -47,6 +47,20 @@ export async function fetchAssetRecord(code: string, cusip?: string | null): Pro
     return await response.json() as Asset
 }
 
+interface AssetListResponse {
+    rows: Asset[]
+}
+
+async function fetchFullAssetList(): Promise<Asset[]> {
+    const response = await fetch('/api/assets?limit=50000&offset=0&sort=assetName&direction=asc')
+    if (!response.ok) {
+        throw new Error('Failed to fetch assets')
+    }
+
+    const payload = await response.json() as AssetListResponse
+    return Array.isArray(payload.rows) ? payload.rows : []
+}
+
 // Factory function to create assets collection with queryClient
 // Restores from IndexedDB first, then refreshes from the DuckDB API.
 const inFlightAssetListLoads = new Map<string, Promise<Asset[]>>()
@@ -66,23 +80,11 @@ export function createAssetsCollection(queryClient: QueryClient) {
                     const persisted = await loadPersistedAssetListData()
                     if (persisted && persisted.rows.length > 0) {
                         setAssetListLoadSource('indexeddb')
-                        void fetch('/api/assets')
-                            .then(async (res) => {
-                                if (!res.ok) throw new Error('Failed to refresh assets')
-                                const assets = await res.json() as Asset[]
-                                await persistAssetListData(assets)
-                            })
-                            .catch((error) => {
-                                console.warn('[Assets] Background refresh failed:', error)
-                            })
-
                         return persisted.rows as Asset[]
                     }
 
                     const startTime = performance.now()
-                    const res = await fetch('/api/assets')
-                    if (!res.ok) throw new Error('Failed to fetch assets')
-                    const assets = await res.json() as Asset[]
+                    const assets = await fetchFullAssetList()
                     setAssetListLoadSource('api')
                     console.log(`[Assets] Fetched ${assets.length} assets in ${Math.round(performance.now() - startTime)}ms`)
                     void persistAssetListData(assets)

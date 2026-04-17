@@ -2,16 +2,11 @@ import {
   createContext,
   useCallback,
   useContext,
-  useMemo,
   useState,
 } from 'react';
 
-type ContentReadyContextValue = {
-  isReady: boolean;
-  onReady: () => void;
-};
-
-const ContentReadyContext = createContext<ContentReadyContextValue | null>(null);
+const ContentReadyStateContext = createContext<boolean | null>(null);
+const ContentReadyActionContext = createContext<(() => void) | null>(null);
 
 export function ContentReadyProvider({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false);
@@ -21,19 +16,36 @@ export function ContentReadyProvider({ children }: { children: React.ReactNode }
     setIsReady(true);
   }, []);
 
-  const value = useMemo(() => ({ isReady, onReady }), [isReady, onReady]);
-
   return (
-    <ContentReadyContext.Provider value={value}>
-      {children}
-    </ContentReadyContext.Provider>
+    <ContentReadyActionContext.Provider value={onReady}>
+      <ContentReadyStateContext.Provider value={isReady}>
+        {children}
+      </ContentReadyStateContext.Provider>
+    </ContentReadyActionContext.Provider>
   );
 }
 
-export function useContentReady() {
-  const ctx = useContext(ContentReadyContext);
-  if (!ctx) {
-    throw new Error('useContentReady must be used within ContentReadyProvider');
+export function useContentReadyState() {
+  const isReady = useContext(ContentReadyStateContext);
+  if (isReady == null) {
+    throw new Error('useContentReadyState must be used within ContentReadyProvider');
   }
-  return ctx;
+
+  return isReady;
+}
+
+export function useMarkContentReady() {
+  const onReady = useContext(ContentReadyActionContext);
+  if (!onReady) {
+    throw new Error('useMarkContentReady must be used within ContentReadyProvider');
+  }
+
+  return onReady;
+}
+
+export function useContentReady() {
+  return {
+    isReady: useContentReadyState(),
+    onReady: useMarkContentReady(),
+  };
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { memo, useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   VirtualDataTable,
   type ColumnDef,
@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LatencyBadge } from "@/components/LatencyBadge";
-import { useContentReady } from "@/hooks/useContentReady";
+import { useMarkContentReady } from "@/hooks/useContentReady";
 import type { PerfSource, PerfTelemetry } from "@/lib/perf/telemetry";
 import {
   getSuperinvestorListLoadSource,
@@ -23,17 +23,81 @@ export function SuperinvestorsTablePage() {
   return <SuperinvestorsTableSurface />;
 }
 
-function SuperinvestorsTableSurface() {
-  const navigate = useNavigate();
-  const searchParams = useSearch({ strict: false }) as {
-    page?: string;
-    search?: string;
-  };
-  const { onReady } = useContentReady();
-  const trimmedSearch = (searchParams.search ?? "").trim();
+const superinvestorTableColumns: ColumnDef<Superinvestor>[] = [
+  {
+    key: "cik",
+    header: "CIK",
+    sortable: true,
+    searchable: true,
+    clickable: true,
+    render: (value, row, isFocused) => (
+      <Link
+        to="/superinvestors/$cik"
+        params={{ cik: row.cik }}
+        className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? "underline" : ""}`}
+      >
+        {String(value)}
+      </Link>
+    ),
+  },
+  {
+    key: "cikName",
+    header: "Name",
+    sortable: true,
+    searchable: true,
+  },
+];
+
+const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
+  dataSource,
+  rows,
+}: {
+  dataSource: PerfSource;
+  rows: Superinvestor[];
+}) {
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(
     null,
   );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div className="space-y-1">
+          <CardTitle className="text-3xl font-bold tracking-tight">
+            Superinvestors
+          </CardTitle>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          {tableTelemetry ? (
+            <LatencyBadge
+              telemetry={tableTelemetry}
+              className="min-w-[11rem] justify-end"
+            />
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <VirtualDataTable
+          data={rows}
+          columns={superinvestorTableColumns}
+          defaultSortColumn="cikName"
+          gridTemplateColumns="minmax(12rem, 1fr) minmax(22rem, 1.6fr)"
+          latencySource="tsdb-memory"
+          dataSource={dataSource}
+          onTableTelemetryChange={setTableTelemetry}
+          clientPageSize={100}
+          searchDebounceMs={150}
+          searchPlaceholder="Search superinvestors..."
+          searchTelemetryLabel="search"
+          tableTelemetryLabel="virtual table"
+        />
+      </CardContent>
+    </Card>
+  );
+});
+
+function SuperinvestorsTableSurface() {
+  const onReady = useMarkContentReady();
   const [superinvestorsData, setSuperinvestorsData] = useState<Superinvestor[] | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
@@ -91,84 +155,18 @@ function SuperinvestorsTableSurface() {
     }
   }, [superinvestorsData, onReady]);
 
-  const handleSearchChange = (value: string) => {
-    navigate({
-      to: "/superinvestors",
-      search: { search: value.trim() || undefined },
-    });
-  };
-
-  const columns = useMemo<ColumnDef<Superinvestor>[]>(
-    () => [
-      {
-        key: "cik",
-        header: "CIK",
-        sortable: true,
-        searchable: true,
-        clickable: true,
-        render: (value, row, isFocused) => (
-          <Link
-            to="/superinvestors/$cik"
-            params={{ cik: row.cik }}
-            className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? "underline" : ""}`}
-          >
-            {String(value)}
-          </Link>
-        ),
-      },
-      {
-        key: "cikName",
-        header: "Name",
-        sortable: true,
-        searchable: true,
-      },
-    ],
-    [],
-  );
-
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-          <div className="space-y-1">
-            <CardTitle className="text-3xl font-bold tracking-tight">
-              Superinvestors
-            </CardTitle>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            {tableTelemetry ? (
-              <LatencyBadge
-                telemetry={tableTelemetry}
-                className="min-w-[11rem] justify-end"
-              />
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">
-              Loading…
-            </div>
-          ) : (
-            <VirtualDataTable
-              data={superinvestorsData || []}
-              columns={columns}
-              defaultSortColumn="cikName"
-              gridTemplateColumns="minmax(12rem, 1fr) minmax(22rem, 1.6fr)"
-              latencySource="tsdb-memory"
-              dataSource={dataSource}
-              onReady={onReady}
-              onSearchChange={handleSearchChange}
-              onTableTelemetryChange={setTableTelemetry}
-              searchDebounceMs={150}
-              searchPlaceholder="Search superinvestors..."
-              searchTelemetryLabel="search"
-              searchValue={trimmedSearch}
-              tableTelemetryLabel="virtual table"
-            />
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <div className="py-8 text-center text-muted-foreground">
+          Loading…
+        </div>
+      ) : (
+        <SuperinvestorsTableCard
+          dataSource={dataSource}
+          rows={superinvestorsData || []}
+        />
+      )}
     </div>
   );
 }
