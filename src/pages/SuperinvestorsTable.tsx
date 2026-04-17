@@ -34,9 +34,6 @@ function SuperinvestorsTableSurface() {
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(
     null,
   );
-  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(
-    null,
-  );
   const [superinvestorsData, setSuperinvestorsData] = useState<Superinvestor[] | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
@@ -145,12 +142,6 @@ function SuperinvestorsTableSurface() {
                 className="min-w-[11rem] justify-end"
               />
             ) : null}
-            {searchTelemetry ? (
-              <LatencyBadge
-                telemetry={searchTelemetry}
-                className="min-w-[11rem] justify-end"
-              />
-            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -168,7 +159,6 @@ function SuperinvestorsTableSurface() {
               dataSource={dataSource}
               onReady={onReady}
               onSearchChange={handleSearchChange}
-              onSearchTelemetryChange={setSearchTelemetry}
               onTableTelemetryChange={setTableTelemetry}
               searchDebounceMs={150}
               searchPlaceholder="Search superinvestors..."

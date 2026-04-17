@@ -11,4 +11,13 @@ describe("AssetsTablePage", () => {
     expect(source).not.toContain("await assetsCollection.preload()");
     expect(source).not.toContain("Array.from(assetsCollection.entries())");
   });
+
+  test("keeps search telemetry inside the table header instead of duplicating it in the page chrome", async () => {
+    const source = await Bun.file(new URL("./AssetsTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(source).not.toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(source).not.toContain("<LatencyBadge telemetry={searchTelemetry}");
+    expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+  });
 });

@@ -3,25 +3,13 @@
   "active": false,
   "skill": "ralph",
   "keyword": "$ralph",
-  "phase": "planning",
+  "phase": "complete",
   "activated_at": "2026-04-08T23:16:03.384Z",
-  "updated_at": "2026-04-08T23:16:03.384Z",
+  "updated_at": "2026-04-17T15:33:05.747Z",
   "source": "keyword-detector",
-  "session_id": "",
   "thread_id": "019d6ee8-155c-7492-bb1a-03d1aa2e32ad",
   "turn_id": "019d6f5a-5b29-7e92-a11b-d18bd44a45af",
-  "active_skills": [
-    {
-      "skill": "ralph",
-      "phase": "planning",
-      "active": true,
-      "activated_at": "2026-04-08T23:16:03.384Z",
-      "updated_at": "2026-04-08T23:16:03.384Z",
-      "session_id": "",
-      "thread_id": "019d6ee8-155c-7492-bb1a-03d1aa2e32ad",
-      "turn_id": "019d6f5a-5b29-7e92-a11b-d18bd44a45af"
-    }
-  ],
+  "active_skills": [],
   "input_lock": {
     "active": false,
     "scope": "deep-interview-auto-approval",

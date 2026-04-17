@@ -85,11 +85,14 @@ describe("rerender isolation architecture", () => {
     expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
     expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
-    expect(superinvestorsTable).toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(superinvestorsTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(superinvestorsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
-    expect(superinvestorsTable).toContain("onSearchTelemetryChange={setSearchTelemetry}");
+    expect(superinvestorsTable).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
     expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
+    expect(drilldownTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(drilldownTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(drilldownTable).not.toContain('data-testid="drilldown-search-telemetry-slot"');
     expect(drilldownTable).toContain('from "@/components/VirtualDataTable"');
     expect(drilldownTable).toContain("<VirtualDataTable");
     expect(drilldownTable).not.toContain('from "@/components/DataTable"');

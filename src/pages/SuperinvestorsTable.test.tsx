@@ -8,4 +8,13 @@ describe("SuperinvestorsTablePage", () => {
     expect(source).toContain("await superinvestorsCollection.preload()");
     expect(source).toContain("Array.from(superinvestorsCollection.entries())");
   });
+
+  test("keeps search telemetry inside the table header instead of duplicating it in the page chrome", async () => {
+    const source = await Bun.file(new URL("./SuperinvestorsTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(source).not.toContain("const [searchTelemetry, setSearchTelemetry]");
+    expect(source).not.toContain("telemetry={searchTelemetry}");
+    expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+  });
 });

@@ -71,7 +71,6 @@ function AssetsTableSurface() {
   const { onReady } = useContentReady();
   const trimmedSearch = (searchParams.search ?? '').trim();
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
-  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
   const [sortColumn, setSortColumn] = useState<AssetSortColumn>(DEFAULT_SORT_COLUMN);
   const [sortDirection, setSortDirection] = useState<SortDirection>(DEFAULT_SORT_DIRECTION);
 
@@ -152,7 +151,6 @@ function AssetsTableSurface() {
           <CardTitle className="text-3xl font-bold tracking-tight">Assets</CardTitle>
           <div className="flex flex-col items-end gap-2">
             {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
-            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -177,7 +175,6 @@ function AssetsTableSurface() {
               onReady={onReady}
               onSearchChange={handleSearchChange}
               onSortChange={handleSortChange}
-              onSearchTelemetryChange={setSearchTelemetry}
               onTableTelemetryChange={setTableTelemetry}
               searchDebounceMs={150}
               searchPlaceholder="Search assets..."

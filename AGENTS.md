@@ -2,8 +2,13 @@
 Always opted for the best possible and performant long term solution instead of a quick transactional fix. 
 
 Don't just agree with me, feel totally free to correct me when I'm wrong or ask me questions if you feel you need more clarity on the intent
+
+
 ## Project
 This a Tanstack React (frontend) + hono (backend) + **TanStack DB** + **duckdb** project. It's an financial analytics app that seeks to get insight from investment decisions and data from SEC 13F filings.
+
+## Git
+- Commit very often so we can rever to a prior codebase. Commit every 10 min
 
 ## Bug fixing guidelines
 - When I report a bug, don't start by trying to fix it. Instead, use red/green TDD approach. Start by writing a test that reproduces the bug. Then, try to fix the bug and prove it with a passing test.

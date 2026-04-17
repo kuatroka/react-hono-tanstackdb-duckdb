@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "context7-plugin@context7": true,
+    "autoresearch@factory-plugins": true
+  }
+}

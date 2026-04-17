@@ -15,7 +15,7 @@ import {
 type InvestorActivityAction = "open" | "close";
 
 interface InvestorActivityDrilldownRow {
-  id: number;
+  id: string;
   cik: string;
   cikName: string;
   cikTicker: string;
@@ -31,6 +31,20 @@ interface InvestorActivityDrilldownTableProps {
   action: InvestorActivityAction;
 }
 
+function getCachedDrilldownRows(
+  enabled: boolean,
+  ticker: string,
+  cusip: string,
+  quarter: string,
+  action: InvestorActivityAction,
+) {
+  if (!enabled) {
+    return [] as InvestorDetail[];
+  }
+
+  return getDrilldownDataFromCollection(ticker, cusip, quarter, action) ?? [];
+}
+
 export function InvestorActivityDrilldownTable({
   ticker,
   cusip,
@@ -39,17 +53,19 @@ export function InvestorActivityDrilldownTable({
 }: InvestorActivityDrilldownTableProps) {
   const enabled = Boolean(ticker && cusip && quarter);
 
+  const initialCachedRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
+  const hasInitialCachedRows = initialCachedRows.length > 0;
+
   // State for data, loading, and timing
-  const [data, setData] = useState<InvestorDetail[]>([]);
+  const [data, setData] = useState<InvestorDetail[]>(() => initialCachedRows);
   const [isLoading, setIsLoading] = useState(false);
   const [isError, setIsError] = useState(false);
-  const [queryTimeMs, setQueryTimeMs] = useState<number | null>(null);
-  const [dataFlow, setDataFlow] = useState<DataFlow>("unknown");
+  const [queryTimeMs, setQueryTimeMs] = useState<number | null>(() => (hasInitialCachedRows ? 0 : null));
+  const [dataFlow, setDataFlow] = useState<DataFlow>(() => (hasInitialCachedRows ? "tsdb-memory" : "unknown"));
   const [renderMs, setRenderMs] = useState<number | null>(null);
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
-  const [searchTelemetry, setSearchTelemetry] = useState<PerfTelemetry | null>(null);
 
   // Load from IndexedDB first, then fetch if missing
   useEffect(() => {
@@ -69,7 +85,7 @@ export function InvestorActivityDrilldownTable({
       if (cancelled) return;
 
       // Check if data is now available in collection
-      const localRows = getDrilldownDataFromCollection(ticker, cusip, quarter, action);
+      const localRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
       if (localRows && localRows.length > 0) {
         setData(localRows);
         if (!wasAlreadyLoaded && loadedFromIDB) {
@@ -114,7 +130,7 @@ export function InvestorActivityDrilldownTable({
       return;
     }
 
-    const localRows = getDrilldownDataFromCollection(ticker, cusip, quarter, action);
+    const localRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
     if (localRows && localRows.length > 0) {
       setData(localRows);
       setDataFlow("tsdb-memory");
@@ -129,7 +145,7 @@ export function InvestorActivityDrilldownTable({
       renderStartRef.current = performance.now();
       prevDataLengthRef.current = data.length;
     }
-  }, [data]);
+  }, [action, data, quarter, ticker]);
 
   // Measure render time after paint
   useEffect(() => {
@@ -143,13 +159,13 @@ export function InvestorActivityDrilldownTable({
       });
       return () => cancelAnimationFrame(rafId);
     }
-  }, [data]);
+  }, [action, data, quarter, ticker]);
   const rows = useMemo(() => {
     console.debug(
       `[DrilldownTable] rendering ${data.length} rows for ${ticker} ${quarter} ${action}`
     );
-    return data.map((item: InvestorDetail, index: number) => ({
-      id: index,
+    return data.map((item: InvestorDetail) => ({
+      id: item.id,
       cik: item.cik,
       cikName: item.cikName,
       cikTicker: item.cikTicker,
@@ -157,7 +173,7 @@ export function InvestorActivityDrilldownTable({
       quarter: item.quarter,
       action: item.action,
     }));
-  }, [data]);
+  }, [action, data, quarter, ticker]);
 
   const columns: ColumnDef<InvestorActivityDrilldownRow>[] = useMemo(
     () => [
@@ -226,9 +242,16 @@ export function InvestorActivityDrilldownTable({
         <CardTitle className="flex items-center justify-between gap-4">
           <span>{cardTitle}</span>
           <div className="flex flex-col items-end gap-2">
-            {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
-            {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-end" /> : null}
-            {!tableTelemetry && !searchTelemetry ? latencyDisplay : null}
+            <div
+              data-testid="drilldown-table-telemetry-slot"
+              className="flex min-h-8 min-w-[11rem] items-center justify-end"
+            >
+              {tableTelemetry ? (
+                <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" />
+              ) : (
+                latencyDisplay
+              )}
+            </div>
           </div>
         </CardTitle>
       </CardHeader>
@@ -252,7 +275,6 @@ export function InvestorActivityDrilldownTable({
               gridTemplateColumns="minmax(18rem, 1.8fr) minmax(8rem, 0.8fr) minmax(10rem, 0.9fr) minmax(8rem, 0.7fr)"
               latencySource="tsdb-memory"
               dataSource={dataFlow}
-              onSearchTelemetryChange={setSearchTelemetry}
               onTableTelemetryChange={setTableTelemetry}
               tableTelemetryLabel="drilldown table"
               searchTelemetryLabel="search"
