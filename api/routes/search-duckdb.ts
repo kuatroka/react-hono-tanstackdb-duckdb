@@ -1,9 +1,18 @@
 import { Hono } from "hono";
 import { fullDumpSearches, searchDuckDb } from "../repositories/search-repository";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { join } from "path";
+import { compactSearchIndexPayload } from "../../src/lib/search-index";
 
 const searchDuckdbRoutes = new Hono();
+let cachedCompactIndex:
+  | {
+      path: string;
+      mtimeMs: number;
+      body: string;
+    }
+  | null = null;
+
 function resolveSearchIndexPath(): string | null {
   const rawPath = process.env.SEARCH_INDEX_PATH;
   if (rawPath) {
@@ -20,6 +29,29 @@ function resolveSearchIndexPath(): string | null {
   return join(appDataPath, "TR_05_DB", "TR_05_WEB_SEARCH_INDEX", "search_index.json");
 }
 
+async function loadCompactSearchIndexBody(indexPath: string): Promise<string> {
+  const fileStats = await stat(indexPath);
+
+  if (
+    cachedCompactIndex &&
+    cachedCompactIndex.path === indexPath &&
+    cachedCompactIndex.mtimeMs === fileStats.mtimeMs
+  ) {
+    return cachedCompactIndex.body;
+  }
+
+  const indexData = await readFile(indexPath, "utf-8");
+  const compactBody = JSON.stringify(compactSearchIndexPayload(JSON.parse(indexData)));
+
+  cachedCompactIndex = {
+    path: indexPath,
+    mtimeMs: fileStats.mtimeMs,
+    body: compactBody,
+  };
+
+  return compactBody;
+}
+
 searchDuckdbRoutes.get("/index", async (c) => {
   try {
     const indexPath = resolveSearchIndexPath();
@@ -27,7 +59,7 @@ searchDuckdbRoutes.get("/index", async (c) => {
       return c.json({ error: "SEARCH_INDEX_PATH or APP_DATA_PATH not configured" }, 500);
     }
 
-    const indexData = await readFile(indexPath, "utf-8");
+    const indexData = await loadCompactSearchIndexBody(indexPath);
 
     c.header("Cache-Control", "public, max-age=3600");
     c.header("Content-Type", "application/json");
@@ -39,10 +71,7 @@ searchDuckdbRoutes.get("/index", async (c) => {
 
     if (errorMessage.includes("ENOENT")) {
       return c.json({
-        codeExact: {},
-        codePrefixes: {},
-        namePrefixes: {},
-        items: {},
+        items: [],
         metadata: { totalItems: 0, error: "Index not generated yet" },
       });
     }

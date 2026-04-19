@@ -7,6 +7,12 @@ import {
     persistSearchIndex,
     type PersistedSearchIndex 
 } from './query-client'
+import {
+    compactSearchIndexPayload,
+    tupleToSearchIndexRecord,
+    recordToSearchIndexTuple,
+    type CompactSearchIndexPayload,
+} from '@/lib/search-index'
 
 export interface SearchResult {
     id: number
@@ -132,23 +138,150 @@ export async function preloadSearches(): Promise<void> {
 // HIGH-PERFORMANCE PREFIX INDEX FOR SUB-MILLISECOND SEARCH
 // ============================================================
 
-// Pre-computed index structure for O(1) prefix lookups
-interface SearchIndex {
-    // Maps lowercase prefix -> array of item IDs (from JSON)
-    codeExact: Record<string, number[]>
-    codePrefixes: Record<string, number[]>
-    namePrefixes: Record<string, number[]>
-    // Maps ID -> item for fast retrieval
-    items: Record<string, SearchResult>
-    metadata?: {
-        totalItems: number
-        generatedAt?: string
-        error?: string
+interface RuntimeSearchItem extends SearchResult {
+    lowerCode: string
+    lowerName: string
+}
+
+interface RuntimeSearchIndex {
+    exactCode: Record<string, number[]>
+    codeBuckets: Record<string, number[]>
+    nameBuckets: Record<string, number[]>
+    items: RuntimeSearchItem[]
+    metadata?: CompactSearchIndexPayload['metadata']
+}
+
+let searchIndex: RuntimeSearchIndex | null = null
+let indexLoadPromise: Promise<void> | null = null
+
+export function createRuntimeSearchIndex(payload: CompactSearchIndexPayload): RuntimeSearchIndex {
+    const items: RuntimeSearchItem[] = []
+    const exactCode: Record<string, number[]> = Object.create(null)
+    const codeBuckets: Record<string, number[]> = Object.create(null)
+    const nameBuckets: Record<string, number[]> = Object.create(null)
+
+    for (const tuple of payload.items) {
+        const record = tupleToSearchIndexRecord(tuple)
+        if (!record.code) continue
+
+        const lowerCode = record.code.toLowerCase()
+        const lowerName = (record.name || '').toLowerCase()
+        const itemIndex = items.length
+
+        items.push({
+            ...record,
+            lowerCode,
+            lowerName,
+        })
+
+        if (!exactCode[lowerCode]) exactCode[lowerCode] = []
+        exactCode[lowerCode].push(itemIndex)
+
+        const codeBucket = lowerCode.slice(0, 2)
+        if (codeBucket.length === 2) {
+            if (!codeBuckets[codeBucket]) codeBuckets[codeBucket] = []
+            codeBuckets[codeBucket].push(itemIndex)
+        }
+
+        const nameBucket = lowerName.slice(0, 2)
+        if (nameBucket.length === 2) {
+            if (!nameBuckets[nameBucket]) nameBuckets[nameBucket] = []
+            nameBuckets[nameBucket].push(itemIndex)
+        }
+    }
+
+    return {
+        exactCode,
+        codeBuckets,
+        nameBuckets,
+        items,
+        metadata: payload.metadata,
     }
 }
 
-let searchIndex: SearchIndex | null = null
-let indexLoadPromise: Promise<void> | null = null
+export function searchRuntimeIndex(
+    index: RuntimeSearchIndex | null,
+    query: string,
+    limit: number = 20,
+): ScoredSearchResult[] {
+    if (!index || query.length < 2) return []
+
+    const lowerQuery = query.toLowerCase()
+    const results: Array<{ item: SearchResult; score: number }> = []
+    const seenIndexes = new Set<number>()
+
+    const pushResult = (itemIndex: number, score: number) => {
+        if (seenIndexes.has(itemIndex)) return
+        const item = index.items[itemIndex]
+        if (!item) return
+        seenIndexes.add(itemIndex)
+        results.push({
+            item: {
+                id: item.id,
+                cusip: item.cusip,
+                code: item.code,
+                name: item.name,
+                category: item.category,
+            },
+            score,
+        })
+    }
+
+    const exactMatches = index.exactCode[lowerQuery]
+    if (exactMatches) {
+        for (const itemIndex of exactMatches) {
+            pushResult(itemIndex, 100)
+        }
+    }
+
+    const bucketKey = lowerQuery.slice(0, 2)
+
+    if (bucketKey.length === 2) {
+        const codePrefixMatches = index.codeBuckets[bucketKey]
+        if (codePrefixMatches) {
+            for (const itemIndex of codePrefixMatches) {
+                const item = index.items[itemIndex]
+                if (item?.lowerCode.startsWith(lowerQuery)) {
+                    pushResult(itemIndex, 80)
+                }
+            }
+        }
+
+        const namePrefixMatches = index.nameBuckets[bucketKey]
+        if (namePrefixMatches) {
+            for (const itemIndex of namePrefixMatches) {
+                const item = index.items[itemIndex]
+                if (item?.lowerName.startsWith(lowerQuery)) {
+                    pushResult(itemIndex, 40)
+                }
+            }
+        }
+    }
+
+    if (results.length < limit) {
+        for (let itemIndex = 0; itemIndex < index.items.length; itemIndex += 1) {
+            if (seenIndexes.has(itemIndex)) continue
+
+            const item = index.items[itemIndex]
+            if (!item) continue
+
+            if (item.lowerCode.includes(lowerQuery) && !item.lowerCode.startsWith(lowerQuery)) {
+                pushResult(itemIndex, 60)
+                if (results.length >= limit * 2) break
+                continue
+            }
+
+            if (item.lowerName.includes(lowerQuery) && !item.lowerName.startsWith(lowerQuery)) {
+                pushResult(itemIndex, 20)
+                if (results.length >= limit * 2) break
+            }
+        }
+    }
+
+    results.sort((a, b) => b.score - a.score || (a.item.name || '').localeCompare(b.item.name || ''))
+
+    return results.slice(0, limit).map(r => ({ ...r.item, score: r.score } as ScoredSearchResult))
+}
 
 // Load pre-computed index - tries IndexedDB first, then fetches from API
 export async function loadPrecomputedIndex(): Promise<void> {
@@ -157,7 +290,7 @@ export async function loadPrecomputedIndex(): Promise<void> {
         return indexLoadPromise
     }
     
-    if (searchIndex && Object.keys(searchIndex.items).length > 0) {
+    if (searchIndex && searchIndex.items.length > 0) {
         console.log('[SearchIndex] Already loaded, skipping')
         return
     }
@@ -168,8 +301,8 @@ export async function loadPrecomputedIndex(): Promise<void> {
         try {
             // Try to load from IndexedDB first
             const persisted = await loadPersistedSearchIndex()
-            if (persisted && Object.keys(persisted.items).length > 0) {
-                searchIndex = persisted as SearchIndex
+            if (persisted && persisted.items.length > 0) {
+                searchIndex = createRuntimeSearchIndex(persisted)
                 console.log(`[SearchIndex] Restored from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms (${persisted.metadata?.totalItems || 0} items)`)
                 return
             }
@@ -188,19 +321,19 @@ export async function loadPrecomputedIndex(): Promise<void> {
             const textEnd = performance.now()
 
             const parseStart = performance.now()
-            const data: SearchIndex = JSON.parse(text)
+            const payload = compactSearchIndexPayload(JSON.parse(text))
             const parseEnd = performance.now()
             
-            if (data.metadata?.error) {
-                console.warn('[SearchIndex] Index not available:', data.metadata.error)
+            if (payload.metadata?.error) {
+                console.warn('[SearchIndex] Index not available:', payload.metadata.error)
                 searchIndex = null
                 return
             }
             
-            searchIndex = data
+            searchIndex = createRuntimeSearchIndex(payload)
             
             // Persist to IndexedDB for next time
-            await persistSearchIndex(data as PersistedSearchIndex)
+            await persistSearchIndex(payload as PersistedSearchIndex)
             
             const total = parseEnd - startTime
             const network = fetchEnd - fetchStart
@@ -210,7 +343,7 @@ export async function loadPrecomputedIndex(): Promise<void> {
             console.log(
                 `[SearchIndex] Loaded pre-computed index: total=${total.toFixed(1)}ms ` +
                 `(network=${network.toFixed(1)}ms, download=${download.toFixed(1)}ms, parse=${parse.toFixed(1)}ms, ` +
-                `items=${data.metadata?.totalItems || 0})`
+                `items=${payload.metadata?.totalItems || 0})`
             )
         } catch (error) {
             console.error('[SearchIndex] Failed to load:', error)
@@ -225,53 +358,16 @@ export async function loadPrecomputedIndex(): Promise<void> {
 
 // Build the search index from items (fallback if pre-computed index not available)
 export function buildSearchIndex(items: SearchResult[]): void {
-    if (searchIndex && Object.keys(searchIndex.items).length > 0) {
+    if (searchIndex && searchIndex.items.length > 0) {
         console.log('[SearchIndex] Pre-computed index already loaded, skipping runtime build')
         return
     }
     
     const startTime = performance.now()
-    
-    const codeExact: Record<string, number[]> = {}
-    const codePrefixes: Record<string, number[]> = {}
-    const namePrefixes: Record<string, number[]> = {}
-    const itemsMap: Record<string, SearchResult> = {}
-    
-    for (const item of items) {
-        if (!item || !item.code) continue
-        
-        itemsMap[item.id] = item
-        const lowerCode = item.code.toLowerCase()
-        const lowerName = (item.name || '').toLowerCase()
-        
-        // Index exact code
-        if (!codeExact[lowerCode]) codeExact[lowerCode] = []
-        codeExact[lowerCode].push(item.id)
-        
-        // Index code prefixes (up to 10 chars)
-        for (let i = 1; i <= Math.min(lowerCode.length, 10); i++) {
-            const prefix = lowerCode.slice(0, i)
-            if (!codePrefixes[prefix]) codePrefixes[prefix] = []
-            codePrefixes[prefix].push(item.id)
-        }
-        
-        // Index name prefixes (up to 10 chars)
-        if (lowerName) {
-            for (let i = 1; i <= Math.min(lowerName.length, 10); i++) {
-                const prefix = lowerName.slice(0, i)
-                if (!namePrefixes[prefix]) namePrefixes[prefix] = []
-                namePrefixes[prefix].push(item.id)
-            }
-        }
-    }
-    
-    searchIndex = { 
-        codeExact, 
-        codePrefixes, 
-        namePrefixes, 
-        items: itemsMap,
-        metadata: { totalItems: items.length }
-    }
+    searchIndex = createRuntimeSearchIndex({
+        items: items.map(recordToSearchIndexTuple),
+        metadata: { totalItems: items.length },
+    })
     
     const elapsed = performance.now() - startTime
     console.log(`[SearchIndex] Built index at runtime for ${items.length} items in ${elapsed.toFixed(1)}ms`)
@@ -280,83 +376,10 @@ export function buildSearchIndex(items: SearchResult[]): void {
 // Fast search using pre-computed index - O(1) lookup instead of O(n) filter
 // Falls back to O(n) substring scan for matches not found by prefix indexing
 export function searchWithIndex(query: string, limit: number = 20): ScoredSearchResult[] {
-    if (!searchIndex || query.length < 2) return []
-
-    const lowerQuery = query.toLowerCase()
-    const results: Array<{ item: SearchResult; score: number }> = []
-    const seenIds = new Set<number>()
-
-    // 1. Exact code match (score: 100)
-    const exactMatches = searchIndex.codeExact[lowerQuery]
-    if (exactMatches) {
-        for (const id of exactMatches) {
-            if (seenIds.has(id)) continue
-            seenIds.add(id)
-            const item = searchIndex.items[id]
-            if (item) results.push({ item, score: 100 })
-        }
-    }
-
-    // 2. Code prefix match (score: 80)
-    const codePrefixMatches = searchIndex.codePrefixes[lowerQuery]
-    if (codePrefixMatches) {
-        for (const id of codePrefixMatches) {
-            if (seenIds.has(id)) continue
-            seenIds.add(id)
-            const item = searchIndex.items[id]
-            if (item) results.push({ item, score: 80 })
-        }
-    }
-
-    // 3. Name prefix match (score: 40)
-    const namePrefixMatches = searchIndex.namePrefixes[lowerQuery]
-    if (namePrefixMatches) {
-        for (const id of namePrefixMatches) {
-            if (seenIds.has(id)) continue
-            seenIds.add(id)
-            const item = searchIndex.items[id]
-            if (item) results.push({ item, score: 40 })
-        }
-    }
-
-    // 4. Substring matches - O(n) scan for "contains" matches not found by prefix
-    // This handles cases like searching "disney" to find "Walt Disney"
-    // Only scan if we haven't found enough results from prefix matching
-    if (results.length < limit) {
-        for (const id of Object.keys(searchIndex.items)) {
-            const numId = Number(id)
-            if (seenIds.has(numId)) continue
-
-            const item = searchIndex.items[id]
-            if (!item) continue
-
-            const lowerCode = item.code.toLowerCase()
-            const lowerName = (item.name || '').toLowerCase()
-
-            // Check for code substring (not prefix, since prefix already checked)
-            if (lowerCode.includes(lowerQuery) && !lowerCode.startsWith(lowerQuery)) {
-                seenIds.add(numId)
-                results.push({ item, score: 60 })
-                if (results.length >= limit * 2) break // Limit scan scope
-                continue
-            }
-
-            // Check for name substring (not prefix, since prefix already checked)
-            if (lowerName.includes(lowerQuery) && !lowerName.startsWith(lowerQuery)) {
-                seenIds.add(numId)
-                results.push({ item, score: 20 })
-                if (results.length >= limit * 2) break // Limit scan scope
-            }
-        }
-    }
-
-    // Sort by score and limit
-    results.sort((a, b) => b.score - a.score || (a.item.name || '').localeCompare(b.item.name || ''))
-
-    return results.slice(0, limit).map(r => ({ ...r.item, score: r.score } as ScoredSearchResult))
+    return searchRuntimeIndex(searchIndex, query, limit)
 }
 
 // Check if index is ready
 export function isSearchIndexReady(): boolean {
-    return searchIndex !== null && Object.keys(searchIndex.items).length > 0
+    return searchIndex !== null && searchIndex.items.length > 0
 }

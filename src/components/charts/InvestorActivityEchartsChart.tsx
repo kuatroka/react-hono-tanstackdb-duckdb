@@ -2,6 +2,10 @@
 
 import { memo, useMemo } from "react";
 import { OpenedClosedBarChart } from "./OpenedClosedBarChart";
+import {
+  ASSET_DETAIL_CARD_CLASS_NAME,
+  ASSET_DETAIL_CARD_CONTENT_CLASS_NAME,
+} from "@/components/detail/asset-detail-card-layout";
 import type { CusipQuarterInvestorActivity } from "@/schema";
 
 interface InvestorActivityEchartsChartProps {
@@ -47,6 +51,8 @@ export const InvestorActivityEchartsChart = memo(function InvestorActivityEchart
       onRenderComplete={onRenderComplete}
       latencyBadge={latencyBadge}
       unitLabel="investors"
+      cardClassName={ASSET_DETAIL_CARD_CLASS_NAME}
+      cardContentClassName={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}
     />
   );
 });

@@ -22,4 +22,11 @@ describe("SuperinvestorsTablePage", () => {
     expect(source).not.toContain("telemetry={searchTelemetry}");
     expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
   });
+
+  test("disables route preloading for dense superinvestor table links", async () => {
+    const source = await Bun.file(new URL("./SuperinvestorsTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain('to="/superinvestors/$cik"');
+    expect(source).toContain("preload={false}");
+  });
 });

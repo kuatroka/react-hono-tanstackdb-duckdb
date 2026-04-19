@@ -69,6 +69,7 @@ function registerModuleMocks() {
     investorDrilldownCollection: { entries: () => [] },
     loadDrilldownFromIndexedDB: async () => false,
     isDrilldownIndexedDBLoaded: () => false,
+    clearDrilldownSessionState: () => undefined,
     clearAllDrilldownData: () => undefined,
   }));
 }
@@ -177,6 +178,54 @@ describe("InvestorActivityDrilldownTable", () => {
     expect(source).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(source).not.toContain('data-testid="drilldown-search-telemetry-slot"');
     expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
+  });
+
+  test("disables route preloading for drilldown superinvestor links", async () => {
+    const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain('to="/superinvestors/$cik"');
+    expect(source).toContain("preload={false}");
+  });
+
+  test("keeps the end-to-end drilldown latency badge visible instead of replacing it with table-only telemetry", async () => {
+    const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain("const resolvedHeaderLatencyBadge = queryTimeMs != null || renderMs != null");
+    expect(source).toContain("? latencyDisplay");
+    expect(source).toContain(": tableTelemetry ? (");
+  });
+
+  test("shows six visible rows and uses the same fixed content height as the investor activity chart card", async () => {
+    cachedRowsByKey.set(makeCacheKey("VII", "81786A107", "2024-Q4", "open"), [
+      {
+        id: "81786A107-2024-Q4-open-0001",
+        ticker: "VII",
+        cik: "0001",
+        cikName: "Alpha Capital",
+        cikTicker: "ALPHA",
+        quarter: "2024-Q4",
+        cusip: "81786A107",
+        action: "open",
+      },
+    ]);
+
+    const { InvestorActivityDrilldownTable } = await import("./InvestorActivityDrilldownTable");
+    renderToString(
+      <InvestorActivityDrilldownTable
+        ticker="VII"
+        cusip="81786A107"
+        quarter="2024-Q4"
+        action="open"
+      />,
+    );
+
+    const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+
+    expect(virtualTableProps[0]?.visibleRowCount).toBe(6);
+    expect(virtualTableProps[0]?.gridTemplateColumns).toBe("minmax(0, 1.8fr) minmax(4rem, 0.75fr) minmax(5.5rem, 0.9fr) minmax(4.5rem, 0.8fr)");
+    expect(source).toContain("className={ASSET_DETAIL_CARD_CLASS_NAME}");
+    expect(source).toContain("className={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
+    expect(source).toContain('className="relative flex-1 h-full w-full min-w-0"');
   });
 
   test("uses the virtualized table instead of the paginated DataTable", async () => {

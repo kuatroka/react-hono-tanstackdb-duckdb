@@ -102,6 +102,7 @@ function registerModuleMocks() {
       backgroundLoadCalls.push({ code, cusip, excluded });
       return currentBackgroundLoadAllDrilldownData(code, cusip, excluded, onProgress);
     },
+    clearDrilldownSessionState: () => undefined,
     clearAllDrilldownData: () => undefined,
   }));
 
@@ -509,5 +510,15 @@ describe("asset detail section runtime behavior", () => {
     expect(rerenderedChart.props.onBarClick).toBe(loadedChart.props.onBarClick);
     expect(rerenderedChart.props.onRenderComplete).toBe(loadedChart.props.onRenderComplete);
     expect(rerenderedChart.props.latencyBadge).toBe(loadedChart.props.latencyBadge);
+  });
+
+  test("stretches the asset detail grid so the activity chart and drilldown cards can share the same height", async () => {
+    const drilldownSource = await Bun.file(new URL("../components/detail/AssetDrilldownSection.tsx", import.meta.url)).text();
+    const activityChartSource = await Bun.file(new URL("../components/charts/InvestorActivityEchartsChart.tsx", import.meta.url)).text();
+
+    expect(drilldownSource).toContain("items-stretch");
+    expect(drilldownSource).toContain('className="min-w-0 h-full [&>*]:h-full"');
+    expect(activityChartSource).toContain("cardClassName={ASSET_DETAIL_CARD_CLASS_NAME}");
+    expect(activityChartSource).toContain("cardContentClassName={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
   });
 });

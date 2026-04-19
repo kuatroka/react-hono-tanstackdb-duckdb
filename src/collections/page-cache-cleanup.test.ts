@@ -12,14 +12,16 @@ describe("page cache cleanup", () => {
   test("clears asset detail route collections to avoid unbounded tab memory growth", async () => {
     const clearAssetActivitySpy = spyOn(assetActivityModule, "clearAllAssetActivityData");
     const clearInvestorFlowSpy = spyOn(investorFlowModule, "clearAllInvestorFlowData");
-    const clearDrilldownSpy = spyOn(investorDetailsModule, "clearAllDrilldownData");
+    const clearDrilldownSessionSpy = spyOn(investorDetailsModule, "clearDrilldownSessionState");
+    const clearDrilldownPersistedSpy = spyOn(investorDetailsModule, "clearAllDrilldownData");
     const { clearAssetDetailRouteCaches } = await import("./page-cache-cleanup");
 
     clearAssetDetailRouteCaches();
 
     expect(clearAssetActivitySpy).toHaveBeenCalledTimes(1);
     expect(clearInvestorFlowSpy).toHaveBeenCalledTimes(1);
-    expect(clearDrilldownSpy).toHaveBeenCalledTimes(1);
+    expect(clearDrilldownSessionSpy).toHaveBeenCalledTimes(1);
+    expect(clearDrilldownPersistedSpy).not.toHaveBeenCalled();
   });
 
   test("clears superinvestor detail collections when leaving the route", async () => {

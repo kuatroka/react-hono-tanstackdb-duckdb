@@ -7,6 +7,6 @@ describe("DuckDBGlobalSearch", () => {
     expect(source).not.toContain("useLiveQuery");
     expect(source).toContain("const loadSearchIndex = useCallback(async () => {");
     expect(source).toContain("if (shouldSearch && !indexLoadStartedRef.current)");
-    expect(source).toContain("onFocus={handleFocus}");
+    expect(source).not.toContain("onFocus={handleFocus}");
   });
 });

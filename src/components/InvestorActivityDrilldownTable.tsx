@@ -3,6 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import { VirtualDataTable, type ColumnDef } from "@/components/VirtualDataTable";
+import {
+  ASSET_DETAIL_CARD_CLASS_NAME,
+  ASSET_DETAIL_CARD_CONTENT_CLASS_NAME,
+} from "@/components/detail/asset-detail-card-layout";
 import type { PerfTelemetry } from "@/lib/perf/telemetry";
 import {
   fetchDrilldownBothActions,
@@ -13,6 +17,7 @@ import {
 } from "@/collections/investor-details";
 
 type InvestorActivityAction = "open" | "close";
+const DRILLDOWN_LOADING_PLACEHOLDER_DELAY_MS = 120;
 
 interface InvestorActivityDrilldownRow {
   id: string;
@@ -58,7 +63,8 @@ export function InvestorActivityDrilldownTable({
 
   // State for data, loading, and timing
   const [data, setData] = useState<InvestorDetail[]>(() => initialCachedRows);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => !hasInitialCachedRows);
+  const [showLoadingState, setShowLoadingState] = useState(false);
   const [isError, setIsError] = useState(false);
   const [queryTimeMs, setQueryTimeMs] = useState<number | null>(() => (hasInitialCachedRows ? 0 : null));
   const [dataFlow, setDataFlow] = useState<DataFlow>(() => (hasInitialCachedRows ? "tsdb-memory" : "unknown"));
@@ -67,60 +73,132 @@ export function InvestorActivityDrilldownTable({
   const prevDataLengthRef = useRef<number>(0);
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
 
-  // Load from IndexedDB first, then fetch if missing
+  // Load current selection as fast as possible by letting IndexedDB hydration and
+  // the quarter fetch race each other, then measure the full user-visible wait.
   useEffect(() => {
     if (!enabled) return;
 
     let cancelled = false;
+    let resolved = false;
+    let waitingForIndexedDB = !isDrilldownIndexedDBLoaded();
+    let pendingFetchError: unknown = null;
+    const startedAt = performance.now();
+    const loadingTimeoutId = setTimeout(() => {
+      if (!cancelled && !resolved) {
+        setShowLoadingState(true);
+      }
+    }, DRILLDOWN_LOADING_PLACEHOLDER_DELAY_MS);
 
-    (async () => {
-      // Track if it was already loaded before we await
-      const wasAlreadyLoaded = isDrilldownIndexedDBLoaded();
-      const startedAt = performance.now();
+    const resolveLoadMs = () => Math.round(performance.now() - startedAt);
+    const finishWithRows = (rows: InvestorDetail[], source: DataFlow) => {
+      if (cancelled || resolved || rows.length === 0) {
+        return false;
+      }
 
-      // Try to load from IndexedDB first
-      const loadedFromIDB = await loadDrilldownFromIndexedDB();
-      const elapsedMs = Math.round(performance.now() - startedAt);
-      
-      if (cancelled) return;
+      resolved = true;
+      clearTimeout(loadingTimeoutId);
+      setData(rows);
+      setQueryTimeMs(resolveLoadMs());
+      setDataFlow(source);
+      setIsError(false);
+      setIsLoading(false);
+      setShowLoadingState(false);
+      return true;
+    };
 
-      // Check if data is now available in collection
-      const localRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
-      if (localRows && localRows.length > 0) {
-        setData(localRows);
-        if (!wasAlreadyLoaded && loadedFromIDB) {
-          setQueryTimeMs(elapsedMs);
-          setDataFlow("tsdb-indexeddb");
-        } else {
-          setQueryTimeMs(0);
-          setDataFlow("tsdb-memory");
-        }
+    const finishEmpty = (source: DataFlow) => {
+      if (cancelled || resolved) {
         return;
       }
 
-      // If still no data, fetch from API
-      setIsLoading(true);
+      resolved = true;
+      clearTimeout(loadingTimeoutId);
+      setData([]);
+      setQueryTimeMs(resolveLoadMs());
+      setDataFlow(source);
       setIsError(false);
+      setIsLoading(false);
+      setShowLoadingState(false);
+    };
 
-      try {
-        const result = await fetchDrilldownBothActions(ticker, cusip, quarter);
-        if (cancelled) return;
-        const filtered = result.rows.filter((r) => r.action === action);
-        setData(filtered);
-        setQueryTimeMs(result.queryTimeMs);
-        setDataFlow(result.queryTimeMs === 0 ? "tsdb-memory" : "api-duckdb");
-      } catch (err) {
-        if (cancelled) return;
-        console.error("Failed to fetch drilldown data:", err);
-        setIsError(true);
-        setData([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
+    const finishError = (error: unknown) => {
+      if (cancelled || resolved) {
+        return;
       }
-    })();
+
+      resolved = true;
+      clearTimeout(loadingTimeoutId);
+      console.error("Failed to fetch drilldown data:", error);
+      setIsError(true);
+      setData([]);
+      setQueryTimeMs(resolveLoadMs());
+      setIsLoading(false);
+      setShowLoadingState(false);
+    };
+
+    const initialRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
+    if (finishWithRows(initialRows, "tsdb-memory")) {
+      return () => {
+        cancelled = true;
+        clearTimeout(loadingTimeoutId);
+      };
+    }
+
+    setIsLoading(true);
+    setShowLoadingState(false);
+    setIsError(false);
+
+    void fetchDrilldownBothActions(ticker, cusip, quarter)
+      .then((result) => {
+        const filtered = result.rows.filter((row) => row.action === action);
+        const source = result.queryTimeMs === 0 ? "tsdb-memory" : "api-duckdb";
+
+        if (finishWithRows(filtered, source)) {
+          return;
+        }
+
+        if (!waitingForIndexedDB) {
+          finishEmpty(source);
+        }
+      })
+      .catch((error) => {
+        if (!waitingForIndexedDB) {
+          finishError(error);
+          return;
+        }
+
+        pendingFetchError = error;
+      });
+
+    if (waitingForIndexedDB) {
+      void loadDrilldownFromIndexedDB()
+        .then((loadedFromIDB) => {
+          waitingForIndexedDB = false;
+
+          const localRows = getCachedDrilldownRows(enabled, ticker, cusip, quarter, action);
+          if (finishWithRows(localRows, loadedFromIDB ? "tsdb-indexeddb" : "tsdb-memory")) {
+            return;
+          }
+
+          if (pendingFetchError) {
+            finishError(pendingFetchError);
+          }
+        })
+        .catch((error) => {
+          waitingForIndexedDB = false;
+
+          if (pendingFetchError) {
+            finishError(pendingFetchError);
+            return;
+          }
+
+          console.error("Failed to load drilldown data from IndexedDB:", error);
+        });
+    }
 
     return () => {
       cancelled = true;
+      clearTimeout(loadingTimeoutId);
     };
   }, [enabled, ticker, cusip, quarter, action]);
 
@@ -136,6 +214,8 @@ export function InvestorActivityDrilldownTable({
       setDataFlow("tsdb-memory");
       setQueryTimeMs((current) => current ?? 0);
       setIsError(false);
+      setIsLoading(false);
+      setShowLoadingState(false);
     }
   }, [enabled, ticker, cusip, quarter, action]);
 
@@ -184,6 +264,7 @@ export function InvestorActivityDrilldownTable({
           <Link
             to="/superinvestors/$cik"
             params={{ cik: row.cik }}
+            preload={false}
             className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${
               isFocused ? "underline" : ""
             }`}
@@ -219,8 +300,8 @@ export function InvestorActivityDrilldownTable({
 
   const titleAction = action === "open" ? "opened" : "closed";
   const hasRows = rows.length > 0;
-  const isInitialLoading = isLoading && !hasRows;
-  const hasData = data.length > 0 || !isLoading;
+  const isInitialLoading = showLoadingState && isLoading && !hasRows;
+  const hasResolvedEmptyState = !hasRows && !isLoading && !isError;
 
   const latencyDisplay = (
     <LatencyBadge
@@ -230,11 +311,16 @@ export function InvestorActivityDrilldownTable({
       variant="inline"
     />
   );
+  const resolvedHeaderLatencyBadge = queryTimeMs != null || renderMs != null
+    ? latencyDisplay
+    : tableTelemetry ? (
+        <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" />
+      ) : null;
 
   const cardTitle = `Superinvestors who ${titleAction} positions in ${ticker} (${quarter})`;
 
   return (
-    <Card>
+    <Card className={ASSET_DETAIL_CARD_CLASS_NAME}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-4">
           <span>{cardTitle}</span>
@@ -243,17 +329,13 @@ export function InvestorActivityDrilldownTable({
               data-testid="drilldown-table-telemetry-slot"
               className="flex min-h-8 min-w-[11rem] items-center justify-end"
             >
-              {tableTelemetry ? (
-                <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" />
-              ) : (
-                latencyDisplay
-              )}
+              {resolvedHeaderLatencyBadge}
             </div>
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="relative min-h-[360px]" aria-busy={isInitialLoading}>
+      <CardContent className={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}>
+        <div className="relative flex-1 h-full w-full min-w-0" aria-busy={isInitialLoading}>
           {isInitialLoading ? (
             <div className="flex h-full items-center justify-center py-8 text-muted-foreground">
               Loading drilldown…
@@ -269,24 +351,20 @@ export function InvestorActivityDrilldownTable({
               searchPlaceholder="Filter superinvestors..."
               defaultSortColumn="cikName"
               defaultSortDirection="asc"
-              gridTemplateColumns="minmax(18rem, 1.8fr) minmax(8rem, 0.8fr) minmax(10rem, 0.9fr) minmax(8rem, 0.7fr)"
+              gridTemplateColumns="minmax(0, 1.8fr) minmax(4rem, 0.75fr) minmax(5.5rem, 0.9fr) minmax(4.5rem, 0.8fr)"
               latencySource="tsdb-memory"
               dataSource={dataFlow}
               onTableTelemetryChange={setTableTelemetry}
               tableTelemetryLabel="drilldown table"
               searchTelemetryLabel="search"
               clientPageSize={100}
-              visibleRowCount={10}
+              visibleRowCount={6}
             />
-          ) : hasData ? (
+          ) : hasResolvedEmptyState ? (
             <div className="flex h-full flex-col items-center justify-center py-8 text-center text-muted-foreground space-y-2">
               <p className="font-medium">No detailed data available for this selection.</p>
             </div>
-          ) : (
-            <div className="flex h-full items-center justify-center py-8 text-muted-foreground">
-              No superinvestors found for this selection.
-            </div>
-          )}
+          ) : null}
         </div>
       </CardContent>
     </Card>

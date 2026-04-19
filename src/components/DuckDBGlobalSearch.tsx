@@ -114,7 +114,7 @@ export function DuckDBGlobalSearch() {
     setQueryTimeMs(localSearchMetrics.latencyMs);
   }, [localSearchMetrics.latencyMs]);
 
-  // Load the search index only on explicit user intent (focus / typing)
+  // Load the search index only on explicit user intent after the search threshold
   // to avoid paying the memory cost on routes where search is never used.
   const indexLoadStartedRef = useRef(false);
 
@@ -158,12 +158,6 @@ export function DuckDBGlobalSearch() {
       void loadSearchIndex();
     }
   }, [shouldSearch, loadSearchIndex]);
-
-  const handleFocus = useCallback(() => {
-    if (!indexLoadStartedRef.current) {
-      void loadSearchIndex();
-    }
-  }, [loadSearchIndex]);
 
   const hasLocalSearchAuthority = isSearchIndexReady() || allItems.length > 0;
 
@@ -284,7 +278,6 @@ export function DuckDBGlobalSearch() {
           query={query}
           onChange={setQuery}
           onKeyDown={handleKeyDown}
-          onFocus={handleFocus}
         />
         {queryTimeMs !== undefined && shouldSearch && !isFetching && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2">

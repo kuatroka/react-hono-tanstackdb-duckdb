@@ -11,6 +11,7 @@ import {
 import { LegacyGridContainLabel } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
 
 echarts.use([
@@ -31,6 +32,8 @@ interface OpenedClosedBarChartProps {
   unitLabel?: string;
   latencyBadge?: React.ReactNode;
   onRenderComplete?: (renderMs: number) => void;
+  cardClassName?: string;
+  cardContentClassName?: string;
 }
 
 interface OpenedClosedChartEvent {
@@ -53,6 +56,8 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   unitLabel = "positions",
   latencyBadge,
   onRenderComplete,
+  cardClassName,
+  cardContentClassName,
 }: OpenedClosedBarChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
@@ -288,11 +293,11 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
 
   if (data.length === 0) {
     return (
-      <Card className="min-w-0">
+      <Card className={cn("min-w-0", cardClassName)}>
         <CardHeader>
           <CardTitle>{title}</CardTitle>
         </CardHeader>
-        <CardContent className="min-w-0">
+        <CardContent className={cn("min-w-0", cardContentClassName)}>
           <div className="h-[400px] flex items-center justify-center text-muted-foreground">
             No activity data available
           </div>
@@ -304,14 +309,14 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   if (!option) return null;
 
   return (
-    <Card className="min-w-0">
+    <Card className={cn("min-w-0", cardClassName)}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span>{title}</span>
           {latencyBadge}
         </CardTitle>
       </CardHeader>
-      <CardContent className="h-[450px] w-full min-w-0">
+      <CardContent className={cn("h-[450px] w-full min-w-0", cardContentClassName)}>
         <div ref={containerRef} className="h-full w-full min-w-0" />
       </CardContent>
     </Card>

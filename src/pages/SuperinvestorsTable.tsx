@@ -34,6 +34,7 @@ const superinvestorTableColumns: ColumnDef<Superinvestor>[] = [
       <Link
         to="/superinvestors/$cik"
         params={{ cik: row.cik }}
+        preload={false}
         className={`hover:underline underline-offset-4 cursor-pointer text-foreground outline-none ${isFocused ? "underline" : ""}`}
       >
         {String(value)}

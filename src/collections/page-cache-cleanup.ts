@@ -1,12 +1,12 @@
 import { clearAllAssetActivityData } from "./asset-activity";
 import { clearAllCikQuarterlyData } from "./cik-quarterly";
-import { clearAllDrilldownData } from "./investor-details";
+import { clearDrilldownSessionState } from "./investor-details";
 import { clearAllInvestorFlowData } from "./investor-flow";
 
 export function clearAssetDetailRouteCaches(): void {
   clearAllAssetActivityData();
   clearAllInvestorFlowData();
-  clearAllDrilldownData();
+  clearDrilldownSessionState();
 }
 
 export function clearSuperinvestorDetailRouteCaches(): void {

@@ -38,7 +38,7 @@ describe("rerender isolation architecture", () => {
     const assetDrilldown = readProjectFile("src/components/detail/AssetDrilldownSection.tsx");
 
     expect(assetDrilldown).toContain("AssetDrilldownDetailsPanel");
-    expect(assetDrilldown).toContain("grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]");
+    expect(assetDrilldown).toContain("grid grid-cols-1 items-stretch gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]");
     expect(assetDrilldown).not.toContain("useSyncExternalStore");
     expect(assetDrilldown).not.toContain("setHoverSelection");
     expect(assetDrilldown).not.toContain("Hover Interaction");
@@ -112,7 +112,7 @@ describe("rerender isolation architecture", () => {
     expect(drilldownTable).not.toContain("Served from in-memory cache");
     expect(drilldownTable).not.toContain("Fetched from API (DuckDB)");
     expect(drilldownTable).toContain("clientPageSize={100}");
-    expect(drilldownTable).toContain("visibleRowCount={10}");
+    expect(drilldownTable).toContain("visibleRowCount={6}");
 
     expect(virtualTable).toContain("onTableTelemetryChange");
     expect(virtualTable).toContain("onSearchTelemetryChange");

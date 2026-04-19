@@ -23,6 +23,10 @@ import {
     type AssetListEntry,
     type SuperinvestorListEntry,
 } from '@/lib/dexie-db'
+import {
+    compactSearchIndexPayload,
+    type CompactSearchIndexPayload,
+} from '@/lib/search-index'
 
 // Shared QueryClient – no per-query persister
 export const queryClient = new QueryClient({
@@ -58,17 +62,7 @@ export async function clearLegacyQueryCache(): Promise<void> {
 
 const SEARCH_INDEX_KEY = 'search-index-v1'
 
-export interface PersistedSearchIndex {
-    codeExact: Record<string, number[]>
-    codePrefixes: Record<string, number[]>
-    namePrefixes: Record<string, number[]>
-    items: Record<string, { id: number; cusip: string | null; code: string; name: string | null; category: string }>
-    metadata?: {
-        totalItems: number
-        generatedAt?: string
-        persistedAt?: number
-    }
-}
+export type PersistedSearchIndex = CompactSearchIndexPayload
 
 /**
  * Save search index to IndexedDB via Dexie
@@ -81,9 +75,6 @@ export async function persistSearchIndex(index: PersistedSearchIndex): Promise<v
         const db = getDb()
         const entry: SearchIndexEntry = {
             key: SEARCH_INDEX_KEY,
-            codeExact: index.codeExact,
-            codePrefixes: index.codePrefixes,
-            namePrefixes: index.namePrefixes,
             items: index.items,
             metadata: {
                 totalItems: index.metadata?.totalItems ?? 0,
@@ -127,12 +118,24 @@ export async function loadPersistedSearchIndex(): Promise<PersistedSearchIndex |
             }
         }
 
-        const index: PersistedSearchIndex = {
+        const index = compactSearchIndexPayload({
             codeExact: entry.codeExact,
             codePrefixes: entry.codePrefixes,
             namePrefixes: entry.namePrefixes,
             items: entry.items,
             metadata: entry.metadata,
+        })
+
+        if (!Array.isArray(entry.items)) {
+            void db.searchIndex.put({
+                key: SEARCH_INDEX_KEY,
+                items: index.items,
+                metadata: {
+                    totalItems: index.metadata?.totalItems ?? index.items.length,
+                    generatedAt: index.metadata?.generatedAt,
+                    persistedAt: entry.metadata?.persistedAt ?? Date.now(),
+                },
+            })
         }
 
         console.log(`[SearchIndex] Loaded from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms (${entry.metadata?.totalItems || 0} items)`)

@@ -473,7 +473,7 @@ export function getDrilldownDataFromCollection(
     return getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter && item.action === action)
 }
 
-export function clearAllDrilldownData(): void {
+function resetDrilldownState(clearPersistedCache: boolean): void {
     const ids = getAllDrilldownRows().map((row) => row.id)
     if (ids.length > 0) {
         safeWriteDelete(ids)
@@ -486,7 +486,18 @@ export function clearAllDrilldownData(): void {
     bulkFetchedPairs.clear()
     indexedDBLoaded = false
     indexedDBLoadPromise = null
-    clearPersistedDrilldownData().catch((error) => {
-        console.warn('[Drilldown] Failed to clear persisted cache:', error)
-    })
+
+    if (clearPersistedCache) {
+        clearPersistedDrilldownData().catch((error) => {
+            console.warn('[Drilldown] Failed to clear persisted cache:', error)
+        })
+    }
+}
+
+export function clearDrilldownSessionState(): void {
+    resetDrilldownState(false)
+}
+
+export function clearAllDrilldownData(): void {
+    resetDrilldownState(true)
 }

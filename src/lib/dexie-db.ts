@@ -11,6 +11,11 @@
  */
 
 import Dexie, { type Table } from 'dexie'
+import type {
+    SearchIndexItemRecord,
+    SearchIndexItemTuple,
+    SearchIndexMetadata,
+} from '@/lib/search-index'
 
 /**
  * TanStack Query cache entry
@@ -26,15 +31,11 @@ export interface QueryCacheEntry {
  */
 export interface SearchIndexEntry {
     key: string
-    codeExact: Record<string, number[]>
-    codePrefixes: Record<string, number[]>
-    namePrefixes: Record<string, number[]>
-    items: Record<string, { id: number; cusip: string | null; code: string; name: string | null; category: string }>
-    metadata?: {
-        totalItems: number
-        generatedAt?: string
-        persistedAt?: number
-    }
+    codeExact?: Record<string, number[]>
+    codePrefixes?: Record<string, number[]>
+    namePrefixes?: Record<string, number[]>
+    items: Record<string, SearchIndexItemRecord> | SearchIndexItemTuple[]
+    metadata?: SearchIndexMetadata
 }
 
 /**
