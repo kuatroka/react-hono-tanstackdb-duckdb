@@ -180,6 +180,11 @@ jobs:
         run: |
           gh auth setup-git
           WIKI_URL="https://github.com/${GITHUB_REPOSITORY}.wiki.git"
+          if ! git ls-remote "$WIKI_URL" >/dev/null 2>&1; then
+            echo "GitHub wiki repository is not initialized yet; skipping wiki update."
+            exit 0
+          fi
+
           rm -rf repo-wiki
           if git clone "$WIKI_URL" repo-wiki; then
             :
