@@ -1,0 +1,217 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  deployments: write
+
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Run tests
+        run: bun test
+
+      - name: Run build
+        run: bun run build
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: prod
+      url: ${{ vars.PROD_APP_URL }}
+    outputs:
+      prod_tag: ${{ steps.create_tag.outputs.prod_tag }}
+      deployed_at: ${{ steps.create_tag.outputs.deployed_at }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Add server to known_hosts
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${PROD_PORT:-22}" "$PROD_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy on VPS
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          ssh -p "${PROD_PORT:-22}" "${PROD_USER}@${PROD_HOST}" <<EOF
+          set -euo pipefail
+          DEPLOY_DIR="${PROD_DEPLOY_DIR:-/opt/dev/erudio_app/react-hono-tanstackdb-duckdb}"
+
+          if [ ! -d "\$DEPLOY_DIR/.git" ]; then
+            mkdir -p "\$DEPLOY_DIR"
+            git clone "https://github.com/${GITHUB_REPOSITORY}.git" "\$DEPLOY_DIR"
+          fi
+
+          cd "\$DEPLOY_DIR"
+          git fetch --tags origin
+          git checkout main
+          git reset --hard "${GITHUB_SHA}"
+          docker compose -f infra/prod/docker-compose.yml --env-file infra/prod/.env up -d --build
+          EOF
+
+      - name: Create annotated prod tag
+        id: create_tag
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          PROD_TAG="prod-$(date -u +'%Y%m%d-%H%M%S')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_DATE="$DEPLOYED_AT" git tag -a "$PROD_TAG" "$GITHUB_SHA" -m "Production deployment
+
+          Deployed at: $DEPLOYED_AT
+          Commit: $GITHUB_SHA
+          Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          git push origin "$PROD_TAG"
+          echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
+          echo "deployed_at=$DEPLOYED_AT" >> "$GITHUB_OUTPUT"
+
+  publish-history:
+    runs-on: ubuntu-latest
+    needs: deploy
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Ensure tags are available
+        run: git fetch --tags origin
+
+      - name: Generate local prod history artifact
+        run: |
+          mkdir -p .artifacts
+          bun run prod:history -- --output .artifacts/prod-history.md
+
+      - name: Create GitHub release for prod tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
+          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          cat > release-notes.md <<EOF
+          # Production deployment
+
+          - Tag: ${PROD_TAG}
+          - Deployed at: ${DEPLOYED_AT}
+          - Commit: ${GITHUB_SHA}
+          - Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          ## Local history
+
+          Run \`bun run prod:history\` to inspect the full production deployment history locally.
+          EOF
+
+          if gh release view "$PROD_TAG" >/dev/null 2>&1; then
+            gh release edit "$PROD_TAG" --title "Production deploy ${PROD_TAG}" --notes-file release-notes.md
+          else
+            gh release create "$PROD_TAG" --target "$GITHUB_SHA" --title "Production deploy ${PROD_TAG}" --notes-file release-notes.md
+          fi
+
+      - name: Update GitHub wiki with prod history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          gh auth setup-git
+          WIKI_URL="https://github.com/${GITHUB_REPOSITORY}.wiki.git"
+          rm -rf repo-wiki
+          if git clone "$WIKI_URL" repo-wiki; then
+            :
+          else
+            mkdir -p repo-wiki
+            git -C repo-wiki init
+            git -C repo-wiki remote add origin "$WIKI_URL"
+          fi
+
+          bun run prod:history -- --output repo-wiki/Production-Deployments.md
+
+          if [ ! -f repo-wiki/Home.md ]; then
+            cat > repo-wiki/Home.md <<'EOF'
+          # Repository Wiki
+
+          - [[Production-Deployments]]
+          EOF
+          fi
+
+          git -C repo-wiki config user.name "github-actions[bot]"
+          git -C repo-wiki config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C repo-wiki add Home.md Production-Deployments.md
+          if git -C repo-wiki diff --cached --quiet; then
+            echo "Wiki already up to date"
+            exit 0
+          fi
+
+          git -C repo-wiki commit -m "Update production deployment history"
+          git -C repo-wiki push origin HEAD:master
+
+      - name: Upload prod history artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-history
+          path: .artifacts/prod-history.md

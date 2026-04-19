@@ -19,6 +19,10 @@
     "build": "bun run build:css && bun run build:html",
     "preview": "bun run build && bun run start",
     "preview:prod": "bun run preview",
+    "prod:github:setup": "bun scripts/setup-prod-github.ts",
+    "prod:github:setup:dry-run": "bun scripts/setup-prod-github.ts --dry-run",
+    "prod:history": "bun scripts/prod-history.ts",
+    "prod:history:json": "bun scripts/prod-history.ts --format json",
     "start": "NODE_ENV=production bun api/server.ts",
     "lint": "bunx eslint .",
     "test": "bun test"

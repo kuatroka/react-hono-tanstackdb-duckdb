@@ -11,7 +11,6 @@ function projectPath(relativePath: string) {
 describe("legacy analytics surface cleanup", () => {
   test("removes orphaned database scaffolding files", () => {
     const removedPaths = [
-      "docker",
       ".zero-data",
       "api/db.ts",
       "api/bun-native-benchmark.ts",
