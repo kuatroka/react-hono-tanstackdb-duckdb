@@ -26,7 +26,7 @@
     "start": "NODE_ENV=production bun api/server.ts",
     "lint": "bunx eslint .",
     "test": "bun test",
-    "test:ci": "bun test src api/db api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts"
+    "test:ci": "bun test $(rg --files src api/db --glob '*.test.ts' --glob '!src/collections/instances-singleton.test.ts') api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.1-r.1",
