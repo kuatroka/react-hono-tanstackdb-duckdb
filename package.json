@@ -25,7 +25,8 @@
     "prod:history:json": "bun scripts/prod-history.ts --format json",
     "start": "NODE_ENV=production bun api/server.ts",
     "lint": "bunx eslint .",
-    "test": "bun test"
+    "test": "bun test",
+    "test:ci": "bun test src api/db api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.1-r.1",

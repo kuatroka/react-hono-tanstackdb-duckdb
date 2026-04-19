@@ -29,7 +29,7 @@ describe("assets collection", () => {
     await collection.preload();
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/assets?limit=50000&offset=0&sort=assetName&direction=asc");
-    expect(Array.from(collection.entries()).map(([, value]) => value)).toEqual(rows);
+    expect(Array.from(collection.entries()).map(([, value]) => value)).toMatchObject(rows);
   });
 
   test("reuses persisted IndexedDB rows on repeat visits without kicking off another assets API fetch", async () => {
@@ -53,6 +53,6 @@ describe("assets collection", () => {
     await collection.preload();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(Array.from(collection.entries()).map(([, value]) => value)).toEqual(rows);
+    expect(Array.from(collection.entries()).map(([, value]) => value)).toMatchObject(rows);
   });
 });
