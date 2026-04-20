@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import UFuzzy from "@leeoniya/ufuzzy";
 import { useNavigate } from "@tanstack/react-router";
 import { LatencyBadge } from "@/components/LatencyBadge";
-import { Badge } from "@/components/ui/badge";
 import { GlobalSearchInput } from "@/components/global-search/GlobalSearchInput";
 import { GlobalSearchResults } from "@/components/global-search/GlobalSearchResults";
-import { ensureSearchItemsLoaded, getSearchIndexMetadata, type SearchResult as CollectionSearchResult } from "@/collections/searches";
+import { ensureSearchItemsLoaded, type SearchResult as CollectionSearchResult } from "@/collections/searches";
 import { runUFuzzySearch, UFUZZY_OPTIONS, type UFuzzyPreviousFilter } from "@/lib/ufuzzy-search";
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -23,13 +22,6 @@ function toHaystackValue(item: CollectionSearchResult) {
   return item.name ? `${item.code} ${item.name}` : item.code;
 }
 
-function formatBytes(bytes: number | undefined) {
-  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 export function UFuzzyGlobalSearch() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -38,7 +30,6 @@ export function UFuzzyGlobalSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [queryTimeMs, setQueryTimeMs] = useState<number | undefined>();
-  const [indexSizeLabel, setIndexSizeLabel] = useState("0 B");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const loadStartedRef = useRef(false);
@@ -52,7 +43,6 @@ export function UFuzzyGlobalSearch() {
   const shouldSearch = debouncedQuery.length >= 2;
 
   const haystack = useMemo(() => allItems.map(toHaystackValue), [allItems]);
-  const indexSizeBytes = useMemo(() => new TextEncoder().encode(JSON.stringify(haystack)).length, [haystack]);
 
   const loadSearchItems = useCallback(async () => {
     if (loadStartedRef.current) return;
@@ -81,11 +71,6 @@ export function UFuzzyGlobalSearch() {
       setQueryTimeMs(undefined);
     }
   }, [shouldSearch]);
-
-  useEffect(() => {
-    const baselineCompactBytes = getSearchIndexMetadata()?.compactBytes;
-    setIndexSizeLabel(formatBytes(indexSizeBytes || baselineCompactBytes));
-  }, [allItems.length, indexSizeBytes]);
 
   const searchMetrics = useMemo(() => {
     const metrics = runUFuzzySearch(
@@ -196,9 +181,6 @@ export function UFuzzyGlobalSearch() {
             </span>
           ) : null}
         </div>
-        <Badge variant="outline" className="w-fit text-[10px] font-medium text-muted-foreground">
-          index {indexSizeLabel}
-        </Badge>
       </div>
       {isOpen && results.length > 0 ? (
         <div ref={listRef} className="absolute z-50 mt-1 w-full sm:w-[30rem] max-h-[400px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">

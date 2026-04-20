@@ -14,6 +14,9 @@ describe("rerender isolation architecture", () => {
 
     expect(globalSearch).toContain("GlobalSearchInput");
     expect(globalSearch).toContain("GlobalSearchResults");
+    expect(globalSearch).not.toContain("indexSizeLabel");
+    expect(globalSearch).not.toContain("getSearchIndexMetadata");
+    expect(globalSearch).not.toContain("Badge variant=");
   });
 
   test("asset detail page delegates heavy reactive surfaces to section components", () => {
