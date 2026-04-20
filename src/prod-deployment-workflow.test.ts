@@ -25,15 +25,20 @@ describe("production deployment automation", () => {
     expect(workflow).toContain("name: Deploy to Production");
     expect(workflow).toContain("environment:");
     expect(workflow).toContain("name: prod");
-    expect(workflow).toContain('echo "value=$(jq -r \'.version\' package.json)" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain('echo "value=$(bun scripts/prod-version.ts --next)" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain("id: prod_version");
+    expect(workflow).toContain("git fetch --tags origin");
     expect(workflow).toContain("id: metadata");
-    expect(workflow).toContain('PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
+    expect(workflow).toContain('PROD_TAG="PROD-V-${PROD_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
     expect(workflow).toContain('export APP_GIT_COMMIT="${GITHUB_SHA}"');
+    expect(workflow).toContain('APP_VERSION: ${{ steps.prod_version.outputs.value }}');
+    expect(workflow).toContain('PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}');
     expect(workflow).toContain('PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}');
     expect(workflow).toContain('git tag -a "$PROD_TAG" "$GITHUB_SHA"');
     expect(workflow).toContain('gh release create "$PROD_TAG"');
     expect(workflow).toContain("Production-Deployments.md");
     expect(workflow).toContain("bun run prod:history -- --output repo-wiki/Production-Deployments.md");
+    expect(workflow).toContain("Latest version:");
     expect(workflow).toContain("droid:prod-history:start");
   });
 
@@ -59,9 +64,13 @@ describe("production deployment automation", () => {
 
   test("supports both legacy and versioned prod tag history formats", () => {
     const historyScript = readProjectFile("scripts/prod-history.ts");
+    const versionScript = readProjectFile("scripts/prod-version.ts");
 
-    expect(historyScript).toContain('const patterns = ["refs/tags/PROD-V-*", "refs/tags/prod-*"]');
-    expect(historyScript).toContain("entries.sort((left, right) => right.deployedAt.localeCompare(left.deployedAt))");
+    expect(historyScript).toContain("| Version | Recorded tag | Deployed at | Commit |");
+    expect(historyScript).toContain("versionProdTags(listProdTags()).reverse()");
+    expect(versionScript).toContain('const patterns = ["refs/tags/prod-*", "refs/tags/PROD-V-*"]');
+    expect(versionScript).toContain('const VERSION_PREFIX = "0.1."');
+    expect(versionScript).toContain('if (explicitVersion && explicitVersion !== "0.0.0")');
   });
 
   test("passes deployment metadata into the production container", () => {

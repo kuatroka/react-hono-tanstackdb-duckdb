@@ -52,24 +52,32 @@ jobs:
     outputs:
       prod_tag: ${{ steps.metadata.outputs.prod_tag }}
       deployed_at: ${{ steps.metadata.outputs.deployed_at }}
-      app_version: ${{ steps.app_version.outputs.value }}
+      prod_version: ${{ steps.prod_version.outputs.value }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read app version
-        id: app_version
-        run: echo "value=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Ensure tags are available
+        run: git fetch --tags origin
+
+      - name: Compute next production version
+        id: prod_version
+        run: echo "value=$(bun scripts/prod-version.ts --next)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare deployment metadata
         id: metadata
         env:
-          APP_VERSION: ${{ steps.app_version.outputs.value }}
+          PROD_VERSION: ${{ steps.prod_version.outputs.value }}
         run: |
           DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +'%Y%m%d-%H%M%S')"
+          PROD_TAG="PROD-V-${PROD_VERSION}-$(date -u +'%Y%m%d-%H%M%S')"
           echo "deployed_at=$DEPLOYED_AT" >> "$GITHUB_OUTPUT"
           echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
 
@@ -94,7 +102,7 @@ jobs:
           PROD_DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
-          APP_VERSION: ${{ steps.app_version.outputs.value }}
+          APP_VERSION: ${{ steps.prod_version.outputs.value }}
           PROD_TAG: ${{ steps.metadata.outputs.prod_tag }}
           DEPLOYED_AT: ${{ steps.metadata.outputs.deployed_at }}
         run: |
@@ -165,6 +173,7 @@ jobs:
 
       - name: Create GitHub release for prod tag
         env:
+          PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}
           PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
           DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
           GH_TOKEN: ${{ github.token }}
@@ -181,6 +190,7 @@ jobs:
           cat > release-notes.md <<EOF
           # Production deployment
 
+          - Version: ${PROD_VERSION}
           - Tag: ${PROD_TAG}
           - Deployed at: ${DEPLOYED_AT}
           - Commit: ${GITHUB_SHA}
@@ -202,6 +212,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}
           PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
           DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
         run: |
@@ -234,6 +245,7 @@ jobs:
               "<!-- droid:prod-history:start -->",
               "## Production deployments",
               "",
+              f"- Latest version: `{os.environ['PROD_VERSION']}`",
               "- [[Production-Deployments]]",
               f"- Latest tag: `{os.environ['PROD_TAG']}`",
               f"- Latest commit: `{os.environ['GITHUB_SHA'][:7]}`",

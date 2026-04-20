@@ -1,6 +1,7 @@
 type OutputFormat = "markdown" | "json";
 
 interface ProdEntry {
+  version: string;
   tag: string;
   deployedAt: string;
   commit: string;
@@ -10,6 +11,8 @@ interface ProdEntry {
   commitDate: string;
   releaseUrl: string | null;
 }
+
+import { listProdTags, versionProdTags } from "./prod-version";
 
 function parseArgs(argv: string[]) {
   let format: OutputFormat = "markdown";
@@ -58,43 +61,6 @@ function resolveRepositorySlug() {
   return sshMatch?.[1] ?? null;
 }
 
-function listProdTags() {
-  const patterns = ["refs/tags/PROD-V-*", "refs/tags/prod-*"];
-  const seenTags = new Set<string>();
-  const entries: Array<{ tag: string; deployedAt: string; commit: string; subject: string }> = [];
-
-  for (const pattern of patterns) {
-    const output = runGit([
-      "git",
-      "for-each-ref",
-      "--sort=-taggerdate",
-      "--format=%(refname:short)%09%(taggerdate:iso8601-strict)%09%(*objectname)%09%(subject)",
-      pattern,
-    ]);
-
-    if (!output) {
-      continue;
-    }
-
-    for (const line of output.split("\n")) {
-      const [tag, deployedAt, peeledCommit, subject] = line.split("\t");
-      if (!tag || !peeledCommit || seenTags.has(tag)) {
-        continue;
-      }
-
-      seenTags.add(tag);
-      entries.push({
-        tag,
-        deployedAt,
-        commit: peeledCommit,
-        subject,
-      });
-    }
-  }
-
-  return entries.sort((left, right) => right.deployedAt.localeCompare(left.deployedAt));
-}
-
 function readCommitMetadata(commit: string) {
   const output = runGit([
     "git",
@@ -116,9 +82,10 @@ function readCommitMetadata(commit: string) {
 
 function buildEntries(): ProdEntry[] {
   const repoSlug = resolveRepositorySlug();
-  return listProdTags().map((entry) => {
+  return versionProdTags(listProdTags()).reverse().map((entry) => {
     const commitMeta = readCommitMetadata(entry.commit);
     return {
+      version: entry.version,
       tag: entry.tag,
       deployedAt: entry.deployedAt,
       commit: commitMeta.fullHash,
@@ -140,18 +107,18 @@ function renderMarkdown(entries: ProdEntry[]) {
     "",
     `Total deployments: ${entries.length}`,
     "",
-    "| Tag | Deployed at | Commit | Author | Commit date | Subject | Release |",
-    "| --- | --- | --- | --- | --- | --- | --- |",
+    "| Version | Recorded tag | Deployed at | Commit | Author | Commit date | Subject | Release |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const entry of entries) {
     lines.push(
-      `| \`${entry.tag}\` | ${entry.deployedAt} | \`${entry.commitShort}\` | ${entry.commitAuthor} | ${entry.commitDate} | ${entry.commitSubject.replaceAll("|", "\\|")} | ${entry.releaseUrl ? `[link](${entry.releaseUrl})` : "—"} |`,
+      `| \`${entry.version}\` | \`${entry.tag}\` | ${entry.deployedAt} | \`${entry.commitShort}\` | ${entry.commitAuthor} | ${entry.commitDate} | ${entry.commitSubject.replaceAll("|", "\\|")} | ${entry.releaseUrl ? `[link](${entry.releaseUrl})` : "—"} |`,
     );
   }
 
   if (entries.length === 0) {
-    lines.push("| — | — | — | — | — | No production deployments recorded yet. | — |");
+    lines.push("| — | — | — | — | — | — | No production deployments recorded yet. | — |");
   }
 
   lines.push("", "## Local usage", "", "```bash", "bun run prod:history", "bun run prod:history:json", "```");
