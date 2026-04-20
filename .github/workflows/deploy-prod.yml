@@ -152,13 +152,18 @@ jobs:
       - name: Create GitHub release for prod tag
         env:
           GH_TOKEN: ${{ github.token }}
-          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
-          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
+          PROD_TAG="$(git tag --points-at "$GITHUB_SHA" --list 'PROD-V-*' --sort=-creatordate | head -n 1)"
+          if [ -z "$PROD_TAG" ]; then
+            echo "No production tag found for ${GITHUB_SHA}"
+            exit 1
+          fi
+          DEPLOYED_AT="$(git for-each-ref "refs/tags/${PROD_TAG}" --format='%(taggerdate:iso8601-strict)' | head -n 1)"
+
           cat > release-notes.md <<EOF
           # Production deployment
 

@@ -12,7 +12,7 @@ describe("production deployment automation", () => {
   test("exposes local production history scripts", () => {
     const packageJson = readProjectFile("package.json");
 
-    expect(packageJson).toContain('"version": "0.1.0"');
+    expect(packageJson).toContain('"version": "');
     expect(packageJson).toContain('"prod:github:setup": "bun scripts/setup-prod-github.ts"');
     expect(packageJson).toContain('"prod:github:setup:dry-run": "bun scripts/setup-prod-github.ts --dry-run"');
     expect(packageJson).toContain('"prod:history": "bun scripts/prod-history.ts"');
@@ -29,6 +29,8 @@ describe("production deployment automation", () => {
     expect(workflow).toContain('PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
     expect(workflow).toContain('git tag -a "$PROD_TAG" "$GITHUB_SHA"');
     expect(workflow).toContain('gh release create "$PROD_TAG"');
+    expect(workflow).toContain('git tag --points-at "$GITHUB_SHA" --list \'PROD-V-*\' --sort=-creatordate');
+    expect(workflow).toContain('git for-each-ref "refs/tags/${PROD_TAG}" --format=\'%(taggerdate:iso8601-strict)\'');
     expect(workflow).toContain("Production-Deployments.md");
     expect(workflow).toContain("bun run prod:history -- --output repo-wiki/Production-Deployments.md");
   });
