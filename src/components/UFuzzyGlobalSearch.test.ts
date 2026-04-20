@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import UFuzzy from "@leeoniya/ufuzzy";
-import { rerankUFuzzyResults, runUFuzzySearch, UFUZZY_OPTIONS } from "@/lib/ufuzzy-search";
+import { rerankUFuzzyResults, runUFuzzyIndexSearch, runUFuzzySearch, UFUZZY_OPTIONS } from "@/lib/ufuzzy-search";
 import type { SearchResult as CollectionSearchResult } from "@/collections/searches";
 
 const items: CollectionSearchResult[] = [
@@ -55,6 +55,16 @@ describe("runUFuzzySearch", () => {
     const metrics = runUFuzzySearch(realUFuzzy, typoHaystack, typoItems, "hatway", { query: "hatw", idxs: [] });
 
     expect(metrics.results.map((result) => result.name)).toEqual(["BERKSHIRE HATHAWAY INC"]);
+    expect(metrics.idxs).toEqual([0]);
+  });
+
+  test("returns ranked indexes for local table reuse without rebuilding a second search engine", () => {
+    const realUFuzzy = new UFuzzy(UFUZZY_OPTIONS);
+    const typoHaystack = ["AAPL | Apple Inc", "MSFT | Microsoft"];
+
+    const metrics = runUFuzzyIndexSearch(realUFuzzy, typoHaystack, "aple", { query: "", idxs: null });
+
+    expect(metrics.rankedIndexes).toEqual([0]);
     expect(metrics.idxs).toEqual([0]);
   });
 

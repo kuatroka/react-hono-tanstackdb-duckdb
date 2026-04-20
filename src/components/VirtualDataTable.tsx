@@ -1,4 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
+import UFuzzy from '@leeoniya/ufuzzy';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react';
 import { LatencyBadge } from '@/components/LatencyBadge';
@@ -6,9 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLatencyMs } from '@/lib/latency';
 import { createLegacyPerfTelemetry, type PerfSource, type PerfTelemetry } from '@/lib/perf/telemetry';
+import { runUFuzzyIndexSearch, UFUZZY_OPTIONS, type UFuzzyPreviousFilter } from '@/lib/ufuzzy-search';
 import { cn } from '@/lib/utils';
 
 type SortDirection = 'asc' | 'desc';
+type TableSearchStrategy = 'includes' | 'ufuzzy';
 
 const DEFAULT_VISIBLE_ROW_COUNT = 10;
 const DEFAULT_ROW_HEIGHT = 52;
@@ -289,6 +292,7 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   minimumSearchCharacters?: number;
   searchDebounceMs?: number;
   searchPlaceholder?: string;
+  searchStrategy?: TableSearchStrategy;
   searchTelemetryLabel?: string;
   searchValue?: string;
   tableTelemetryLabel?: string;
@@ -318,6 +322,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   minimumSearchCharacters = DEFAULT_MIN_SEARCH_CHARACTERS,
   searchDebounceMs = 150,
   searchPlaceholder = 'Search...',
+  searchStrategy = 'includes',
   searchTelemetryLabel = 'search',
   searchValue = '',
   tableTelemetryLabel = 'virtual table',
@@ -327,6 +332,8 @@ export function VirtualDataTable<T extends { id: number | string }>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const readyCalledRef = useRef(false);
+  const ufuzzyRef = useRef(new UFuzzy(UFUZZY_OPTIONS));
+  const previousUFuzzyFilterRef = useRef<UFuzzyPreviousFilter>({ query: '', idxs: null, haystackSize: 0 });
   const [draftSearchValue, setDraftSearchValue] = useState(searchValue);
   const [committedSearch, setCommittedSearch] = useState(searchValue.trim());
   const [sortColumn, setSortColumn] = useState<Extract<keyof T, string>>(defaultSortColumn);
@@ -363,26 +370,72 @@ export function VirtualDataTable<T extends { id: number | string }>({
     [columns],
   );
 
-  const filteredData = useMemo(() => {
-    if (!normalizedSearch) return data;
-    const query = normalizedSearch.toLowerCase();
-    return data.filter((row) =>
-      searchableColumns.some((column) => {
-        const value = row[column.key];
-        if (value == null) return false;
-        return String(value).toLowerCase().includes(query);
-      }),
+  const searchHaystack = useMemo(() => {
+    if (searchStrategy !== 'ufuzzy') {
+      return [] as string[];
+    }
+
+    return data.map((row) =>
+      searchableColumns
+        .map((column) => row[column.key])
+        .filter((value) => value != null)
+        .map((value) => String(value))
+        .join(' | '),
     );
-  }, [data, normalizedSearch, searchableColumns]);
+  }, [data, searchStrategy, searchableColumns]);
+
+  const filteredSearch = useMemo(() => {
+    if (!normalizedSearch) {
+      return {
+        rows: data,
+        idxs: null as number[] | null,
+      };
+    }
+
+    if (searchStrategy === 'ufuzzy') {
+      const fuzzyMatch = runUFuzzyIndexSearch(
+        ufuzzyRef.current,
+        searchHaystack,
+        normalizedSearch,
+        previousUFuzzyFilterRef.current,
+      );
+
+      return {
+        rows: fuzzyMatch.rankedIndexes.map((index) => data[index]),
+        idxs: fuzzyMatch.idxs,
+      };
+    }
+
+    const query = normalizedSearch.toLowerCase();
+    return {
+      rows: data.filter((row) =>
+        searchableColumns.some((column) => {
+          const value = row[column.key];
+          if (value == null) return false;
+          return String(value).toLowerCase().includes(query);
+        }),
+      ),
+      idxs: null as number[] | null,
+    };
+  }, [data, normalizedSearch, searchHaystack, searchStrategy, searchableColumns]);
+
+  useEffect(() => {
+    if (!normalizedSearch || searchStrategy !== 'ufuzzy') {
+      previousUFuzzyFilterRef.current = { query: normalizedSearch, idxs: null, haystackSize: searchHaystack.length };
+      return;
+    }
+
+    previousUFuzzyFilterRef.current = { query: normalizedSearch, idxs: filteredSearch.idxs, haystackSize: searchHaystack.length };
+  }, [filteredSearch.idxs, normalizedSearch, searchHaystack.length, searchStrategy]);
 
   const hasSearch = normalizedSearch.length > 0;
   const shouldReorderRows = hasSearch || sortColumn !== defaultSortColumn || sortDirection !== defaultSortDirection;
   const orderedData = useMemo(() => {
     if (!shouldReorderRows) {
-      return filteredData;
+      return filteredSearch.rows;
     }
 
-    const sorted = [...filteredData];
+    const sorted = [...filteredSearch.rows];
     sorted.sort((a, b) => {
       const aVal = a[sortColumn];
       const bVal = b[sortColumn];
@@ -396,7 +449,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
         : String(bVal).localeCompare(String(aVal));
     });
     return sorted;
-  }, [filteredData, shouldReorderRows, sortColumn, sortDirection]);
+  }, [filteredSearch.rows, shouldReorderRows, sortColumn, sortDirection]);
 
   const tableLatencyResetKey = `${String(sortColumn)}:${sortDirection}:${data.length}:${shouldReorderRows}`;
   const searchLatencyResetKey = normalizedSearch;

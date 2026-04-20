@@ -14,7 +14,13 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("setCommittedSearch(draftSearchValue.trim())");
     expect(source).toContain("onSearchChange?.(normalizedSearch);");
     expect(source).not.toContain("onSearchChange?.(value);");
-    expect(source).toContain("if (!normalizedSearch) return data;");
+    expect(source).toContain("if (!normalizedSearch) {");
+    expect(source).toContain("rows: data,");
+    expect(source).toContain("searchStrategy = 'includes'");
+    expect(source).toContain("const ufuzzyRef = useRef(new UFuzzy(UFUZZY_OPTIONS));");
+    expect(source).toContain("const previousUFuzzyFilterRef = useRef<UFuzzyPreviousFilter>({ query: '', idxs: null, haystackSize: 0 });");
+    expect(source).toContain("if (searchStrategy === 'ufuzzy') {");
+    expect(source).toContain("runUFuzzyIndexSearch(");
     expect(source).toContain("enabled: Boolean(latencySource && normalizedSearch)");
     expect(source).toContain("const [revealedRowCount, setRevealedRowCount] = useState(() => Math.min(data.length, clientPageSize));");
     expect(source).toContain("return orderedData.slice(0, revealedRowCount);");

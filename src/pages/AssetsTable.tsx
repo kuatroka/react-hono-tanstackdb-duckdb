@@ -81,6 +81,7 @@ const AssetsTableCard = memo(function AssetsTableCard({
           clientPageSize={100}
           searchDebounceMs={150}
           searchPlaceholder="Search assets..."
+          searchStrategy="ufuzzy"
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />

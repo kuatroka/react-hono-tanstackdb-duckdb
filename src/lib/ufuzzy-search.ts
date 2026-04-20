@@ -11,6 +11,55 @@ export const UFUZZY_OPTIONS = {
 export interface UFuzzyPreviousFilter {
   query: string;
   idxs: number[] | null;
+  haystackSize?: number;
+}
+
+export function runUFuzzyIndexSearch(
+  ufuzzy: Pick<UFuzzy, "filter" | "info" | "sort">,
+  haystack: string[],
+  query: string,
+  previous: UFuzzyPreviousFilter,
+) {
+  if (query.length < 2 || haystack.length === 0) {
+    return {
+      idxs: null,
+      rankedIndexes: [] as number[],
+      latencyMs: undefined as number | undefined,
+    };
+  }
+
+  const preFiltered = previous.idxs
+    && previous.idxs.length > 0
+    && query.startsWith(previous.query)
+    && (previous.haystackSize == null || previous.haystackSize === haystack.length)
+    ? previous.idxs
+    : undefined;
+
+  const startedAt = performance.now();
+  const idxs = ufuzzy.filter(haystack, query, preFiltered);
+  const latencyMs = Math.round((performance.now() - startedAt) * 1000) / 1000;
+
+  if (!idxs || idxs.length === 0) {
+    return {
+      idxs,
+      rankedIndexes: [] as number[],
+      latencyMs,
+    };
+  }
+
+  const rankedIndexes = idxs.length <= 1e3
+    ? (() => {
+        const info = ufuzzy.info(idxs, haystack, query);
+        const order = ufuzzy.sort(info, haystack, query);
+        return order.map((infoIndex) => info.idx[infoIndex]);
+      })()
+    : idxs;
+
+  return {
+    idxs,
+    rankedIndexes,
+    latencyMs,
+  };
 }
 
 function collectTickerPriorityMatches(
@@ -84,37 +133,20 @@ export function runUFuzzySearch(
   previous: UFuzzyPreviousFilter,
   limit: number = 20,
 ) {
-  if (query.length < 2 || haystack.length === 0) {
-    return {
-      idxs: null,
-      results: [] as SearchResult[],
-      latencyMs: undefined as number | undefined,
-    };
-  }
+  const { idxs, rankedIndexes, latencyMs } = runUFuzzyIndexSearch(
+    ufuzzy,
+    haystack,
+    query,
+    previous,
+  );
 
-  const preFiltered = previous.idxs && previous.idxs.length > 0 && query.startsWith(previous.query)
-    ? previous.idxs
-    : undefined;
-
-  const startedAt = performance.now();
-  const idxs = ufuzzy.filter(haystack, query, preFiltered);
-  const latencyMs = Math.round((performance.now() - startedAt) * 1000) / 1000;
-
-  if (!idxs || idxs.length === 0) {
+  if (rankedIndexes.length === 0) {
     return {
       idxs,
       results: [] as SearchResult[],
       latencyMs,
     };
   }
-
-  const rankedIndexes = idxs.length <= 1e3
-    ? (() => {
-        const info = ufuzzy.info(idxs, haystack, query);
-        const order = ufuzzy.sort(info, haystack, query);
-        return order.map((infoIndex) => info.idx[infoIndex]);
-      })()
-    : idxs;
 
   const fuzzyCandidates = rankedIndexes.slice(0, Math.max(limit, 250)).map((itemIndex, rank) => ({
     ...allItems[itemIndex],

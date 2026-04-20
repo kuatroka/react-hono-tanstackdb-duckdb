@@ -89,6 +89,7 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
           clientPageSize={100}
           searchDebounceMs={150}
           searchPlaceholder="Search superinvestors..."
+          searchStrategy="ufuzzy"
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />
