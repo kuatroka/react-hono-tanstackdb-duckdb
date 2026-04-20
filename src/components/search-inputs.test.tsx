@@ -9,12 +9,28 @@ describe("search inputs", () => {
       <GlobalSearchInput
         query=""
         onChange={() => undefined}
-        onFocus={() => undefined}
         onKeyDown={() => undefined}
       />,
     );
 
     expect(html).toContain('name="global-search"');
+    expect(html).toContain('placeholder="Search superinvestors, tickers..."');
+  });
+
+  test("global search input accepts custom identifiers for alternate search surfaces", () => {
+    const html = renderToStaticMarkup(
+      <GlobalSearchInput
+        query=""
+        onChange={() => undefined}
+        onKeyDown={() => undefined}
+        id="global-search-ufuzzy"
+        name="global-search-ufuzzy"
+        placeholder="Search superinvestors, tickers..."
+      />,
+    );
+
+    expect(html).toContain('id="global-search-ufuzzy"');
+    expect(html).toContain('name="global-search-ufuzzy"');
     expect(html).toContain('placeholder="Search superinvestors, tickers..."');
   });
 

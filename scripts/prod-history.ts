@@ -59,30 +59,40 @@ function resolveRepositorySlug() {
 }
 
 function listProdTags() {
-  const output = runGit([
-    "git",
-    "for-each-ref",
-    "--sort=-taggerdate",
-    "--format=%(refname:short)%09%(taggerdate:iso8601-strict)%09%(*objectname)%09%(subject)",
-    "refs/tags/prod-*",
-  ]);
+  const patterns = ["refs/tags/PROD-V-*", "refs/tags/prod-*"];
+  const seenTags = new Set<string>();
+  const entries: Array<{ tag: string; deployedAt: string; commit: string; subject: string }> = [];
 
-  if (!output) {
-    return [] as Array<{ tag: string; deployedAt: string; commit: string; subject: string }>;
-  }
+  for (const pattern of patterns) {
+    const output = runGit([
+      "git",
+      "for-each-ref",
+      "--sort=-taggerdate",
+      "--format=%(refname:short)%09%(taggerdate:iso8601-strict)%09%(*objectname)%09%(subject)",
+      pattern,
+    ]);
 
-  return output
-    .split("\n")
-    .map((line) => {
+    if (!output) {
+      continue;
+    }
+
+    for (const line of output.split("\n")) {
       const [tag, deployedAt, peeledCommit, subject] = line.split("\t");
-      return {
+      if (!tag || !peeledCommit || seenTags.has(tag)) {
+        continue;
+      }
+
+      seenTags.add(tag);
+      entries.push({
         tag,
         deployedAt,
         commit: peeledCommit,
         subject,
-      };
-    })
-    .filter((entry) => entry.tag && entry.commit);
+      });
+    }
+  }
+
+  return entries.sort((left, right) => right.deployedAt.localeCompare(left.deployedAt));
 }
 
 function readCommitMetadata(commit: string) {

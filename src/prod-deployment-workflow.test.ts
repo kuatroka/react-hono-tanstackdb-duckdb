@@ -12,6 +12,7 @@ describe("production deployment automation", () => {
   test("exposes local production history scripts", () => {
     const packageJson = readProjectFile("package.json");
 
+    expect(packageJson).toContain('"version": "0.1.0"');
     expect(packageJson).toContain('"prod:github:setup": "bun scripts/setup-prod-github.ts"');
     expect(packageJson).toContain('"prod:github:setup:dry-run": "bun scripts/setup-prod-github.ts --dry-run"');
     expect(packageJson).toContain('"prod:history": "bun scripts/prod-history.ts"');
@@ -24,6 +25,8 @@ describe("production deployment automation", () => {
     expect(workflow).toContain("name: Deploy to Production");
     expect(workflow).toContain("environment:");
     expect(workflow).toContain("name: prod");
+    expect(workflow).toContain('echo "value=$(jq -r \'.version\' package.json)" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain('PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
     expect(workflow).toContain('git tag -a "$PROD_TAG" "$GITHUB_SHA"');
     expect(workflow).toContain('gh release create "$PROD_TAG"');
     expect(workflow).toContain("Production-Deployments.md");
@@ -48,5 +51,12 @@ describe("production deployment automation", () => {
     expect(helper).toContain('"gh", "secret", "set"');
     expect(helper).toContain('"gh", "variable", "set"');
     expect(helper).toContain('const requiredSecrets: SecretName[] = ["PROD_HOST", "PROD_USER", "PROD_SSH_KEY"]');
+  });
+
+  test("supports both legacy and versioned prod tag history formats", () => {
+    const historyScript = readProjectFile("scripts/prod-history.ts");
+
+    expect(historyScript).toContain('const patterns = ["refs/tags/PROD-V-*", "refs/tags/prod-*"]');
+    expect(historyScript).toContain("entries.sort((left, right) => right.deployedAt.localeCompare(left.deployedAt))");
   });
 });

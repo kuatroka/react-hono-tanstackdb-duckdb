@@ -41,7 +41,14 @@ async function loadCompactSearchIndexBody(indexPath: string): Promise<string> {
   }
 
   const indexData = await readFile(indexPath, "utf-8");
-  const compactBody = JSON.stringify(compactSearchIndexPayload(JSON.parse(indexData)));
+  const compactPayload = compactSearchIndexPayload(JSON.parse(indexData));
+  compactPayload.metadata = {
+    ...compactPayload.metadata,
+    totalItems: compactPayload.metadata?.totalItems ?? compactPayload.items.length,
+    indexFileBytes: fileStats.size,
+    compactBytes: Buffer.byteLength(JSON.stringify(compactPayload), "utf-8"),
+  };
+  const compactBody = JSON.stringify(compactPayload);
 
   cachedCompactIndex = {
     path: indexPath,

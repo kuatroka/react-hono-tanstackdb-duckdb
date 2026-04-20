@@ -10,12 +10,12 @@ function readProjectFile(relativePath: string) {
 
 describe("route search isolation", () => {
   test("global search results consume a local shared type instead of importing from the parent component", () => {
-    const globalSearch = readProjectFile("components/DuckDBGlobalSearch.tsx");
+    const globalSearch = readProjectFile("components/UFuzzyGlobalSearch.tsx");
     const globalSearchResults = readProjectFile("components/global-search/GlobalSearchResults.tsx");
 
-    expect(globalSearchResults).not.toContain('from "@/components/DuckDBGlobalSearch"');
+    expect(globalSearchResults).not.toContain('from "@/components/UFuzzyGlobalSearch"');
     expect(globalSearchResults).toContain('from "@/components/global-search/search-result"');
-    expect(globalSearch).toContain('from "@/components/global-search/search-result"');
+    expect(globalSearch).toContain("GlobalSearchResults");
     expect(globalSearch).not.toContain("export interface SearchResult");
   });
 

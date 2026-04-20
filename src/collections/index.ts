@@ -63,8 +63,8 @@ export {
     invalidateCikQuarterlyData,
 } from './cik-quarterly'
 
-// Search index functions
-export { loadPrecomputedIndex, searchWithIndex, isSearchIndexReady } from './searches'
+// Search data loading helpers
+export { loadPrecomputedIndex, ensureSearchItemsLoaded, getSearchIndexMetadata, isSearchIndexReady } from './searches'
 
 // Data freshness / cache invalidation
 export {

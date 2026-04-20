@@ -80,6 +80,8 @@ export async function persistSearchIndex(index: PersistedSearchIndex): Promise<v
                 totalItems: index.metadata?.totalItems ?? 0,
                 generatedAt: index.metadata?.generatedAt,
                 persistedAt: Date.now(),
+                indexFileBytes: index.metadata?.indexFileBytes,
+                compactBytes: index.metadata?.compactBytes,
             },
         }
         await db.searchIndex.put(entry)
@@ -134,6 +136,8 @@ export async function loadPersistedSearchIndex(): Promise<PersistedSearchIndex |
                     totalItems: index.metadata?.totalItems ?? index.items.length,
                     generatedAt: index.metadata?.generatedAt,
                     persistedAt: entry.metadata?.persistedAt ?? Date.now(),
+                    indexFileBytes: index.metadata?.indexFileBytes,
+                    compactBytes: index.metadata?.compactBytes,
                 },
             })
         }

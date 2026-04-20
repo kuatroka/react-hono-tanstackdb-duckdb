@@ -30,4 +30,11 @@ describe("global navigation layout", () => {
 
     expect(globalNav).toContain("sticky top-0");
   });
+
+  test("renders the production uFuzzy-backed global search box", () => {
+    const globalNav = readProjectFile("app/components/global-nav.tsx");
+
+    expect(globalNav).toContain("<UFuzzyGlobalSearch />");
+    expect(globalNav).not.toContain("<DuckDBGlobalSearch />");
+  });
 });

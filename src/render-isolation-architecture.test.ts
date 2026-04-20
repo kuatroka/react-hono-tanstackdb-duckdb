@@ -10,7 +10,7 @@ function readProjectFile(relativePath: string) {
 
 describe("rerender isolation architecture", () => {
   test("global search composes isolated input and results surfaces", () => {
-    const globalSearch = readProjectFile("src/components/DuckDBGlobalSearch.tsx");
+    const globalSearch = readProjectFile("src/components/UFuzzyGlobalSearch.tsx");
 
     expect(globalSearch).toContain("GlobalSearchInput");
     expect(globalSearch).toContain("GlobalSearchResults");

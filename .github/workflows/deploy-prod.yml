@@ -58,6 +58,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read app version
+        id: app_version
+        run: echo "value=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -103,9 +107,10 @@ jobs:
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          APP_VERSION: ${{ steps.app_version.outputs.value }}
         run: |
           DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          PROD_TAG="prod-$(date -u +'%Y%m%d-%H%M%S')"
+          PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +'%Y%m%d-%H%M%S')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           GIT_COMMITTER_DATE="$DEPLOYED_AT" git tag -a "$PROD_TAG" "$GITHUB_SHA" -m "Production deployment
