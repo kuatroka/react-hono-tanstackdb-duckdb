@@ -10,6 +10,12 @@ const productionPort = 4311;
 const developmentPort = 4312;
 const productionBaseUrl = `http://127.0.0.1:${productionPort}`;
 const developmentBaseUrl = `http://127.0.0.1:${developmentPort}`;
+const testBuildMetadata = {
+  APP_VERSION: "9.9.9-test",
+  APP_GIT_COMMIT: "abcdef1234567890abcdef1234567890abcdef12",
+  APP_PROD_TAG: "PROD-V-9.9.9-test-20260420-000000",
+  APP_DEPLOYED_AT: "2026-04-20T00:00:00Z",
+};
 
 let productionServerProcess: Bun.Subprocess;
 let developmentServerProcess: Bun.Subprocess;
@@ -38,6 +44,7 @@ function startServer(port: number, nodeEnv: "development" | "production") {
     cwd: projectRoot,
     env: {
       ...process.env,
+      ...testBuildMetadata,
       API_PORT: String(port),
       NODE_ENV: nodeEnv,
     },
@@ -75,10 +82,38 @@ describe("bun native production server smoke tests", () => {
 
   test("serves a lightweight health endpoint in production", async () => {
     const response = await fetch(`${productionBaseUrl}/healthz`);
+    const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual({ ok: true, service: "fintellectus-tanstackdb" });
+    expect(response.headers.get("x-app-version")).toBe(testBuildMetadata.APP_VERSION);
+    expect(response.headers.get("x-git-commit")).toBe(testBuildMetadata.APP_GIT_COMMIT);
+    expect(response.headers.get("x-prod-tag")).toBe(testBuildMetadata.APP_PROD_TAG);
+    expect(response.headers.get("x-deployed-at")).toBe(testBuildMetadata.APP_DEPLOYED_AT);
+    expect(body).toEqual({
+      ok: true,
+      service: "react-hono-tanstackdb-duckdb",
+      appVersion: testBuildMetadata.APP_VERSION,
+      gitCommit: testBuildMetadata.APP_GIT_COMMIT,
+      gitCommitShort: "abcdef1",
+      prodTag: testBuildMetadata.APP_PROD_TAG,
+      deployedAt: testBuildMetadata.APP_DEPLOYED_AT,
+    });
+  });
+
+  test("exposes build metadata on a dedicated production endpoint", async () => {
+    const response = await fetch(`${productionBaseUrl}/__build`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toEqual({
+      service: "react-hono-tanstackdb-duckdb",
+      appVersion: testBuildMetadata.APP_VERSION,
+      gitCommit: testBuildMetadata.APP_GIT_COMMIT,
+      gitCommitShort: "abcdef1",
+      prodTag: testBuildMetadata.APP_PROD_TAG,
+      deployedAt: testBuildMetadata.APP_DEPLOYED_AT,
+    });
   });
 
   test("falls back to index.html for client routes", async () => {

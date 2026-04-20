@@ -1,4 +1,5 @@
 import { app } from "./index";
+import { buildMetadata, withBuildMetadataHeaders } from "./build-metadata";
 import { duckDbGenerationManager } from "./db/generation-manager";
 import spa from "../index.html";
 import { existsSync } from "node:fs";
@@ -15,36 +16,43 @@ function resolveDistPath(pathname: string) {
   return join(distDir, normalizedPath);
 }
 
-function handleProductionRequest(request: Request) {
+async function handleProductionRequest(request: Request) {
   const url = new URL(request.url);
 
   if (url.pathname === "/healthz") {
-    return Response.json({ ok: true, service: "fintellectus-tanstackdb" });
+    return withBuildMetadataHeaders(Response.json({
+      ok: true,
+      ...buildMetadata,
+    }));
+  }
+
+  if (url.pathname === "/__build") {
+    return withBuildMetadataHeaders(Response.json(buildMetadata));
   }
 
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-    return app.fetch(request);
+    return withBuildMetadataHeaders(await app.fetch(request));
   }
 
   if (!existsSync(distIndexHtml)) {
-    return new Response("Build output missing. Run `bun run build` first.", {
+    return withBuildMetadataHeaders(new Response("Build output missing. Run `bun run build` first.", {
       status: 503,
       headers: {
         "content-type": "text/plain; charset=utf-8",
       },
-    });
+    }));
   }
 
   const requestedPath = resolveDistPath(url.pathname.slice(1));
   if (url.pathname !== "/" && existsSync(requestedPath)) {
-    return new Response(Bun.file(requestedPath));
+    return withBuildMetadataHeaders(new Response(Bun.file(requestedPath)));
   }
 
   if (url.pathname !== "/" && extname(url.pathname)) {
-    return new Response("Not Found", { status: 404 });
+    return withBuildMetadataHeaders(new Response("Not Found", { status: 404 }));
   }
 
-  return new Response(Bun.file(distIndexHtml));
+  return withBuildMetadataHeaders(new Response(Bun.file(distIndexHtml)));
 }
 
 console.log(`API server starting on port ${port}`);

@@ -50,8 +50,9 @@ jobs:
       name: prod
       url: ${{ vars.PROD_APP_URL }}
     outputs:
-      prod_tag: ${{ steps.create_tag.outputs.prod_tag }}
-      deployed_at: ${{ steps.create_tag.outputs.deployed_at }}
+      prod_tag: ${{ steps.metadata.outputs.prod_tag }}
+      deployed_at: ${{ steps.metadata.outputs.deployed_at }}
+      app_version: ${{ steps.app_version.outputs.value }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,6 +62,16 @@ jobs:
       - name: Read app version
         id: app_version
         run: echo "value=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare deployment metadata
+        id: metadata
+        env:
+          APP_VERSION: ${{ steps.app_version.outputs.value }}
+        run: |
+          DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +'%Y%m%d-%H%M%S')"
+          echo "deployed_at=$DEPLOYED_AT" >> "$GITHUB_OUTPUT"
+          echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -83,6 +94,9 @@ jobs:
           PROD_DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          APP_VERSION: ${{ steps.app_version.outputs.value }}
+          PROD_TAG: ${{ steps.metadata.outputs.prod_tag }}
+          DEPLOYED_AT: ${{ steps.metadata.outputs.deployed_at }}
         run: |
           ssh -p "${PROD_PORT:-22}" "${PROD_USER}@${PROD_HOST}" <<EOF
           set -euo pipefail
@@ -97,20 +111,22 @@ jobs:
           git fetch --tags origin
           git checkout main
           git reset --hard "${GITHUB_SHA}"
+          export APP_VERSION="${APP_VERSION}"
+          export APP_GIT_COMMIT="${GITHUB_SHA}"
+          export APP_PROD_TAG="${PROD_TAG}"
+          export APP_DEPLOYED_AT="${DEPLOYED_AT}"
           docker compose -f infra/prod/docker-compose.yml --env-file infra/prod/.env up -d --build
           EOF
 
       - name: Create annotated prod tag
-        id: create_tag
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          APP_VERSION: ${{ steps.app_version.outputs.value }}
+          PROD_TAG: ${{ steps.metadata.outputs.prod_tag }}
+          DEPLOYED_AT: ${{ steps.metadata.outputs.deployed_at }}
         run: |
-          DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +'%Y%m%d-%H%M%S')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           GIT_COMMITTER_DATE="$DEPLOYED_AT" git tag -a "$PROD_TAG" "$GITHUB_SHA" -m "Production deployment
@@ -119,8 +135,6 @@ jobs:
           Commit: $GITHUB_SHA
           Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           git push origin "$PROD_TAG"
-          echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
-          echo "deployed_at=$DEPLOYED_AT" >> "$GITHUB_OUTPUT"
 
   publish-history:
     runs-on: ubuntu-latest
@@ -151,18 +165,18 @@ jobs:
 
       - name: Create GitHub release for prod tag
         env:
+          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
+          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          PROD_TAG="$(git tag --points-at "$GITHUB_SHA" --list 'PROD-V-*' --sort=-creatordate | head -n 1)"
           if [ -z "$PROD_TAG" ]; then
             echo "No production tag found for ${GITHUB_SHA}"
             exit 1
           fi
-          DEPLOYED_AT="$(git for-each-ref "refs/tags/${PROD_TAG}" --format='%(taggerdate:iso8601-strict)' | head -n 1)"
 
           cat > release-notes.md <<EOF
           # Production deployment
@@ -187,6 +201,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
+          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
         run: |
           gh auth setup-git
           WIKI_URL="https://github.com/${GITHUB_REPOSITORY}.wiki.git"
@@ -206,13 +223,30 @@ jobs:
 
           bun run prod:history -- --output repo-wiki/Production-Deployments.md
 
-          if [ ! -f repo-wiki/Home.md ]; then
-            cat > repo-wiki/Home.md <<'EOF'
-          # Repository Wiki
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
 
-          - [[Production-Deployments]]
-          EOF
-          fi
+          home_path = Path("repo-wiki/Home.md")
+          existing = home_path.read_text() if home_path.exists() else "# Repository Wiki\n"
+          block = "\n".join([
+              "<!-- droid:prod-history:start -->",
+              "## Production deployments",
+              "",
+              "- [[Production-Deployments]]",
+              f"- Latest tag: `{os.environ['PROD_TAG']}`",
+              f"- Latest commit: `{os.environ['GITHUB_SHA'][:7]}`",
+              f"- Deployed at: {os.environ['DEPLOYED_AT']}",
+              "<!-- droid:prod-history:end -->",
+          ])
+          pattern = re.compile(
+              r"<!-- droid:prod-history:start -->.*?<!-- droid:prod-history:end -->",
+              re.S,
+          )
+          updated = pattern.sub(block, existing) if pattern.search(existing) else existing.rstrip() + "\n\n" + block + "\n"
+          home_path.write_text(updated)
+          PY
 
           git -C repo-wiki config user.name "github-actions[bot]"
           git -C repo-wiki config user.email "41898282+github-actions[bot]@users.noreply.github.com"

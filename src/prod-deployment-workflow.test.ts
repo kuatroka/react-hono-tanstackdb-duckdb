@@ -26,13 +26,15 @@ describe("production deployment automation", () => {
     expect(workflow).toContain("environment:");
     expect(workflow).toContain("name: prod");
     expect(workflow).toContain('echo "value=$(jq -r \'.version\' package.json)" >> "$GITHUB_OUTPUT"');
+    expect(workflow).toContain("id: metadata");
     expect(workflow).toContain('PROD_TAG="PROD-V-${APP_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
+    expect(workflow).toContain('export APP_GIT_COMMIT="${GITHUB_SHA}"');
+    expect(workflow).toContain('PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}');
     expect(workflow).toContain('git tag -a "$PROD_TAG" "$GITHUB_SHA"');
     expect(workflow).toContain('gh release create "$PROD_TAG"');
-    expect(workflow).toContain('git tag --points-at "$GITHUB_SHA" --list \'PROD-V-*\' --sort=-creatordate');
-    expect(workflow).toContain('git for-each-ref "refs/tags/${PROD_TAG}" --format=\'%(taggerdate:iso8601-strict)\'');
     expect(workflow).toContain("Production-Deployments.md");
     expect(workflow).toContain("bun run prod:history -- --output repo-wiki/Production-Deployments.md");
+    expect(workflow).toContain("droid:prod-history:start");
   });
 
   test("documents the production tracking setup locally", () => {
@@ -60,5 +62,14 @@ describe("production deployment automation", () => {
 
     expect(historyScript).toContain('const patterns = ["refs/tags/PROD-V-*", "refs/tags/prod-*"]');
     expect(historyScript).toContain("entries.sort((left, right) => right.deployedAt.localeCompare(left.deployedAt))");
+  });
+
+  test("passes deployment metadata into the production container", () => {
+    const composeFile = readProjectFile("infra/prod/docker-compose.yml");
+
+    expect(composeFile).toContain("APP_VERSION:");
+    expect(composeFile).toContain("APP_GIT_COMMIT:");
+    expect(composeFile).toContain("APP_PROD_TAG:");
+    expect(composeFile).toContain("APP_DEPLOYED_AT:");
   });
 });
