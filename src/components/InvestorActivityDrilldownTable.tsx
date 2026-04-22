@@ -365,12 +365,12 @@ export function InvestorActivityDrilldownTable({
   return (
     <Card className={ASSET_DETAIL_CARD_CLASS_NAME}>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-4">
-          <span>{cardTitle}</span>
-          <div className="flex flex-col items-end gap-2">
+        <CardTitle className="flex flex-wrap items-start justify-between gap-4 sm:items-center">
+          <span className="min-w-0 flex-1 text-balance">{cardTitle}</span>
+          <div className="flex min-w-0 w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
             <div
               data-testid="drilldown-table-telemetry-slot"
-              className="flex min-h-8 min-w-[11rem] items-center justify-end"
+              className="flex min-h-8 min-w-0 max-w-full items-center justify-start sm:justify-end"
             >
               {resolvedHeaderLatencyBadge}
             </div>
@@ -395,7 +395,8 @@ export function InvestorActivityDrilldownTable({
               searchPlaceholder="Filter superinvestors..."
               defaultSortColumn="cikName"
               defaultSortDirection="asc"
-              gridTemplateColumns="minmax(0, 1.6fr) minmax(6rem, 0.55fr) minmax(6rem, 0.6fr) minmax(6rem, 0.55fr) 3rem"
+              gridTemplateColumns="minmax(0, 1.4fr) minmax(5.5rem, 0.55fr) minmax(5.5rem, 0.6fr) minmax(5.5rem, 0.55fr) 3rem"
+              mobileGridTemplateColumns="minmax(0, 1.2fr) minmax(4.25rem, 0.5fr) minmax(4.75rem, 0.55fr) minmax(4.75rem, 0.5fr) 2.25rem"
               latencySource="tsdb-memory"
               dataSource={dataFlow}
               expandedRowKey={expandedInvestorCik}

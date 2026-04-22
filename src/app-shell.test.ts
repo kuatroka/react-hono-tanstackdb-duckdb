@@ -50,8 +50,8 @@ describe("global navigation layout", () => {
     expect(globalNav).toContain("Open global search");
     expect(globalNav).toContain("Search or jump to…");
     expect(globalNav).toContain("hover:underline underline-offset-4");
-    expect(globalNav).toContain("rounded-md border border-border/70");
-    expect(globalNav).toContain("mt-3 rounded-[1.5rem]");
+    expect(globalNav).toContain("rounded-[calc(var(--radius)-0.125rem)] border border-border/70");
+    expect(globalNav).toContain("mt-3 rounded-[var(--mobile-panel-radius)]");
     expect(globalNav).not.toContain("rounded-t-none");
     expect(globalNav).not.toContain("border-t-0");
     expect(globalNav).toContain("md:hidden");
@@ -71,8 +71,8 @@ describe("global navigation layout", () => {
     const assetDetail = readProjectFile("src/pages/AssetDetail.tsx");
 
     expect(rootRoute).toContain("viewport-fit=cover");
-    expect(pageLayout).toContain("px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10");
-    expect(pageLayout).toContain("max-w-7xl");
+    expect(pageLayout).toContain("px-[var(--page-gutter)] py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10");
+    expect(pageLayout).toContain("max-w-[var(--page-max-width-wide)]");
     expect(assetsPage).toContain("PageLayout");
     expect(assetDetail).toContain("PageLayout");
   });

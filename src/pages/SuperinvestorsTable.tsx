@@ -63,17 +63,17 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+      <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
         <div className="space-y-1">
           <CardTitle className="text-3xl font-bold tracking-tight">
             Superinvestors
           </CardTitle>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex min-w-0 w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
           {tableTelemetry ? (
             <LatencyBadge
               telemetry={tableTelemetry}
-              className="min-w-[11rem] justify-end"
+              className="min-w-0 max-w-full justify-end"
             />
           ) : null}
         </div>
@@ -83,7 +83,8 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
           data={rows}
           columns={superinvestorTableColumns}
           defaultSortColumn="cikName"
-          gridTemplateColumns="minmax(12rem, 1fr) minmax(22rem, 1.6fr)"
+          gridTemplateColumns="minmax(10rem, 0.85fr) minmax(15rem, 1.35fr)"
+          mobileGridTemplateColumns="minmax(8rem, 0.85fr) minmax(11rem, 1.15fr)"
           latencySource="tsdb-memory"
           dataSource={dataSource}
           onTableTelemetryChange={setTableTelemetry}

@@ -108,6 +108,24 @@
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
   --radius: 0.75rem;
+  --page-max-width: 90rem;
+  --page-max-width-wide: 80rem;
+  --page-max-width-content: 64rem;
+  --page-gutter: 1rem;
+  --page-section-gap: 1.5rem;
+  --surface-padding: 1rem;
+  --surface-padding-lg: 1.5rem;
+  --mobile-nav-button-size: 2.5rem;
+  --mobile-panel-radius: 1.5rem;
+  --chart-bg: transparent;
+  --chart-grid: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --chart-axis: color-mix(in srgb, var(--foreground) 72%, transparent);
+  --chart-zero-line: color-mix(in srgb, var(--foreground) 40%, transparent);
+  --chart-bar-positive: var(--chart-2);
+  --chart-bar-negative: var(--destructive);
+  --chart-bar-neutral: var(--muted-foreground);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-fill: color-mix(in srgb, var(--chart-1) 20%, transparent);
   --background: oklch(1.0000 0 0);
   --foreground: oklch(0.2101 0.0318 264.6645);
   --card: oklch(1.0000 0 0);
@@ -220,6 +238,10 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+  html {
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground;
@@ -227,5 +249,10 @@
     letter-spacing: var(--tracking-normal);
     min-height: 100vh;
     overflow-y: scroll;
+    overflow-x: clip;
+  }
+  #root {
+    min-height: 100vh;
+    overflow-x: clip;
   }
 }

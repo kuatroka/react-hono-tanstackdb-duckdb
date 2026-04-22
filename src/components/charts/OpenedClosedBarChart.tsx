@@ -14,6 +14,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
 
+function cssVar(name: string) {
+  if (typeof window === "undefined") return "transparent";
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "transparent";
+}
+
 echarts.use([
   BarChart,
   GridComponent,
@@ -74,6 +79,13 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   const option = useMemo(() => {
     if (chartData.length === 0) return null;
 
+    const chartBackground = cssVar("--chart-bg");
+    const chartGrid = cssVar("--chart-grid");
+    const chartAxis = cssVar("--chart-axis");
+    const chartZeroLine = cssVar("--chart-zero-line");
+    const chartBarPositive = cssVar("--chart-bar-positive");
+    const chartBarNegative = cssVar("--chart-bar-negative");
+
     const quarters = chartData.map((item) => item.quarter);
     const openedValues = chartData.map((item) => item.opened);
     const closedValues = chartData.map((item) => item.closed);
@@ -85,6 +97,11 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
 
     return {
       animation: false,
+      backgroundColor: chartBackground,
+      textStyle: {
+        color: chartAxis,
+        fontFamily: "var(--font-sans)",
+      },
       grid: {
         top: 48,
         right: 48,
@@ -123,6 +140,9 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           },
         },
         axisTick: { alignWithLabel: true },
+        axisLine: {
+          lineStyle: { color: chartAxis },
+        },
       },
       yAxis: {
         type: "value",
@@ -140,8 +160,11 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         splitLine: {
           lineStyle: {
             type: "dashed",
-            color: "rgba(148,163,184,0.3)",
+            color: chartGrid,
           },
+        },
+        axisLine: {
+          lineStyle: { color: chartAxis },
         },
         position: "left",
       },
@@ -152,7 +175,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           stack: "activity",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: "hsl(142, 76%, 36%)",
+            color: chartBarPositive,
             borderRadius: [4, 4, 0, 0],
           },
           data: openedValues,
@@ -161,9 +184,9 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
             symbol: "none",
             label: { show: false },
             lineStyle: {
-              color: "hsl(var(--foreground))",
+              color: chartZeroLine,
               width: 1,
-              opacity: 0.4,
+              opacity: 1,
             },
             data: [{ yAxis: 0 }],
           },
@@ -174,7 +197,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           stack: "activity",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: "hsl(0, 84%, 60%)",
+            color: chartBarNegative,
             borderRadius: [0, 0, 4, 4],
           },
           data: closedValues,
@@ -311,13 +334,13 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
   return (
     <Card className={cn("min-w-0", cardClassName)}>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>{title}</span>
+        <CardTitle className="flex flex-wrap items-start justify-between gap-2 sm:items-center">
+          <span className="min-w-0 flex-1 text-balance">{title}</span>
           {latencyBadge}
         </CardTitle>
       </CardHeader>
-      <CardContent className={cn("h-[450px] w-full min-w-0", cardContentClassName)}>
-        <div ref={containerRef} className="h-full w-full min-w-0" />
+      <CardContent className={cn("h-[320px] w-full min-w-0 sm:h-[380px] lg:h-[450px]", cardContentClassName)}>
+        <div ref={containerRef} className="h-full w-full min-w-0 overflow-hidden" />
       </CardContent>
     </Card>
   );

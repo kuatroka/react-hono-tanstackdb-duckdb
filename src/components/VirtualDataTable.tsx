@@ -43,7 +43,7 @@ const SearchToggleButton = memo(function SearchToggleButton({
       variant="ghost"
       size="icon"
       onClick={onToggle}
-      className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+      className="h-8 w-8 rounded-[calc(var(--radius)-0.125rem)] text-muted-foreground hover:text-foreground"
       aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
     >
       <SearchGlyph />
@@ -251,8 +251,8 @@ const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
   }, []);
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-2">
-      <div className="flex min-w-0 flex-1 items-center justify-start gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-[var(--surface-padding)] py-2">
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-hidden">
         <SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />
         {isExpanded ? (
           <VirtualTableSearchInput
@@ -268,8 +268,8 @@ const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
           />
         ) : null}
       </div>
-      <div className="flex min-h-8 items-center justify-end">
-        {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-[11rem] justify-center" /> : null}
+      <div className="flex min-h-8 min-w-0 items-center justify-end overflow-hidden max-sm:w-full max-sm:justify-start">
+        {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-0 max-w-full justify-center" /> : null}
       </div>
     </div>
   );
@@ -283,6 +283,7 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   emptyStateLabel?: string;
   getRowKey?: (row: T) => Key;
   gridTemplateColumns: string;
+  mobileGridTemplateColumns?: string;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   latencySource?: PerfSource;
@@ -318,6 +319,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   emptyStateLabel = 'No results found',
   getRowKey,
   gridTemplateColumns,
+  mobileGridTemplateColumns,
   hasNextPage = false,
   isFetchingNextPage = false,
   latencySource = 'tsdb-memory',
@@ -348,6 +350,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const readyCalledRef = useRef(false);
+  const [effectiveGridTemplateColumns, setEffectiveGridTemplateColumns] = useState(gridTemplateColumns);
   const ufuzzyRef = useRef(new UFuzzy(UFUZZY_OPTIONS));
   const previousUFuzzyFilterRef = useRef<UFuzzyPreviousFilter>({ query: '', idxs: null, haystackSize: 0 });
   const [draftSearchValue, setDraftSearchValue] = useState(searchValue);
@@ -363,6 +366,22 @@ export function VirtualDataTable<T extends { id: number | string }>({
     setDraftSearchValue((current) => current === searchValue ? current : searchValue);
     setCommittedSearch((current) => current === nextCommittedSearch ? current : nextCommittedSearch);
   }, [searchValue]);
+
+  useEffect(() => {
+    if (!mobileGridTemplateColumns || typeof window === 'undefined') {
+      setEffectiveGridTemplateColumns(gridTemplateColumns);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 640px)');
+    const updateTemplate = () => {
+      setEffectiveGridTemplateColumns(mediaQuery.matches ? mobileGridTemplateColumns : gridTemplateColumns);
+    };
+
+    updateTemplate();
+    mediaQuery.addEventListener('change', updateTemplate);
+    return () => mediaQuery.removeEventListener('change', updateTemplate);
+  }, [gridTemplateColumns, mobileGridTemplateColumns]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -606,6 +625,8 @@ export function VirtualDataTable<T extends { id: number | string }>({
     onSortChange?.(column as Extract<keyof T, string>, 'asc');
   }, [onSortChange, sortColumn]);
 
+  const isCompactMobileLayout = effectiveGridTemplateColumns !== gridTemplateColumns;
+
   const focusFirstRow = useCallback(() => {
     if (orderedData.length === 0) return;
     setFocusedRowIndex(0);
@@ -740,14 +761,14 @@ export function VirtualDataTable<T extends { id: number | string }>({
           onTabToResults={focusFirstRow}
         />
         <div
-          className="grid items-center border-b border-border bg-muted/30 px-4 py-3 text-sm font-medium text-muted-foreground"
-          style={{ gridTemplateColumns }}
+          className="grid min-w-0 items-center gap-x-3 border-b border-border bg-muted/30 px-[var(--surface-padding)] py-3 text-sm font-medium text-muted-foreground"
+          style={{ gridTemplateColumns: effectiveGridTemplateColumns }}
         >
           {columns.map((column) => {
             const isSorted = sortColumn === column.key;
             if (!column.sortable) {
               return (
-                <div key={String(column.key)} className={cn('truncate', column.headerClassName)}>
+                <div key={String(column.key)} className={cn('truncate', isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'text-right' : undefined, column.headerClassName)}>
                   {column.header}
                 </div>
               );
@@ -759,13 +780,13 @@ export function VirtualDataTable<T extends { id: number | string }>({
                 header={column.header}
                 isSorted={isSorted}
                 sortDirection={sortDirection}
-                headerClassName={column.headerClassName}
+                headerClassName={cn(isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'justify-end text-right' : undefined, column.headerClassName)}
                 onSort={handleSort}
               />
             );
           })}
         </div>
-        <div ref={viewportRef} className="overflow-y-auto" style={{ height: rowHeight * visibleRowCount }}>
+        <div ref={viewportRef} className="overflow-y-auto overflow-x-hidden" style={{ height: rowHeight * visibleRowCount }}>
           {visibleData.length === 0 ? (
             <div className="flex h-full items-center justify-center px-4 text-sm text-muted-foreground">
               {emptyStateLabel}
@@ -787,14 +808,14 @@ export function VirtualDataTable<T extends { id: number | string }>({
                       tabIndex={0}
                       onClick={() => triggerRowClick(row)}
                       onFocus={() => setFocusedRowIndex(virtualRow.index)}
-                      className={cn('absolute left-0 right-0 border-b border-border bg-background px-4 outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined, onRowClick ? 'cursor-pointer' : undefined)}
+                      className={cn('absolute inset-x-0 min-w-0 overflow-hidden border-b border-border bg-background px-[var(--surface-padding)] outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined, onRowClick ? 'cursor-pointer' : undefined)}
                       style={{
                         height: virtualRow.size,
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
                       <div className="flex h-full flex-col">
-                        <div className="grid items-center gap-4 hover:bg-muted/20" style={{ gridTemplateColumns, minHeight: rowHeight, height: rowHeight }}>
+                        <div className="grid min-w-0 items-center gap-x-3 hover:bg-muted/20" style={{ gridTemplateColumns: effectiveGridTemplateColumns, minHeight: rowHeight, height: rowHeight }}>
                           {columns.map((column) => (
                             <div key={String(column.key)} className={cn('min-w-0 truncate text-sm', column.className)}>
                               {column.render ? column.render(row[column.key], row, focusedRowIndex === virtualRow.index) : String(row[column.key] ?? '')}
@@ -815,7 +836,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
                 })}
               </div>
               {showLoadMoreHint ? (
-                <div className="flex items-center justify-center border-t border-border px-4 py-3 text-sm text-muted-foreground">
+                <div className="flex items-center justify-center border-t border-border px-[var(--surface-padding)] py-3 text-sm text-muted-foreground">
                   {isFetchingNextPage ? 'Loading more…' : 'Scroll to load more'}
                 </div>
               ) : null}

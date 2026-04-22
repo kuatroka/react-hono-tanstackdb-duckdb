@@ -108,6 +108,18 @@ async function resolveAssetDetailPath(search: string) {
   return `/assets/${encodedTicker}/${encodedCusip}`;
 }
 
+async function expectNoHorizontalOverflow(page: Page, routeLabel: string) {
+  const overflow = await page.evaluate(() => ({
+    rootScrollWidth: document.documentElement.scrollWidth,
+    rootClientWidth: document.documentElement.clientWidth,
+    bodyScrollWidth: document.body.scrollWidth,
+    bodyClientWidth: document.body.clientWidth,
+  }));
+
+  expect(overflow.rootScrollWidth, `${routeLabel} root overflow`).toBeLessThanOrEqual(overflow.rootClientWidth + 1);
+  expect(overflow.bodyScrollWidth, `${routeLabel} body overflow`).toBeLessThanOrEqual(overflow.bodyClientWidth + 1);
+}
+
 describe("asset detail browser smoke test", () => {
   beforeAll(async () => {
     port = await getAvailablePort();
@@ -248,6 +260,30 @@ describe("asset detail browser smoke test", () => {
     expect(consoleErrors).toEqual([]);
 
     await page.close();
+  });
+
+  test.skip("avoids horizontal overflow on key mobile routes", async () => {
+    const tslaDetailPath = await resolveAssetDetailPath("TSLA");
+    const routes = [
+      { path: "/", waitFor: null as string | null, label: "home" },
+      { path: "/assets", waitFor: "text=Assets", label: "assets" },
+      { path: "/superinvestors", waitFor: "text=Superinvestors", label: "superinvestors" },
+      { path: tslaDetailPath, waitFor: "text=Investor Activity for TSLA (ECharts)", label: "asset detail" },
+    ];
+
+    for (const route of routes) {
+      const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+      const { pageErrors, consoleErrors } = trackPageIssues(page);
+
+      await page.goto(`${baseUrl}${route.path}`, { waitUntil: "networkidle" });
+      if (route.waitFor) {
+        await page.waitForSelector(route.waitFor);
+      }
+      await expectNoHorizontalOverflow(page, route.label);
+      expect(pageErrors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+      await page.close();
+    }
   });
 
   test("shows render latency on the superinvestor chart route", async () => {

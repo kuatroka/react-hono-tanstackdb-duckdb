@@ -33,7 +33,7 @@ function MobileNavButton({
       type="button"
       variant="ghost"
       size="icon"
-      className="h-10 w-10 rounded-md border border-border/70 bg-background/60 text-foreground hover:bg-muted"
+      className="h-[var(--mobile-nav-button-size)] w-[var(--mobile-nav-button-size)] rounded-[calc(var(--radius)-0.125rem)] border border-border/70 bg-background/60 text-foreground hover:bg-muted"
       aria-label={ariaLabel}
       onClick={onClick}
     >
@@ -117,7 +117,7 @@ export function GlobalNav() {
       {isMobileMenuOpen ? (
         <div className="border-b border-border/70 bg-background/95 md:hidden">
           <div className="mx-auto w-full max-w-[90rem] px-4 pb-[calc(1.5rem+var(--safe-area-bottom))] sm:px-6">
-            <div className="mt-3 rounded-[1.5rem] border border-border/70 bg-card px-4 py-4 shadow-sm">
+            <div className="mt-3 rounded-[var(--mobile-panel-radius)] border border-border/70 bg-card px-[var(--surface-padding)] py-[var(--surface-padding)] shadow-sm">
               {mobileOpenPanel === "search" ? (
                 <UFuzzyGlobalSearch
                   mode="mobile-drawer"

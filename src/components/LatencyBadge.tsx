@@ -118,7 +118,7 @@ export function LatencyBadge({
       <Badge
         variant="outline"
         className={cn(
-          "font-mono font-medium text-[11px] leading-none px-2 py-1 shrink-0 whitespace-nowrap bg-transparent inline-flex items-center gap-1",
+          "font-mono font-medium text-[11px] leading-none px-2 py-1 min-w-0 max-w-full shrink-0 whitespace-nowrap bg-transparent inline-flex items-center gap-1 overflow-hidden",
           className,
         )}
         title={resolvedMs == null ? primaryLine : `${primaryLine} (${resolvedMs.toFixed(2)}ms)`}
@@ -159,7 +159,7 @@ export function LatencyBadge({
       <Badge
         variant="outline"
         className={cn(
-          "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex items-center gap-1",
+          "text-[10px] px-1.5 py-0.5 font-medium border bg-transparent inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden",
           "ring-1",
           toneClasses,
           className,

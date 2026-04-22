@@ -123,7 +123,9 @@ describe("rerender isolation architecture", () => {
     expect(virtualTable).toContain("revealedRowCount");
     expect(virtualTable).toContain("DEFAULT_MIN_SEARCH_CHARACTERS = 2");
     expect(virtualTable).toContain("normalizedSearch");
-    expect(virtualTable).toContain('justify-between gap-4 border-b border-border bg-background px-4 py-2');
+    expect(virtualTable).toContain(
+      'justify-between gap-3 border-b border-border bg-background px-[var(--surface-padding)] py-2',
+    );
     expect(virtualTable).toContain('flex min-w-0 flex-1 items-center justify-start gap-2');
     expect(virtualTable).toContain('searchTelemetry={searchTelemetry}');
   });

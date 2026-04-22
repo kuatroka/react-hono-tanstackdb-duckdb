@@ -14,6 +14,11 @@ import {
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import type { CikQuarterlyData } from "@/collections";
 
+function cssVar(name: string) {
+  if (typeof window === "undefined") return "transparent";
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "transparent";
+}
+
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 interface CikValueLineChartProps {
@@ -109,6 +114,11 @@ export function CikValueLineChart({
 
     return {
       animation: false,
+      backgroundColor: cssVar("--chart-bg"),
+      textStyle: {
+        color: cssVar("--chart-axis"),
+        fontFamily: "var(--font-sans)",
+      },
       grid: {
         top: 48,
         right: 32,
@@ -147,7 +157,7 @@ export function CikValueLineChart({
         splitLine: {
           lineStyle: {
             type: "dashed",
-            color: "rgba(148,163,184,0.3)",
+            color: cssVar("--chart-grid"),
           },
         },
       },
@@ -162,13 +172,13 @@ export function CikValueLineChart({
           symbolSize: 6,
           lineStyle: {
             width: 2,
-            color: "hsl(213, 94%, 68%)",
+            color: cssVar("--chart-line-primary"),
           },
           itemStyle: {
-            color: "hsl(213, 94%, 68%)",
+            color: cssVar("--chart-line-primary"),
           },
           areaStyle: {
-            color: "rgba(59,130,246,0.15)",
+            color: cssVar("--chart-line-fill"),
           },
           emphasis: {
             focus: "series",
@@ -281,8 +291,8 @@ export function CikValueLineChart({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>Portfolio Value Over Time{cikName ? ` - ${cikName}` : ""}</span>
+        <CardTitle className="flex flex-wrap items-start justify-between gap-2 sm:items-center">
+          <span className="min-w-0 flex-1 text-balance">Portfolio Value Over Time{cikName ? ` - ${cikName}` : ""}</span>
           <LatencyBadge
             dataLoadMs={dataLoadMs}
             renderMs={renderMs}
@@ -290,8 +300,8 @@ export function CikValueLineChart({
           />
         </CardTitle>
       </CardHeader>
-      <CardContent className="h-[300px] w-full min-w-0">
-        <div ref={containerRef} className="h-full w-full min-w-0" />
+      <CardContent className="h-[280px] w-full min-w-0 sm:h-[320px]">
+        <div ref={containerRef} className="h-full w-full min-w-0 overflow-hidden" />
       </CardContent>
     </Card>
   );

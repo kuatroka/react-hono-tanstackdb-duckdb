@@ -63,10 +63,10 @@ const AssetsTableCard = memo(function AssetsTableCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+      <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
         <CardTitle className="text-3xl font-bold tracking-tight">Assets</CardTitle>
-        <div className="flex flex-col items-end gap-2">
-          {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-[11rem] justify-end" /> : null}
+        <div className="flex min-w-0 w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
+          {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-0 max-w-full justify-end" /> : null}
         </div>
       </CardHeader>
       <CardContent>
@@ -75,7 +75,8 @@ const AssetsTableCard = memo(function AssetsTableCard({
           columns={assetsTableColumns}
           defaultSortColumn={DEFAULT_SORT_COLUMN}
           defaultSortDirection={DEFAULT_SORT_DIRECTION}
-          gridTemplateColumns="minmax(12rem, 1fr) minmax(20rem, 1.5fr)"
+          gridTemplateColumns="minmax(11rem, 0.9fr) minmax(15rem, 1.3fr)"
+          mobileGridTemplateColumns="minmax(9rem, 1fr) minmax(11rem, 1.1fr)"
           latencySource="tsdb-memory"
           dataSource={dataSource}
           onTableTelemetryChange={setTableTelemetry}

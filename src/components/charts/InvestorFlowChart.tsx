@@ -9,10 +9,11 @@ import uPlot from "uplot";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type InvestorFlow } from "@/types";
 
-const POSITIVE_BAR_COLOR = "hsl(142, 76%, 36%)";
-const NEGATIVE_BAR_COLOR = "hsl(0, 84%, 60%)";
-const NEUTRAL_BAR_COLOR = "hsl(215, 16%, 65%)";
-const ZERO_LINE_COLOR = "hsl(222, 47%, 11%)";
+function cssVar(name: string) {
+  if (typeof window === "undefined") return "transparent";
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "transparent";
+}
+
 const MAX_VISIBLE_QUARTER_LABELS = 8;
 
 // Register only the modules this chart needs for tree shaking
@@ -101,9 +102,9 @@ function formatDetailedDollarValue(
 }
 
 function getNetFlowColor(value: number): string {
-  if (value > 0) return POSITIVE_BAR_COLOR;
-  if (value < 0) return NEGATIVE_BAR_COLOR;
-  return NEUTRAL_BAR_COLOR;
+  if (value > 0) return cssVar("--chart-bar-positive");
+  if (value < 0) return cssVar("--chart-bar-negative");
+  return cssVar("--chart-bar-neutral");
 }
 
 function calculateQuarterLabelInterval(length: number): number {
@@ -126,12 +127,12 @@ function InvestorFlowCard({
   return (
     <Card className="min-w-0">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>{title}</span>
+        <CardTitle className="flex flex-wrap items-start justify-between gap-2 sm:items-center">
+          <span className="min-w-0 flex-1 text-balance">{title}</span>
           {latencyBadge}
         </CardTitle>
       </CardHeader>
-      <CardContent className="min-w-0">{children}</CardContent>
+      <CardContent className="min-w-0 overflow-hidden">{children}</CardContent>
     </Card>
   );
 }
@@ -196,6 +197,11 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({
 
     return {
       animation: false,
+      backgroundColor: cssVar("--chart-bg"),
+      textStyle: {
+        color: cssVar("--chart-axis"),
+        fontFamily: "var(--font-sans)",
+      },
       grid: {
         top: 32,
         right: 24,
@@ -264,7 +270,7 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({
         splitLine: {
           lineStyle: {
             type: "dashed",
-            color: "rgba(148,163,184,0.16)",
+            color: cssVar("--chart-grid"),
           },
         },
       },
@@ -281,7 +287,7 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({
             symbol: "none",
             label: { show: false },
             lineStyle: {
-              color: ZERO_LINE_COLOR,
+              color: cssVar("--chart-zero-line"),
               width: 3,
               type: "solid",
             },
@@ -379,7 +385,7 @@ export const InvestorFlowChart = memo(function InvestorFlowChart({
       title={`Net Investor Flow ${ticker}`}
       latencyBadge={latencyBadge}
     >
-      <div ref={containerRef} className="h-[400px] w-full min-w-0" />
+      <div ref={containerRef} className="h-[300px] w-full min-w-0 overflow-hidden sm:h-[360px] lg:h-[400px]" />
     </InvestorFlowCard>
   );
 });

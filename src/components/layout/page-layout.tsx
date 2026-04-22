@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
 
 const widthClassNames = {
-  content: "max-w-4xl",
-  wide: "max-w-7xl",
-  full: "max-w-[90rem]",
+  content: "max-w-[var(--page-max-width-content)]",
+  wide: "max-w-[var(--page-max-width-wide)]",
+  full: "max-w-[var(--page-max-width)]",
 } as const;
 
 type PageLayoutWidth = keyof typeof widthClassNames;
@@ -35,8 +35,8 @@ export function PageLayout({
   return (
     <div
       className={cn(
-        "mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10",
-        "pb-[calc(1.5rem+var(--safe-area-bottom))] sm:pb-[calc(2rem+var(--safe-area-bottom))]",
+        "mx-auto w-full min-w-0 px-[var(--page-gutter)] py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10",
+        "pb-[calc(var(--page-section-gap)+var(--safe-area-bottom))] sm:pb-[calc(2rem+var(--safe-area-bottom))]",
         widthClassNames[width],
         className,
       )}
