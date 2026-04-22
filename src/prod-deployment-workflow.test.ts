@@ -32,8 +32,12 @@ describe("production deployment automation", () => {
     expect(workflow).toContain('PROD_TAG="PROD-V-${PROD_VERSION}-$(date -u +\'%Y%m%d-%H%M%S\')"');
     expect(workflow).toContain('export APP_GIT_COMMIT="${GITHUB_SHA}"');
     expect(workflow).toContain('APP_VERSION: ${{ steps.prod_version.outputs.value }}');
-    expect(workflow).toContain('PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}');
-    expect(workflow).toContain('PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}');
+    expect(workflow).toContain('prod_version: ${{ steps.prod_version.outputs.value }}');
+    expect(workflow).not.toContain('prod_tag: ${{ steps.metadata.outputs.prod_tag }}');
+    expect(workflow).not.toContain('deployed_at: ${{ steps.metadata.outputs.deployed_at }}');
+    expect(workflow).toContain('git for-each-ref --points-at "$GITHUB_SHA"');
+    expect(workflow).toContain('PROD_VERSION="${BASH_REMATCH[1]}"');
+    expect(workflow).toContain('echo "PROD_TAG=$PROD_TAG" >> "$GITHUB_ENV"');
     expect(workflow).toContain('git tag -a "$PROD_TAG" "$GITHUB_SHA"');
     expect(workflow).toContain('gh release create "$PROD_TAG"');
     expect(workflow).toContain("Production-Deployments.md");

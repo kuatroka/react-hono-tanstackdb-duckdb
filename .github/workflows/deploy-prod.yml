@@ -50,8 +50,6 @@ jobs:
       name: prod
       url: ${{ vars.PROD_APP_URL }}
     outputs:
-      prod_tag: ${{ steps.metadata.outputs.prod_tag }}
-      deployed_at: ${{ steps.metadata.outputs.deployed_at }}
       prod_version: ${{ steps.prod_version.outputs.value }}
     steps:
       - name: Checkout
@@ -166,6 +164,29 @@ jobs:
       - name: Ensure tags are available
         run: git fetch --tags origin
 
+      - name: Resolve deployment metadata from git tags
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          TAG_RECORD="$(git for-each-ref --points-at "$GITHUB_SHA" --sort=-taggerdate --format='%(refname:short)%09%(taggerdate:iso8601-strict)' refs/tags/PROD-V-* | head -n 1)"
+          if [ -z "$TAG_RECORD" ]; then
+            echo "No production tag found for ${GITHUB_SHA}" >&2
+            exit 1
+          fi
+
+          PROD_TAG="${TAG_RECORD%%$'\t'*}"
+          DEPLOYED_AT="${TAG_RECORD#*$'\t'}"
+          if [[ "$PROD_TAG" =~ ^PROD-V-([0-9]+\.[0-9]+\.[0-9]+)-[0-9]{8}-[0-9]{6}$ ]]; then
+            PROD_VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Unexpected production tag format: ${PROD_TAG}" >&2
+            exit 1
+          fi
+
+          echo "PROD_TAG=$PROD_TAG" >> "$GITHUB_ENV"
+          echo "DEPLOYED_AT=$DEPLOYED_AT" >> "$GITHUB_ENV"
+          echo "PROD_VERSION=$PROD_VERSION" >> "$GITHUB_ENV"
+
       - name: Generate local prod history artifact
         run: |
           mkdir -p .artifacts
@@ -173,9 +194,6 @@ jobs:
 
       - name: Create GitHub release for prod tag
         env:
-          PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}
-          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
-          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
@@ -212,9 +230,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
-          PROD_VERSION: ${{ needs.deploy.outputs.prod_version }}
-          PROD_TAG: ${{ needs.deploy.outputs.prod_tag }}
-          DEPLOYED_AT: ${{ needs.deploy.outputs.deployed_at }}
         run: |
           gh auth setup-git
           WIKI_URL="https://github.com/${GITHUB_REPOSITORY}.wiki.git"
