@@ -303,7 +303,7 @@ export function AssetDrilldownSection({
           </div>
         )}
 
-        <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
           <div className="min-w-0 h-full [&>*]:h-full">{children}</div>
 
           <div className="min-w-0 h-full [&>*]:h-full">

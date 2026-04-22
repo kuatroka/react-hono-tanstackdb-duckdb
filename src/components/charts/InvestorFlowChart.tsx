@@ -2,374 +2,503 @@
 
 import { memo, useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts/core";
-import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent, LegendComponent } from "echarts/components";
+import { BarChart } from "echarts/charts";
+import { GridComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import uPlot from "uplot";
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type InvestorFlow } from "@/types";
+
+const POSITIVE_BAR_COLOR = "hsl(142, 76%, 36%)";
+const NEGATIVE_BAR_COLOR = "hsl(0, 84%, 60%)";
+const NEUTRAL_BAR_COLOR = "hsl(215, 16%, 65%)";
+const ZERO_LINE_COLOR = "hsl(222, 47%, 11%)";
+const MAX_VISIBLE_QUARTER_LABELS = 8;
 
 // Register only the modules this chart needs for tree shaking
 
-echarts.use([
-    LineChart,
-    GridComponent,
-    TooltipComponent,
-    LegendComponent,
-    CanvasRenderer,
-]);
+echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 interface InvestorFlowChartProps {
-    data: readonly InvestorFlow[];
-    ticker: string;
-    latencyBadge?: React.ReactNode;
-    /** Callback when chart render completes with render time in ms */
-    onRenderComplete?: (renderMs: number) => void;
+  data: readonly InvestorFlow[];
+  ticker: string;
+  latencyBadge?: React.ReactNode;
+  /** Callback when chart render completes with render time in ms */
+  onRenderComplete?: (renderMs: number) => void;
 }
 
 interface InvestorFlowTooltipParam {
-    axisValueLabel?: string;
-    seriesName?: string;
-    value?: number | string | null;
+  axisValueLabel?: string;
+  data?: InvestorFlowBarPoint | null;
+}
+
+interface InvestorFlowChartPoint {
+  quarter: string;
+  inflow: number;
+  outflow: number;
+  netFlow: number;
+}
+
+interface InvestorFlowBarPoint extends InvestorFlowChartPoint {
+  value: number;
+  itemStyle: {
+    color: string;
+    borderRadius: [number, number, number, number];
+  };
+}
+
+function normalizeQuarterLabel(value: string): string {
+  const dashedMatch = value.match(/^(\d{4})-Q(\d)$/);
+  if (dashedMatch) {
+    const [, year, quarter] = dashedMatch;
+    return `${year}Q${quarter}`;
+  }
+
+  return value;
+}
+
+function formatQuarterLabel(value: string): string {
+  return normalizeQuarterLabel(value);
+}
+
+function formatTooltipQuarter(value: string): string {
+  return normalizeQuarterLabel(value);
+}
+
+function formatCompactDollarTick(value: number): string {
+  const absoluteValue = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+
+  if (absoluteValue >= 1_000_000_000_000) {
+    return `${sign}$${Math.round(absoluteValue / 1_000_000_000_000)}T`;
+  }
+  if (absoluteValue >= 1_000_000_000) {
+    return `${sign}$${Math.round(absoluteValue / 1_000_000_000)}B`;
+  }
+  if (absoluteValue >= 1_000_000) {
+    return `${sign}$${Math.round(absoluteValue / 1_000_000)}M`;
+  }
+  return `${sign}$${Math.round(absoluteValue)}`;
+}
+
+function formatDetailedDollarValue(
+  value: number,
+  includePositiveSign = false,
+): string {
+  const absoluteValue = Math.abs(value);
+  const sign = value < 0 ? "-" : includePositiveSign && value > 0 ? "+" : "";
+
+  if (absoluteValue >= 1_000_000_000_000) {
+    return `${sign}$${(absoluteValue / 1_000_000_000_000).toFixed(1)}T`;
+  }
+  if (absoluteValue >= 1_000_000_000) {
+    return `${sign}$${(absoluteValue / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (absoluteValue >= 1_000_000) {
+    return `${sign}$${(absoluteValue / 1_000_000).toFixed(1)}M`;
+  }
+  return `${sign}$${Math.round(absoluteValue).toLocaleString()}`;
+}
+
+function getNetFlowColor(value: number): string {
+  if (value > 0) return POSITIVE_BAR_COLOR;
+  if (value < 0) return NEGATIVE_BAR_COLOR;
+  return NEUTRAL_BAR_COLOR;
+}
+
+function calculateQuarterLabelInterval(length: number): number {
+  if (length <= MAX_VISIBLE_QUARTER_LABELS) {
+    return 0;
+  }
+
+  return Math.ceil(length / MAX_VISIBLE_QUARTER_LABELS) - 1;
 }
 
 function InvestorFlowCard({
-    title,
-    latencyBadge,
-    children,
+  title,
+  latencyBadge,
+  children,
 }: {
-    title: string;
-    latencyBadge?: React.ReactNode;
-    children: React.ReactNode;
+  title: string;
+  latencyBadge?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-    return (
-        <Card className="min-w-0">
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between gap-2">
-                    <span>{title}</span>
-                    {latencyBadge}
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="min-w-0">{children}</CardContent>
-        </Card>
-    );
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span>{title}</span>
+          {latencyBadge}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="min-w-0">{children}</CardContent>
+    </Card>
+  );
 }
 
-function EmptyInvestorFlowCard({ ticker, title }: { ticker: string; title: string }) {
-    return (
-        <Card className="min-w-0">
-            <CardHeader>
-                <CardTitle>{title} for {ticker}</CardTitle>
-            </CardHeader>
-        </Card>
-    );
+function EmptyInvestorFlowCard({
+  ticker,
+  title,
+}: {
+  ticker: string;
+  title: string;
+}) {
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>
+          {title} for {ticker}
+        </CardTitle>
+      </CardHeader>
+    </Card>
+  );
 }
 
-export const InvestorFlowChart = memo(function InvestorFlowChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const chartRef = useRef<echarts.EChartsType | null>(null);
-    const renderStartRef = useRef<number | null>(null);
-    const prevDataSignatureRef = useRef<string>("");
+export const InvestorFlowChart = memo(function InvestorFlowChart({
+  data,
+  ticker,
+  latencyBadge,
+  onRenderComplete,
+}: InvestorFlowChartProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<echarts.EChartsType | null>(null);
+  const renderStartRef = useRef<number | null>(null);
+  const prevDataSignatureRef = useRef<string>("");
 
-    const chartData = useMemo(
-        () => data.map((item) => ({
-            quarter: item.quarter,
-            inflow: item.inflow,
-            outflow: item.outflow,
-        })),
-        [data],
+  const chartData = useMemo<InvestorFlowChartPoint[]>(
+    () =>
+      data.map((item) => ({
+        quarter: item.quarter,
+        inflow: item.inflow,
+        outflow: item.outflow,
+        netFlow: item.inflow - item.outflow,
+      })),
+    [data],
+  );
+
+  const option = useMemo<echarts.EChartsCoreOption | null>(() => {
+    if (chartData.length === 0) return null;
+
+    const quarterLabelInterval = calculateQuarterLabelInterval(
+      chartData.length,
     );
+    const seriesData: InvestorFlowBarPoint[] = chartData.map((item) => ({
+      value: item.netFlow,
+      quarter: item.quarter,
+      inflow: item.inflow,
+      outflow: item.outflow,
+      netFlow: item.netFlow,
+      itemStyle: {
+        color: getNetFlowColor(item.netFlow),
+        borderRadius: item.netFlow >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4],
+      },
+    }));
 
-    const option = useMemo<echarts.EChartsCoreOption | null>(() => {
-        if (chartData.length === 0) return null;
+    return {
+      animation: false,
+      grid: {
+        top: 32,
+        right: 24,
+        bottom: 72,
+        left: 76,
+        containLabel: true,
+      },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: {
+          type: "shadow",
+        },
+        formatter: (
+          params: InvestorFlowTooltipParam[] | InvestorFlowTooltipParam,
+        ) => {
+          const rows = Array.isArray(params) ? params : [params];
+          const point = rows[0]?.data;
+          if (!point) {
+            return `<strong>${rows[0]?.axisValueLabel ?? ""}</strong>`;
+          }
 
-        return {
-            animation: false,
-            grid: {
-                top: 48,
-                right: 32,
-                bottom: 72,
-                left: 56,
-                containLabel: true,
+          const netFlowColor = getNetFlowColor(point.netFlow);
+          const netFlowText = formatDetailedDollarValue(point.netFlow, true);
+
+          return `
+                        <div style="display:flex; gap:12px; align-items:stretch;">
+                            <div style="width:2px; border-radius:9999px; background:${netFlowColor};"></div>
+                            <div>
+                                <div style="display:flex; gap:12px; align-items:baseline; margin-bottom:4px;">
+                                    <strong>${formatTooltipQuarter(point.quarter)}</strong>
+                                    <strong style="color:${netFlowColor};"> ${netFlowText}</strong>
+                                </div>
+                                <div>Inflow: ${formatDetailedDollarValue(point.inflow)}</div>
+                                <div>Outflow: ${formatDetailedDollarValue(point.outflow)}</div>
+                            </div>
+                        </div>
+                    `;
+        },
+      },
+      xAxis: {
+        type: "category",
+        data: chartData.map((item) => item.quarter),
+        axisTick: {
+          alignWithLabel: true,
+          interval: quarterLabelInterval,
+        },
+        axisLabel: {
+          hideOverlap: true,
+          interval: quarterLabelInterval,
+          formatter: formatQuarterLabel,
+        },
+        axisLine: {
+          lineStyle: {
+            color: "rgba(148,163,184,0.55)",
+          },
+        },
+      },
+      yAxis: {
+        type: "value",
+        axisLabel: {
+          formatter: (value: number) => formatCompactDollarTick(value),
+        },
+        axisLine: {
+          show: false,
+        },
+        splitLine: {
+          lineStyle: {
+            type: "dashed",
+            color: "rgba(148,163,184,0.16)",
+          },
+        },
+      },
+      series: [
+        {
+          name: "Net Flow",
+          type: "bar",
+          barMaxWidth: 22,
+          emphasis: {
+            focus: "series",
+          },
+          markLine: {
+            silent: true,
+            symbol: "none",
+            label: { show: false },
+            lineStyle: {
+              color: ZERO_LINE_COLOR,
+              width: 3,
+              type: "solid",
             },
-            tooltip: {
-                trigger: "axis",
-                formatter: (params: InvestorFlowTooltipParam[] | InvestorFlowTooltipParam) => {
-                    const rows = Array.isArray(params) ? params : [params];
-                    const lines = rows.map((row) => {
-                        const value = Number(row.value ?? 0);
-                        return `${row.seriesName}: ${value.toLocaleString()}`;
-                    });
-                    return [`<strong>${rows[0]?.axisValueLabel ?? ""}</strong>`, ...lines].join("<br/>");
-                },
-            },
-            legend: {
-                top: 8,
-                right: 0,
-            },
-            xAxis: {
-                type: "category",
-                data: chartData.map((item) => item.quarter),
-                boundaryGap: false,
-                axisLabel: {
-                    hideOverlap: true,
-                    formatter: (value: string) => {
-                        const match = value.match(/^(\d{4})-Q(\d)$/);
-                        if (match) {
-                            const [, year, quarter] = match;
-                            return `Q${quarter} '${year.slice(-2)}`;
-                        }
-                        return value;
-                    },
-                },
-            },
-            yAxis: {
-                type: "value",
-                splitLine: {
-                    lineStyle: {
-                        type: "dashed",
-                        color: "rgba(148,163,184,0.3)",
-                    },
-                },
-            },
-            series: [
-                {
-                    name: "Inflow",
-                    type: "line",
-                    smooth: true,
-                    showSymbol: false,
-                    symbol: "circle",
-                    lineStyle: {
-                        width: 3,
-                        color: "hsl(142, 76%, 36%)",
-                    },
-                    itemStyle: {
-                        color: "hsl(142, 76%, 36%)",
-                    },
-                    emphasis: {
-                        focus: "series",
-                        scale: true,
-                    },
-                    data: chartData.map((item) => item.inflow),
-                },
-                {
-                    name: "Outflow",
-                    type: "line",
-                    smooth: true,
-                    showSymbol: false,
-                    symbol: "circle",
-                    lineStyle: {
-                        width: 3,
-                        color: "hsl(0, 84%, 60%)",
-                    },
-                    itemStyle: {
-                        color: "hsl(0, 84%, 60%)",
-                    },
-                    emphasis: {
-                        focus: "series",
-                        scale: true,
-                    },
-                    data: chartData.map((item) => item.outflow),
-                },
-            ],
-        };
-    }, [chartData]);
+            data: [{ yAxis: 0 }],
+          },
+          data: seriesData,
+        },
+      ],
+    };
+  }, [chartData]);
 
-    useEffect(() => {
-        const nextSignature = JSON.stringify(chartData.map((item) => [item.quarter, item.inflow, item.outflow]));
-        if (chartData.length > 0 && nextSignature !== prevDataSignatureRef.current) {
-            renderStartRef.current = performance.now();
-            prevDataSignatureRef.current = nextSignature;
-        }
-    }, [chartData]);
-
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container || !option) return;
-
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        if (width <= 0 || height <= 0) return;
-
-        const chartInstance =
-            echarts.getInstanceByDom(container) ??
-            echarts.init(container, undefined, {
-                renderer: "canvas",
-                width,
-                height,
-            });
-
-        chartRef.current = chartInstance;
-        chartInstance.resize({
-            width,
-            height,
-        });
-
-        const handleFinished = () => {
-            if (renderStartRef.current != null && onRenderComplete) {
-                const elapsed = Math.round(performance.now() - renderStartRef.current);
-                onRenderComplete(elapsed);
-                renderStartRef.current = null;
-            }
-        };
-
-        chartInstance.off("finished", handleFinished);
-        chartInstance.on("finished", handleFinished);
-        chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
-        handleFinished();
-
-        return () => {
-            chartInstance.off("finished", handleFinished);
-        };
-    }, [option, onRenderComplete]);
-
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const observer = new ResizeObserver(() => {
-            if (chartRef.current && containerRef.current) {
-                chartRef.current.resize({
-                    width: containerRef.current.clientWidth,
-                    height: containerRef.current.clientHeight,
-                });
-            }
-        });
-
-        observer.observe(container);
-        return () => observer.disconnect();
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            chartRef.current?.dispose();
-            chartRef.current = null;
-        };
-    }, []);
-
-    if (data.length === 0) {
-        return <EmptyInvestorFlowCard ticker={ticker} title="Investor Flow (ECharts)" />;
+  useEffect(() => {
+    const nextSignature = JSON.stringify(
+      chartData.map((item) => [item.quarter, item.inflow, item.outflow]),
+    );
+    if (
+      chartData.length > 0 &&
+      nextSignature !== prevDataSignatureRef.current
+    ) {
+      renderStartRef.current = performance.now();
+      prevDataSignatureRef.current = nextSignature;
     }
+  }, [chartData]);
 
-    return (
-        <InvestorFlowCard
-            title={`Investor Flow for ${ticker} (ECharts)`}
-            latencyBadge={latencyBadge}
-        >
-            <div ref={containerRef} className="h-[400px] w-full min-w-0" />
-        </InvestorFlowCard>
-    );
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !option) return;
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (width <= 0 || height <= 0) return;
+
+    const chartInstance =
+      echarts.getInstanceByDom(container) ??
+      echarts.init(container, undefined, {
+        renderer: "canvas",
+        width,
+        height,
+      });
+
+    chartRef.current = chartInstance;
+    chartInstance.resize({
+      width,
+      height,
+    });
+
+    const handleFinished = () => {
+      if (renderStartRef.current != null && onRenderComplete) {
+        const elapsed = Math.round(performance.now() - renderStartRef.current);
+        onRenderComplete(elapsed);
+        renderStartRef.current = null;
+      }
+    };
+
+    chartInstance.off("finished", handleFinished);
+    chartInstance.on("finished", handleFinished);
+    chartInstance.setOption(option, { notMerge: true, lazyUpdate: true });
+    handleFinished();
+
+    return () => {
+      chartInstance.off("finished", handleFinished);
+    };
+  }, [option, onRenderComplete]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      if (chartRef.current && containerRef.current) {
+        chartRef.current.resize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        });
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      chartRef.current?.dispose();
+      chartRef.current = null;
+    };
+  }, []);
+
+  if (data.length === 0) {
+    return <EmptyInvestorFlowCard ticker={ticker} title="Net Investor Flow" />;
+  }
+
+  return (
+    <InvestorFlowCard
+      title={`Net Investor Flow ${ticker}`}
+      latencyBadge={latencyBadge}
+    >
+      <div ref={containerRef} className="h-[400px] w-full min-w-0" />
+    </InvestorFlowCard>
+  );
 });
 
-export const InvestorFlowUplotChart = memo(function InvestorFlowUplotChart({ data, ticker, latencyBadge, onRenderComplete }: InvestorFlowChartProps) {
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const chartRef = useRef<uPlot | null>(null);
+export const InvestorFlowUplotChart = memo(function InvestorFlowUplotChart({
+  data,
+  ticker,
+  latencyBadge,
+  onRenderComplete,
+}: InvestorFlowChartProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<uPlot | null>(null);
 
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container || data.length === 0) return;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || data.length === 0) return;
 
-        const renderStartedAt = performance.now();
-        const labels = data.map((item) => item.quarter);
-        const inflow = data.map((item) => item.inflow);
-        const outflow = data.map((item) => item.outflow);
-        const indices = labels.map((_, index) => index);
+    const renderStartedAt = performance.now();
+    const labels = data.map((item) => item.quarter);
+    const inflow = data.map((item) => item.inflow);
+    const outflow = data.map((item) => item.outflow);
+    const indices = labels.map((_, index) => index);
 
-        const chart = new uPlot(
-            {
-                title: `Investor Flow (${ticker})`,
-                width: container.clientWidth,
-                height: 400,
-                padding: [16, 24, 48, 16],
-                legend: { show: true },
-                scales: {
-                    x: { time: false, range: [-0.5, labels.length - 0.5] },
-                    y: { auto: true },
-                },
-                axes: [
-                    {
-                        stroke: "#6b7280",
-                        grid: { stroke: "rgba(148,163,184,0.25)" },
-                        values: (_chart, ticks) => ticks.map((tick) => {
-                            const label = labels[Math.round(tick)] ?? "";
-                            const match = label.match(/^(\d{4})-Q(\d)$/);
-                            if (match) {
-                                const [, year, quarter] = match;
-                                return `Q${quarter} '${year.slice(-2)}`;
-                            }
-                            return label;
-                        }),
-                        gap: 10,
-                    },
-                    {
-                        stroke: "#6b7280",
-                        grid: { stroke: "rgba(148,163,184,0.25)" },
-                    },
-                ],
-                series: [
-                    {},
-                    {
-                        label: "Inflow",
-                        stroke: "#15803d",
-                        width: 3,
-                        points: { show: false },
-                        paths: uPlot.paths.spline!(),
-                    },
-                    {
-                        label: "Outflow",
-                        stroke: "#dc2626",
-                        width: 3,
-                        points: { show: false },
-                        paths: uPlot.paths.spline!(),
-                    },
-                ],
-            },
-            [indices, inflow, outflow],
-            container,
-        );
+    const chart = new uPlot(
+      {
+        title: `Investor Flow (${ticker})`,
+        width: container.clientWidth,
+        height: 400,
+        padding: [16, 24, 48, 16],
+        legend: { show: true },
+        scales: {
+          x: { time: false, range: [-0.5, labels.length - 0.5] },
+          y: { auto: true },
+        },
+        axes: [
+          {
+            stroke: "#6b7280",
+            grid: { stroke: "rgba(148,163,184,0.25)" },
+            values: (_chart, ticks) =>
+              ticks.map((tick) => {
+                const label = labels[Math.round(tick)] ?? "";
+                const match = label.match(/^(\d{4})-Q(\d)$/);
+                if (match) {
+                  const [, year, quarter] = match;
+                  return `Q${quarter} '${year.slice(-2)}`;
+                }
+                return label;
+              }),
+            gap: 10,
+          },
+          {
+            stroke: "#6b7280",
+            grid: { stroke: "rgba(148,163,184,0.25)" },
+          },
+        ],
+        series: [
+          {},
+          {
+            label: "Inflow",
+            stroke: "#15803d",
+            width: 3,
+            points: { show: false },
+            paths: uPlot.paths.spline!(),
+          },
+          {
+            label: "Outflow",
+            stroke: "#dc2626",
+            width: 3,
+            points: { show: false },
+            paths: uPlot.paths.spline!(),
+          },
+        ],
+      },
+      [indices, inflow, outflow],
+      container,
+    );
 
-        chartRef.current = chart;
+    chartRef.current = chart;
 
-        let rafId: number | null = null;
-        if (onRenderComplete) {
-            rafId = requestAnimationFrame(() => {
-                onRenderComplete(Math.round(performance.now() - renderStartedAt));
-            });
-        }
-
-        const resizeObserver = new ResizeObserver(() => {
-            if (chartRef.current && containerRef.current) {
-                chartRef.current.setSize({ width: containerRef.current.clientWidth, height: 400 });
-            }
-        });
-
-        resizeObserver.observe(container);
-
-        return () => {
-            if (rafId != null) {
-                cancelAnimationFrame(rafId);
-            }
-            resizeObserver.disconnect();
-            chart.destroy();
-            chartRef.current = null;
-        };
-    }, [data, ticker, onRenderComplete]);
-
-    if (data.length === 0) {
-        return <EmptyInvestorFlowCard ticker={ticker} title="Investor Flow (uPlot)" />;
+    let rafId: number | null = null;
+    if (onRenderComplete) {
+      rafId = requestAnimationFrame(() => {
+        onRenderComplete(Math.round(performance.now() - renderStartedAt));
+      });
     }
 
+    const resizeObserver = new ResizeObserver(() => {
+      if (chartRef.current && containerRef.current) {
+        chartRef.current.setSize({
+          width: containerRef.current.clientWidth,
+          height: 400,
+        });
+      }
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
+      chart.destroy();
+      chartRef.current = null;
+    };
+  }, [data, ticker, onRenderComplete]);
+
+  if (data.length === 0) {
     return (
-        <InvestorFlowCard
-            title={`Investor Flow for ${ticker} (uPlot)`}
-            latencyBadge={latencyBadge}
-        >
-            <div ref={containerRef} className="h-[400px] w-full min-w-0" />
-        </InvestorFlowCard>
+      <EmptyInvestorFlowCard ticker={ticker} title="Investor Flow (uPlot)" />
     );
+  }
+
+  return (
+    <InvestorFlowCard
+      title={`Investor Flow for ${ticker} (uPlot)`}
+      latencyBadge={latencyBadge}
+    >
+      <div ref={containerRef} className="h-[400px] w-full min-w-0" />
+    </InvestorFlowCard>
+  );
 });

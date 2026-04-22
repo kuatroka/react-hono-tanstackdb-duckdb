@@ -19,6 +19,7 @@
     "build": "bun run build:css && bun run build:html",
     "preview": "bun run build && bun run start",
     "preview:prod": "bun run preview",
+    "theme:tweakcn": "open \"https://tweakcn.com/editor/theme?p=custom\"",
     "prod:github:setup": "bun scripts/setup-prod-github.ts",
     "prod:github:setup:dry-run": "bun scripts/setup-prod-github.ts --dry-run",
     "prod:history": "bun scripts/prod-history.ts",

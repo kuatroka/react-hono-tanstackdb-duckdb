@@ -5,6 +5,7 @@ import { fetchAssetRecord } from "@/collections/assets";
 import { AssetActivitySection } from "@/components/detail/AssetActivitySection";
 import { AssetDrilldownSection } from "@/components/detail/AssetDrilldownSection";
 import { AssetFlowSection } from "@/components/detail/AssetFlowSection";
+import { PageHeader, PageLayout, PageSection } from "@/components/layout/page-layout";
 import { useMarkContentReady } from "@/hooks/useContentReady";
 
 interface AssetDetailRecordState {
@@ -82,26 +83,22 @@ export function AssetDetailPage() {
   const record = recordState.record;
 
   return (
-    <>
-      <div className="grid w-full grid-cols-3 items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="text-left">
+    <PageLayout width="full" className="space-y-8">
+      <PageHeader
+        leading={
           <Link
             to="/assets"
             search={{ page: undefined, search: undefined }}
-            className="whitespace-nowrap text-primary hover:underline"
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
           >
-            &larr; Back to assets
+            <span aria-hidden="true">←</span>
+            <span>Back to assets</span>
           </Link>
-        </div>
-        <div className="text-center">
-          <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-3xl font-bold">
-            ({record.asset}) {record.assetName}
-          </h1>
-        </div>
-        <div className="text-right" />
-      </div>
+        }
+        title={`(${record.asset}) ${record.assetName}`}
+      />
 
-      <div className="mt-8 px-4 sm:px-6 lg:px-8">
+      <PageSection>
         <AssetDrilldownSection
           key={`asset-drilldown-${code}-${record.cusip ?? "no-cusip"}-${hasCusip ? "with-cusip" : "without-cusip"}`}
           code={code}
@@ -116,11 +113,14 @@ export function AssetDetailPage() {
             hasCusip={hasCusip}
           />
         </AssetDrilldownSection>
-      </div>
+      </PageSection>
 
-      <div className="mt-8 px-4 sm:px-6 lg:px-8">
-        <AssetFlowSection code={code} ticker={record.asset} />
-      </div>
-    </>
+      <PageSection>
+        <AssetFlowSection
+          code={code}
+          ticker={record.asset}
+        />
+      </PageSection>
+    </PageLayout>
   );
 }

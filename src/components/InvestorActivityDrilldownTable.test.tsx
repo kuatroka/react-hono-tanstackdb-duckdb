@@ -33,6 +33,11 @@ function registerModuleMocks() {
       React.createElement("h2", props, children),
   }));
 
+  mock.module("@/components/ui/button", () => ({
+    Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) =>
+      React.createElement("button", props, children),
+  }));
+
   mock.module("@/components/LatencyBadge", () => ({
     LatencyBadge: ({ telemetry, source }: { telemetry?: { primaryLine?: string } | null; source?: string }) =>
       React.createElement(
@@ -55,6 +60,11 @@ function registerModuleMocks() {
         "data-row-ids": data.map((row) => row.id).join(","),
       });
     },
+  }));
+
+  mock.module("@/components/detail/SuperinvestorAssetHistorySection", () => ({
+    SuperinvestorAssetHistorySection: ({ investor }: { investor: { cik?: string } }) =>
+      React.createElement("div", { "data-testid": "inline-history", "data-cik": investor?.cik ?? "" }),
   }));
 
   mock.module("@/collections/investor-details", () => ({
@@ -175,6 +185,9 @@ describe("InvestorActivityDrilldownTable", () => {
     const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
 
     expect(source).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(source).toContain('searchStrategy="ufuzzy"');
+    expect(source).toContain('mode: "name-only"');
+    expect(source).toContain("getName: (row) => row.cikName");
     expect(source).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(source).not.toContain('data-testid="drilldown-search-telemetry-slot"');
     expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
@@ -187,6 +200,15 @@ describe("InvestorActivityDrilldownTable", () => {
     expect(source).toContain("preload={false}");
   });
 
+  test("configures inline expanded rows for investor history drilldown", async () => {
+    const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain("expandedRowKey={expandedInvestorCik}");
+    expect(source).toContain("getRowKey={(row) => row.cik}");
+    expect(source).toContain("renderExpandedRow={(row) => (");
+    expect(source).toContain("SuperinvestorAssetHistorySection");
+  });
+
   test("keeps the end-to-end drilldown latency badge visible instead of replacing it with table-only telemetry", async () => {
     const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
 
@@ -195,7 +217,7 @@ describe("InvestorActivityDrilldownTable", () => {
     expect(source).toContain(": tableTelemetry ? (");
   });
 
-  test("shows six visible rows and uses the same fixed content height as the investor activity chart card", async () => {
+  test("shows six visible rows with placeholder pnl, value, and weight columns plus trailing chevron", async () => {
     cachedRowsByKey.set(makeCacheKey("VII", "81786A107", "2024-Q4", "open"), [
       {
         id: "81786A107-2024-Q4-open-0001",
@@ -220,9 +242,15 @@ describe("InvestorActivityDrilldownTable", () => {
     );
 
     const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
+    const columns = virtualTableProps[0]?.columns as Array<{ key: string; header: string }> | undefined;
 
     expect(virtualTableProps[0]?.visibleRowCount).toBe(6);
-    expect(virtualTableProps[0]?.gridTemplateColumns).toBe("minmax(0, 1.8fr) minmax(4rem, 0.75fr) minmax(5.5rem, 0.9fr) minmax(4.5rem, 0.8fr)");
+    expect(virtualTableProps[0]?.gridTemplateColumns).toBe("minmax(0, 1.6fr) minmax(6rem, 0.55fr) minmax(6rem, 0.6fr) minmax(6rem, 0.55fr) 3rem");
+    expect(columns?.map((column) => column.key)).toEqual(["cikName", "quarter", "cusip", "cikTicker", "action"]);
+    expect(columns?.map((column) => column.header)).toEqual(["Superinvestor", "VII P&L%", "Value", "Weight%", ""]);
+    expect(source).not.toContain('header: "CIK"');
+    expect(source).not.toContain('header: "CUSIP"');
+    expect(source).not.toContain('header: "Journey"');
     expect(source).toContain("className={ASSET_DETAIL_CARD_CLASS_NAME}");
     expect(source).toContain("className={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
     expect(source).toContain('className="relative flex-1 h-full w-full min-w-0"');

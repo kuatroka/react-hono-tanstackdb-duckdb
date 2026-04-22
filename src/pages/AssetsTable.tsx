@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LatencyBadge } from '@/components/LatencyBadge';
+import { PageLayout } from '@/components/layout/page-layout';
 import { useMarkContentReady } from '@/hooks/useContentReady';
 import type { PerfSource, PerfTelemetry } from '@/lib/perf/telemetry';
 import {
@@ -82,6 +83,11 @@ const AssetsTableCard = memo(function AssetsTableCard({
           searchDebounceMs={150}
           searchPlaceholder="Search assets..."
           searchStrategy="ufuzzy"
+          ufuzzyRanking={{
+            mode: 'ticker-and-name',
+            getCode: (row) => row.asset,
+            getName: (row) => row.assetName,
+          }}
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />
@@ -151,7 +157,7 @@ function AssetsTableSurface() {
   }, [assetsData, onReady]);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <PageLayout width="wide">
       {isLoading ? (
         <div className="py-8 text-center text-muted-foreground">Loading…</div>
       ) : loadError ? (
@@ -162,6 +168,6 @@ function AssetsTableSurface() {
           rows={assetsData || []}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

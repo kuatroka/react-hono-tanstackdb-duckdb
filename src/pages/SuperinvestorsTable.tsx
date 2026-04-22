@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LatencyBadge } from "@/components/LatencyBadge";
+import { PageLayout } from "@/components/layout/page-layout";
 import { useMarkContentReady } from "@/hooks/useContentReady";
 import type { PerfSource, PerfTelemetry } from "@/lib/perf/telemetry";
 import {
@@ -90,6 +91,10 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
           searchDebounceMs={150}
           searchPlaceholder="Search superinvestors..."
           searchStrategy="ufuzzy"
+          ufuzzyRanking={{
+            mode: "name-only",
+            getName: (row) => row.cikName,
+          }}
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />
@@ -158,7 +163,7 @@ function SuperinvestorsTableSurface() {
   }, [superinvestorsData, onReady]);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <PageLayout width="wide">
       {isLoading ? (
         <div className="py-8 text-center text-muted-foreground">
           Loading…
@@ -169,6 +174,6 @@ function SuperinvestorsTableSurface() {
           rows={superinvestorsData || []}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

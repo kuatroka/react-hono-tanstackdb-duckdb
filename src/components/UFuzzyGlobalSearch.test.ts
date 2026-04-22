@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import UFuzzy from "@leeoniya/ufuzzy";
-import { rerankUFuzzyResults, runUFuzzyIndexSearch, runUFuzzySearch, UFUZZY_OPTIONS } from "@/lib/ufuzzy-search";
+import { rerankUFuzzyResults, rerankUFuzzyTableRows, runUFuzzyIndexSearch, runUFuzzySearch, UFUZZY_OPTIONS } from "@/lib/ufuzzy-search";
 import type { SearchResult as CollectionSearchResult } from "@/collections/searches";
 
 const items: CollectionSearchResult[] = [
@@ -122,5 +122,38 @@ describe("runUFuzzySearch", () => {
       code: "GE",
       name: "GEN ELEC CO",
     });
+  });
+
+  test("reranks asset table rows with ticker and name boosts", () => {
+    const reranked = rerankUFuzzyTableRows(
+      [
+        { asset: "AAPW", assetName: "Apple Weekly" },
+        { asset: "AAPL", assetName: "Apple Inc" },
+      ],
+      "AAPL",
+      {
+        mode: "ticker-and-name",
+        getCode: (row) => row.asset,
+        getName: (row) => row.assetName,
+      },
+    );
+
+    expect(reranked.map((row) => row.asset)).toEqual(["AAPL", "AAPW"]);
+  });
+
+  test("reranks table rows with name boosts only for superinvestor and drilldown surfaces", () => {
+    const reranked = rerankUFuzzyTableRows(
+      [
+        { cik: "352012", cikName: "HATHAWAY & ASSOCIATES LTD" },
+        { cik: "1067983", cikName: "BERKSHIRE HATHAWAY INC" },
+      ],
+      "berkshire",
+      {
+        mode: "name-only",
+        getName: (row) => row.cikName,
+      },
+    );
+
+    expect(reranked.map((row) => row.cik)).toEqual(["1067983", "352012"]);
   });
 });

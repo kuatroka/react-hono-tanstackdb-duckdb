@@ -335,6 +335,23 @@ describe("asset detail section runtime behavior", () => {
     expect(source).toContain("if (isCurrentRecord && recordState.record !== undefined) {");
   });
 
+  test("asset detail page keeps the investor flow section independent from inline drilldown expansions", async () => {
+    const source = await Bun.file(new URL("./AssetDetail.tsx", import.meta.url)).text();
+
+    expect(source).not.toContain("const [selectedInvestor, setSelectedInvestor]");
+    expect(source).not.toContain("onSelectedInvestorChange={setSelectedInvestor}");
+    expect(source).toContain("<AssetFlowSection");
+    expect(source).not.toContain("selectedInvestor={selectedInvestor}");
+  });
+
+  test("asset flow section always renders the investor flow chart below the inline drilldown", async () => {
+    const source = await Bun.file(new URL("../components/detail/AssetFlowSection.tsx", import.meta.url)).text();
+
+    expect(source).not.toContain("SuperinvestorAssetHistorySection");
+    expect(source).not.toContain("if (selectedInvestor && cusip)");
+    expect(source).toContain("<InvestorFlowChart");
+  });
+
   beforeEach(() => {
     mock.restore();
     registerModuleMocks();
@@ -520,5 +537,12 @@ describe("asset detail section runtime behavior", () => {
     expect(drilldownSource).toContain('className="min-w-0 h-full [&>*]:h-full"');
     expect(activityChartSource).toContain("cardClassName={ASSET_DETAIL_CARD_CLASS_NAME}");
     expect(activityChartSource).toContain("cardContentClassName={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
+  });
+
+  test("uses equal-width columns for the activity chart and drilldown table on wide screens", async () => {
+    const drilldownSource = await Bun.file(new URL("../components/detail/AssetDrilldownSection.tsx", import.meta.url)).text();
+
+    expect(drilldownSource).toContain('xl:grid-cols-2');
+    expect(drilldownSource).not.toContain('xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]');
   });
 });

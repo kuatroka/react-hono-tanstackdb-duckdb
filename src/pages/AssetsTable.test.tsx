@@ -11,6 +11,9 @@ describe("AssetsTablePage", () => {
     expect(source).toContain("getAssetListLoadSource");
     expect(source).toContain("clientPageSize={100}");
     expect(source).toContain('searchStrategy="ufuzzy"');
+    expect(source).toContain("mode: 'ticker-and-name'");
+    expect(source).toContain("getCode: (row) => row.asset");
+    expect(source).toContain("getName: (row) => row.assetName");
     expect(source).not.toContain("onReady={onReady}");
     expect(source).not.toContain("useSearch");
     expect(source).not.toContain("useNavigate");

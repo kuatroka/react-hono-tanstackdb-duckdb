@@ -10,6 +10,8 @@ describe("SuperinvestorsTablePage", () => {
     expect(source).toContain("useMarkContentReady");
     expect(source).toContain("clientPageSize={100}");
     expect(source).toContain('searchStrategy="ufuzzy"');
+    expect(source).toContain('mode: "name-only"');
+    expect(source).toContain("getName: (row) => row.cikName");
     expect(source).not.toContain("onReady={onReady}");
     expect(source).not.toContain("useSearch");
     expect(source).not.toContain("useNavigate");

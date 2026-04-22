@@ -1,5 +1,6 @@
-import { useMemo, useEffect, useState, useRef } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
 import { VirtualDataTable, type ColumnDef } from "@/components/VirtualDataTable";
@@ -7,6 +8,8 @@ import {
   ASSET_DETAIL_CARD_CLASS_NAME,
   ASSET_DETAIL_CARD_CONTENT_CLASS_NAME,
 } from "@/components/detail/asset-detail-card-layout";
+import { SuperinvestorAssetHistorySection } from "@/components/detail/SuperinvestorAssetHistorySection";
+import { Button } from "@/components/ui/button";
 import type { PerfTelemetry } from "@/lib/perf/telemetry";
 import {
   fetchDrilldownBothActions,
@@ -72,6 +75,14 @@ export function InvestorActivityDrilldownTable({
   const renderStartRef = useRef<number | null>(null);
   const prevDataLengthRef = useRef<number>(0);
   const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
+  const expansionScopeKey = `${ticker}:${cusip}:${quarter}:${action}`;
+  const [expandedInvestorState, setExpandedInvestorState] = useState<{ scopeKey: string; cik: string | null }>(() => ({
+    scopeKey: expansionScopeKey,
+    cik: null,
+  }));
+  const expandedInvestorCik = expandedInvestorState.scopeKey === expansionScopeKey
+    ? expandedInvestorState.cik
+    : null;
 
   // Load current selection as fast as possible by letting IndexedDB hydration and
   // the quarter fetch race each other, then measure the full user-visible wait.
@@ -252,6 +263,13 @@ export function InvestorActivityDrilldownTable({
     }));
   }, [data]);
 
+  const handleToggleExpandedInvestor = useCallback((cik: string) => {
+    setExpandedInvestorState((current) => ({
+      scopeKey: expansionScopeKey,
+      cik: current.scopeKey === expansionScopeKey && current.cik === cik ? null : cik,
+    }));
+  }, [expansionScopeKey]);
+
   const columns: ColumnDef<InvestorActivityDrilldownRow>[] = useMemo(
     () => [
       {
@@ -274,24 +292,49 @@ export function InvestorActivityDrilldownTable({
         ),
       },
       {
-        key: "cik",
-        header: "CIK",
-        sortable: true,
-        searchable: true,
+        key: "quarter",
+        header: `${ticker} P&L%`,
+        render: () => "—",
+        className: "min-w-[6rem]",
       },
       {
         key: "cusip",
-        header: "CUSIP",
-        sortable: true,
-        searchable: true,
+        header: "Value",
+        render: () => "—",
+        className: "min-w-[6rem]",
       },
       {
-        key: "quarter",
-        header: "Quarter",
-        sortable: true,
+        key: "cikTicker",
+        header: "Weight%",
+        render: () => "—",
+        className: "min-w-[6rem]",
+      },
+      {
+        key: "action",
+        header: "",
+        render: (_value, row) => {
+          const isExpanded = expandedInvestorCik === row.cik;
+          return (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${isExpanded ? "Collapse" : "Expand"} ${row.cikName || row.cik} history`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handleToggleExpandedInvestor(row.cik);
+              }}
+              className="ml-auto h-8 w-8"
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+          );
+        },
+        className: "w-10 justify-self-end",
       },
     ],
-    []
+    [expandedInvestorCik, handleToggleExpandedInvestor, ticker]
   );
 
   if (!enabled) {
@@ -348,15 +391,35 @@ export function InvestorActivityDrilldownTable({
             <VirtualDataTable
               data={rows}
               columns={columns}
+              getRowKey={(row) => row.cik}
               searchPlaceholder="Filter superinvestors..."
               defaultSortColumn="cikName"
               defaultSortDirection="asc"
-              gridTemplateColumns="minmax(0, 1.8fr) minmax(4rem, 0.75fr) minmax(5.5rem, 0.9fr) minmax(4.5rem, 0.8fr)"
+              gridTemplateColumns="minmax(0, 1.6fr) minmax(6rem, 0.55fr) minmax(6rem, 0.6fr) minmax(6rem, 0.55fr) 3rem"
               latencySource="tsdb-memory"
               dataSource={dataFlow}
+              expandedRowKey={expandedInvestorCik}
+              expandedRowHeight={152}
+              renderExpandedRow={(row) => (
+                <SuperinvestorAssetHistorySection
+                  ticker={ticker}
+                  cusip={cusip}
+                  investor={{
+                    cik: row.cik,
+                    cikName: row.cikName,
+                    quarter: row.quarter,
+                    action: row.action,
+                  }}
+                />
+              )}
               onTableTelemetryChange={setTableTelemetry}
               tableTelemetryLabel="drilldown table"
               searchTelemetryLabel="search"
+              searchStrategy="ufuzzy"
+              ufuzzyRanking={{
+                mode: "name-only",
+                getName: (row) => row.cikName,
+              }}
               clientPageSize={100}
               visibleRowCount={6}
             />

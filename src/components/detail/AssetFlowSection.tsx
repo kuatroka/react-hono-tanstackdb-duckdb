@@ -34,7 +34,10 @@ function createInitialAssetFlowState(code: string): AssetFlowLoadState {
   };
 }
 
-export const AssetFlowSection = memo(function AssetFlowSection({ code, ticker }: AssetFlowSectionProps) {
+export const AssetFlowSection = memo(function AssetFlowSection({
+  code,
+  ticker,
+}: AssetFlowSectionProps) {
   const [flowStatus, setFlowStatus] = useState<AssetFlowLoadState>(() => createInitialAssetFlowState(code));
   const [flowRows, setFlowRows] = useState<InvestorFlowData[]>([]);
   const [flowRenderMs, setFlowRenderMs] = useState<number | null>(null);

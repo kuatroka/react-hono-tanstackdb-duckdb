@@ -7,7 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLatencyMs } from '@/lib/latency';
 import { createLegacyPerfTelemetry, type PerfSource, type PerfTelemetry } from '@/lib/perf/telemetry';
-import { runUFuzzyIndexSearch, UFUZZY_OPTIONS, type UFuzzyPreviousFilter } from '@/lib/ufuzzy-search';
+import {
+  rerankUFuzzyTableRows,
+  runUFuzzyIndexSearch,
+  UFUZZY_OPTIONS,
+  type UFuzzyPreviousFilter,
+  type UFuzzyTableRankingConfig,
+} from '@/lib/ufuzzy-search';
 import { cn } from '@/lib/utils';
 
 type SortDirection = 'asc' | 'desc';
@@ -283,16 +289,21 @@ interface VirtualDataTableProps<T extends { id: number | string }> {
   onLoadMore?: () => void | Promise<unknown>;
   onReady?: () => void;
   dataSource?: PerfSource;
+  onRowClick?: (row: T) => void;
   onSearchChange?: (value: string) => void;
   onSearchTelemetryChange?: (searchTelemetry: PerfTelemetry | null) => void;
   onSortChange?: (column: Extract<keyof T, string>, direction: SortDirection) => void;
   onTableTelemetryChange?: (tableTelemetry: PerfTelemetry | null) => void;
   rowHeight?: number;
+  expandedRowHeight?: number;
+  expandedRowKey?: Key | null;
+  renderExpandedRow?: (row: T) => ReactNode;
   clientPageSize?: number;
   minimumSearchCharacters?: number;
   searchDebounceMs?: number;
   searchPlaceholder?: string;
   searchStrategy?: TableSearchStrategy;
+  ufuzzyRanking?: UFuzzyTableRankingConfig<T>;
   searchTelemetryLabel?: string;
   searchValue?: string;
   tableTelemetryLabel?: string;
@@ -313,16 +324,21 @@ export function VirtualDataTable<T extends { id: number | string }>({
   onLoadMore,
   onReady,
   dataSource,
+  onRowClick,
   onSearchChange,
   onSearchTelemetryChange,
   onSortChange,
   onTableTelemetryChange,
   rowHeight = DEFAULT_ROW_HEIGHT,
+  expandedRowHeight = 0,
+  expandedRowKey = null,
+  renderExpandedRow,
   clientPageSize = DEFAULT_CLIENT_PAGE_SIZE,
   minimumSearchCharacters = DEFAULT_MIN_SEARCH_CHARACTERS,
   searchDebounceMs = 150,
   searchPlaceholder = 'Search...',
   searchStrategy = 'includes',
+  ufuzzyRanking,
   searchTelemetryLabel = 'search',
   searchValue = '',
   tableTelemetryLabel = 'virtual table',
@@ -399,9 +415,12 @@ export function VirtualDataTable<T extends { id: number | string }>({
         normalizedSearch,
         previousUFuzzyFilterRef.current,
       );
+      const rankedRows = fuzzyMatch.rankedIndexes.map((index) => data[index]);
 
       return {
-        rows: fuzzyMatch.rankedIndexes.map((index) => data[index]),
+        rows: ufuzzyRanking
+          ? rerankUFuzzyTableRows(rankedRows, normalizedSearch, ufuzzyRanking)
+          : rankedRows,
         idxs: fuzzyMatch.idxs,
       };
     }
@@ -417,7 +436,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
       ),
       idxs: null as number[] | null,
     };
-  }, [data, normalizedSearch, searchHaystack, searchStrategy, searchableColumns]);
+  }, [data, normalizedSearch, searchHaystack, searchStrategy, searchableColumns, ufuzzyRanking]);
 
   useEffect(() => {
     if (!normalizedSearch || searchStrategy !== 'ufuzzy') {
@@ -429,9 +448,10 @@ export function VirtualDataTable<T extends { id: number | string }>({
   }, [filteredSearch.idxs, normalizedSearch, searchHaystack.length, searchStrategy]);
 
   const hasSearch = normalizedSearch.length > 0;
-  const shouldReorderRows = hasSearch || sortColumn !== defaultSortColumn || sortDirection !== defaultSortDirection;
+  const hasExplicitSort = sortColumn !== defaultSortColumn || sortDirection !== defaultSortDirection;
+  const shouldReorderRows = hasSearch || hasExplicitSort;
   const orderedData = useMemo(() => {
-    if (!shouldReorderRows) {
+    if (!shouldReorderRows || (hasSearch && searchStrategy === 'ufuzzy' && !hasExplicitSort)) {
       return filteredSearch.rows;
     }
 
@@ -449,12 +469,13 @@ export function VirtualDataTable<T extends { id: number | string }>({
         : String(bVal).localeCompare(String(aVal));
     });
     return sorted;
-  }, [filteredSearch.rows, shouldReorderRows, sortColumn, sortDirection]);
+  }, [filteredSearch.rows, hasExplicitSort, hasSearch, searchStrategy, shouldReorderRows, sortColumn, sortDirection]);
 
   const tableLatencyResetKey = `${String(sortColumn)}:${sortDirection}:${data.length}:${shouldReorderRows}`;
   const searchLatencyResetKey = normalizedSearch;
   const readyResetKey = `${tableLatencyResetKey}:${searchLatencyResetKey}:${orderedData.length}`;
   const hasRemotePagination = Boolean(onLoadMore || hasNextPage);
+  const expandedRowKeyString = expandedRowKey == null ? null : String(expandedRowKey);
 
   useEffect(() => {
     if (hasRemotePagination) {
@@ -530,14 +551,32 @@ export function VirtualDataTable<T extends { id: number | string }>({
     return orderedData.slice(0, revealedRowCount);
   }, [hasRemotePagination, orderedData, revealedRowCount]);
 
+  const resolveRowKey = useCallback((row: T) => {
+    const resolved = getRowKey ? getRowKey(row) : row.id;
+    return String(resolved);
+  }, [getRowKey]);
+
   const virtualizer = useVirtualizer({
     count: visibleData.length,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (index) => {
+      const row = visibleData[index];
+      if (!row) {
+        return rowHeight;
+      }
+      const rowKey = resolveRowKey(row);
+      return renderExpandedRow && expandedRowKeyString === rowKey
+        ? rowHeight + expandedRowHeight
+        : rowHeight;
+    },
     overscan: 8,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  useEffect(() => {
+    virtualizer.measure();
+  }, [expandedRowHeight, expandedRowKeyString, renderExpandedRow, virtualizer]);
 
   useEffect(() => {
     if (focusedRowIndex < 0) return;
@@ -604,6 +643,10 @@ export function VirtualDataTable<T extends { id: number | string }>({
     });
   }, []);
 
+  const triggerRowClick = useCallback((row: T) => {
+    onRowClick?.(row);
+  }, [onRowClick]);
+
   const handleSearchEnter = useCallback(() => {
     focusFirstRow();
     focusRowElement(0);
@@ -612,11 +655,20 @@ export function VirtualDataTable<T extends { id: number | string }>({
 
   const activateFocusedRow = useCallback(() => {
     const activeElement = document.activeElement;
+    const activeRowIndex = activeElement instanceof HTMLElement
+      ? Number(activeElement.dataset.rowIndex ?? activeElement.closest?.('[data-row-index]')?.getAttribute('data-row-index'))
+      : Number.NaN;
+    if (Number.isFinite(activeRowIndex) && activeRowIndex >= 0) {
+      const row = visibleData[activeRowIndex];
+      if (row) {
+        triggerRowClick(row);
+      }
+    }
     const link = activeElement?.querySelector?.('a') ?? activeElement?.closest?.('a');
     if (link instanceof HTMLAnchorElement) {
       link.click();
     }
-  }, []);
+  }, [triggerRowClick, visibleData]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.target instanceof HTMLInputElement) return;
@@ -723,28 +775,40 @@ export function VirtualDataTable<T extends { id: number | string }>({
               <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualItems.map((virtualRow) => {
                   const row = visibleData[virtualRow.index];
-                  const rowKey = getRowKey ? getRowKey(row) : row.id;
+                  const rowKey = resolveRowKey(row);
+                  const isExpanded = Boolean(renderExpandedRow) && expandedRowKeyString === rowKey;
                   return (
                     <div
-                      key={String(rowKey)}
+                      key={rowKey}
                       ref={(element) => {
                         rowRefs.current[virtualRow.index] = element;
                       }}
                       data-row-index={virtualRow.index}
                       tabIndex={0}
+                      onClick={() => triggerRowClick(row)}
                       onFocus={() => setFocusedRowIndex(virtualRow.index)}
-                      className={cn('absolute left-0 right-0 border-b border-border bg-background px-4 outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined)}
+                      className={cn('absolute left-0 right-0 border-b border-border bg-background px-4 outline-none', focusedRowIndex === virtualRow.index ? 'bg-muted/50' : undefined, onRowClick ? 'cursor-pointer' : undefined)}
                       style={{
-                        height: rowHeight,
+                        height: virtualRow.size,
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <div className="grid h-full items-center gap-4 hover:bg-muted/20" style={{ gridTemplateColumns }}>
-                        {columns.map((column) => (
-                          <div key={String(column.key)} className={cn('min-w-0 truncate text-sm', column.className)}>
-                            {column.render ? column.render(row[column.key], row, focusedRowIndex === virtualRow.index) : String(row[column.key] ?? '')}
+                      <div className="flex h-full flex-col">
+                        <div className="grid items-center gap-4 hover:bg-muted/20" style={{ gridTemplateColumns, minHeight: rowHeight, height: rowHeight }}>
+                          {columns.map((column) => (
+                            <div key={String(column.key)} className={cn('min-w-0 truncate text-sm', column.className)}>
+                              {column.render ? column.render(row[column.key], row, focusedRowIndex === virtualRow.index) : String(row[column.key] ?? '')}
+                            </div>
+                          ))}
+                        </div>
+                        {isExpanded ? (
+                          <div
+                            className="overflow-hidden border-t border-border bg-muted/20 px-3 py-3"
+                            style={{ height: expandedRowHeight }}
+                          >
+                            {renderExpandedRow?.(row)}
                           </div>
-                        ))}
+                        ) : null}
                       </div>
                     </div>
                   );

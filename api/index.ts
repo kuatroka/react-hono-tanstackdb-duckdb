@@ -11,6 +11,7 @@ import assetsRoutes from "./routes/assets";
 import superinvestorsRoutes from "./routes/superinvestors";
 import investorFlowRoutes from "./routes/investor-flow";
 import cikQuarterlyRoutes from "./routes/cik-quarterly";
+import superinvestorAssetHistoryRoutes from "./routes/superinvestor-asset-history";
 import dataFreshnessRoutes from "./routes/data-freshness";
 
 export const config = {
@@ -30,6 +31,7 @@ app.route("/assets", assetsRoutes);
 app.route("/superinvestors", superinvestorsRoutes);
 app.route("/investor-flow", investorFlowRoutes);
 app.route("/cik-quarterly", cikQuarterlyRoutes);
+app.route("/superinvestor-asset-history", superinvestorAssetHistoryRoutes);
 app.route("/data-freshness", dataFreshnessRoutes);
 app.route("/db-status", dbStatusRoutes);
 

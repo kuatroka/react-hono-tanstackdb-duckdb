@@ -8,6 +8,14 @@ export const UFUZZY_OPTIONS = {
   interIns: 2,
 } as const;
 
+export type UFuzzyRerankMode = "ticker-and-name" | "name-only";
+
+export interface UFuzzyTableRankingConfig<T> {
+  mode: UFuzzyRerankMode;
+  getCode?: (row: T) => string | null | undefined;
+  getName: (row: T) => string | null | undefined;
+}
+
 export interface UFuzzyPreviousFilter {
   query: string;
   idxs: number[] | null;
@@ -95,34 +103,71 @@ function getWordPrefixMatchScore(lowerName: string, lowerQuery: string) {
   return words.some((word) => word.startsWith(lowerQuery)) ? 1 : 0;
 }
 
+function scoreUFuzzyCandidate(
+  query: string,
+  baseScore: number,
+  code: string | null | undefined,
+  name: string | null | undefined,
+  mode: UFuzzyRerankMode,
+) {
+  const lowerQuery = query.toLowerCase();
+  const lowerCode = (code || "").toLowerCase();
+  const lowerName = (name || "").toLowerCase();
+
+  let score = baseScore;
+
+  if (mode === "ticker-and-name") {
+    if (lowerCode === lowerQuery) score += 1000;
+    else if (lowerCode.startsWith(lowerQuery)) score += 500;
+    else if (lowerCode.includes(lowerQuery)) score += 200;
+  }
+
+  if (lowerName === lowerQuery) score += 150;
+  else if (lowerName.startsWith(lowerQuery)) score += 100;
+  else if (getWordPrefixMatchScore(lowerName, lowerQuery)) score += 80;
+  else if (lowerName.includes(lowerQuery)) score += 40;
+
+  return score;
+}
+
 export function rerankUFuzzyResults(
   results: SearchResult[],
   query: string,
+  mode: UFuzzyRerankMode = "ticker-and-name",
 ) {
-  const lowerQuery = query.toLowerCase();
-
   return [...results]
     .map((result, originalIndex) => {
-      const lowerCode = result.code.toLowerCase();
-      const lowerName = (result.name || "").toLowerCase();
-
-      let score = results.length - originalIndex;
-
-      if (lowerCode === lowerQuery) score += 1000;
-      else if (lowerCode.startsWith(lowerQuery)) score += 500;
-      else if (lowerCode.includes(lowerQuery)) score += 200;
-
-      if (lowerName === lowerQuery) score += 150;
-      else if (lowerName.startsWith(lowerQuery)) score += 100;
-      else if (getWordPrefixMatchScore(lowerName, lowerQuery)) score += 80;
-      else if (lowerName.includes(lowerQuery)) score += 40;
-
       return {
         ...result,
-        score,
+        score: scoreUFuzzyCandidate(query, results.length - originalIndex, result.code, result.name, mode),
       };
     })
     .sort((left, right) => right.score - left.score || (left.name || left.code).localeCompare(right.name || right.code));
+}
+
+export function rerankUFuzzyTableRows<T>(
+  rows: T[],
+  query: string,
+  config: UFuzzyTableRankingConfig<T>,
+) {
+  return [...rows]
+    .map((row, originalIndex) => {
+      const code = config.getCode?.(row) ?? null;
+      const name = config.getName(row) ?? null;
+
+      return {
+        row,
+        code,
+        name,
+        score: scoreUFuzzyCandidate(query, rows.length - originalIndex, code, name, config.mode),
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.score - left.score
+        || (left.name || left.code || "").localeCompare(right.name || right.code || ""),
+    )
+    .map((entry) => entry.row);
 }
 
 export function runUFuzzySearch(

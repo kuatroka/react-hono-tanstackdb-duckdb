@@ -7,6 +7,11 @@ let browser: Browser;
 let port = 4120;
 let baseUrl = `http://127.0.0.1:${port}`;
 
+interface AssetSearchRow {
+  asset?: string | null;
+  cusip?: string | null;
+}
+
 async function getAvailablePort() {
   return await new Promise<number>((resolve, reject) => {
     const server = createServer();
@@ -86,6 +91,23 @@ async function waitForServer(url: string, timeoutMs = 15_000) {
   throw new Error(`Timed out waiting for dev server at ${url}`);
 }
 
+async function resolveAssetDetailPath(search: string) {
+  const response = await fetch(`${baseUrl}/api/assets?limit=20&offset=0&search=${encodeURIComponent(search)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to search assets for ${search}`);
+  }
+
+  const payload = await response.json() as { rows?: AssetSearchRow[] };
+  const match = payload.rows?.find((row) => row.asset?.toUpperCase() === search.toUpperCase());
+  if (!match?.asset) {
+    throw new Error(`Asset ${search} not found in API search results`);
+  }
+
+  const encodedTicker = encodeURIComponent(match.asset);
+  const encodedCusip = encodeURIComponent(match.cusip || "_");
+  return `/assets/${encodedTicker}/${encodedCusip}`;
+}
+
 describe("asset detail browser smoke test", () => {
   beforeAll(async () => {
     port = await getAvailablePort();
@@ -159,7 +181,7 @@ describe("asset detail browser smoke test", () => {
     await page.goto(`${baseUrl}/assets/BGRN/46435U440`, { waitUntil: "networkidle" });
 
     expect(await page.getByText("Investor Activity for BGRN (ECharts)").count()).toBeGreaterThan(0);
-    expect(await page.getByText("Investor Flow for BGRN").count()).toBeGreaterThan(0);
+    expect(await page.getByText("Net Investor Flow BGRN").count()).toBeGreaterThan(0);
 
     const pageText = await page.locator("body").textContent();
 
@@ -175,17 +197,36 @@ describe("asset detail browser smoke test", () => {
 
     await page.goto(`${baseUrl}/assets/BGRN/46435U440`, { waitUntil: "networkidle" });
     await page.waitForSelector("text=Investor Activity for BGRN (ECharts)");
-    await page.waitForSelector("text=Investor Flow for BGRN (ECharts)");
+    await page.waitForSelector("text=Net Investor Flow BGRN");
     await page.waitForSelector("text=Superinvestors who");
     await page.locator('[data-latency-part="render"]').first().waitFor();
 
     const pageText = await page.locator("body").textContent();
 
     expect(pageText).toContain("Investor Activity for BGRN (ECharts)");
-    expect(pageText).toContain("Investor Flow for BGRN (ECharts)");
+    expect(pageText).toContain("Net Investor Flow BGRN");
     expect(pageText).toContain("Superinvestors who");
     expect(pageText).not.toContain("(uPlot)");
     expect(pageText).not.toContain("Hover over a bar");
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+
+    await page.close();
+  });
+
+  test("renders the investor activity chart on a mobile-sized TSLA asset detail page", async () => {
+    const detailPath = await resolveAssetDetailPath("TSLA");
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    const { pageErrors, consoleErrors } = trackPageIssues(page);
+
+    await page.goto(`${baseUrl}${detailPath}`, { waitUntil: "networkidle" });
+    await page.waitForSelector("text=Investor Activity for TSLA (ECharts)");
+    await page.locator("canvas").first().waitFor({ state: "visible" });
+
+    const chartBox = await page.locator("canvas").first().boundingBox();
+    expect(chartBox).not.toBeNull();
+    expect(chartBox && chartBox.width > 0).toBe(true);
+    expect(chartBox && chartBox.height > 0).toBe(true);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
 

@@ -21,6 +21,10 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("const previousUFuzzyFilterRef = useRef<UFuzzyPreviousFilter>({ query: '', idxs: null, haystackSize: 0 });");
     expect(source).toContain("if (searchStrategy === 'ufuzzy') {");
     expect(source).toContain("runUFuzzyIndexSearch(");
+    expect(source).toContain("rerankUFuzzyTableRows(");
+    expect(source).toContain("ufuzzyRanking?: UFuzzyTableRankingConfig<T>;");
+    expect(source).toContain("const hasExplicitSort = sortColumn !== defaultSortColumn || sortDirection !== defaultSortDirection;");
+    expect(source).toContain("if (!shouldReorderRows || (hasSearch && searchStrategy === 'ufuzzy' && !hasExplicitSort)) {");
     expect(source).toContain("enabled: Boolean(latencySource && normalizedSearch)");
     expect(source).toContain("const [revealedRowCount, setRevealedRowCount] = useState(() => Math.min(data.length, clientPageSize));");
     expect(source).toContain("return orderedData.slice(0, revealedRowCount);");
@@ -33,5 +37,14 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("const SearchToggleButton = memo(function SearchToggleButton");
     expect(source).toContain("const SortHeaderButton = memo(function SortHeaderButton");
     expect(source).toContain("const SortIndicator = memo(function SortIndicator");
+  });
+
+  test("supports explicit row click handlers in addition to anchor activation", async () => {
+    const source = await Bun.file(new URL("./VirtualDataTable.tsx", import.meta.url)).text();
+
+    expect(source).toContain("onRowClick?: (row: T) => void;");
+    expect(source).toContain("const triggerRowClick = useCallback((row: T) => {");
+    expect(source).toContain("onClick={() => triggerRowClick(row)}");
+    expect(source).toContain("if (event.key === 'Enter') {");
   });
 });

@@ -1,7 +1,7 @@
-import { memo } from "react";
+import { forwardRef, memo } from "react";
 import { Input } from "@/components/ui/input";
 
-interface GlobalSearchInputProps {
+export interface GlobalSearchInputProps {
   query: string;
   onChange: (value: string) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -11,17 +11,21 @@ interface GlobalSearchInputProps {
   className?: string;
 }
 
-export const GlobalSearchInput = memo(function GlobalSearchInput({
-  query,
-  onChange,
-  onKeyDown,
-  id = "global-search",
-  name = "global-search",
-  placeholder = "Search superinvestors, tickers...",
-  className = "w-full sm:w-[30rem]",
-}: GlobalSearchInputProps) {
+const GlobalSearchInputBase = forwardRef<HTMLInputElement, GlobalSearchInputProps>(function GlobalSearchInput(
+  {
+    query,
+    onChange,
+    onKeyDown,
+    id = "global-search",
+    name = "global-search",
+    placeholder = "Search superinvestors, tickers...",
+    className = "w-full sm:w-[30rem]",
+  },
+  ref,
+) {
   return (
     <Input
+      ref={ref}
       id={id}
       name={name}
       type="search"
@@ -33,3 +37,5 @@ export const GlobalSearchInput = memo(function GlobalSearchInput({
     />
   );
 });
+
+export const GlobalSearchInput = memo(GlobalSearchInputBase);

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Superinvestor } from "@/collections";
 import { fetchSuperinvestorRecordWithSource } from "@/collections";
 import { SuperinvestorChartSection } from "@/components/detail/SuperinvestorChartSection";
+import { PageHeader, PageLayout, PageSection } from "@/components/layout/page-layout";
 import { useMarkContentReady } from "@/hooks/useContentReady";
 
 interface SuperinvestorDetailRecordState {
@@ -80,28 +81,24 @@ export function SuperinvestorDetailPage() {
   const record = recordState.record;
 
   return (
-    <>
-      <div className="grid w-full grid-cols-3 items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="text-left">
+    <PageLayout width="full" className="space-y-8">
+      <PageHeader
+        leading={
           <Link
             to="/superinvestors"
             search={{ page: undefined, search: undefined }}
-            className="whitespace-nowrap text-primary hover:underline"
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
           >
-            &larr; Back to superinvestors
+            <span aria-hidden="true">←</span>
+            <span>Back to superinvestors</span>
           </Link>
-        </div>
-        <div className="text-center">
-          <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-3xl font-bold">
-            ({record.cik}) {record.cikName}
-          </h1>
-        </div>
-        <div className="text-right" />
-      </div>
+        }
+        title={`(${record.cik}) ${record.cikName}`}
+      />
 
-      <div className="mt-8 px-4 sm:px-6 lg:px-8">
+      <PageSection>
         <SuperinvestorChartSection cik={record.cik} cikName={record.cikName} />
-      </div>
-    </>
+      </PageSection>
+    </PageLayout>
   );
 }
