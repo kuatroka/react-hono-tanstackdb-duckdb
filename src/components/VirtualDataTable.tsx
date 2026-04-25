@@ -25,8 +25,12 @@ const DEFAULT_CLIENT_PAGE_SIZE = 100;
 const DEFAULT_MIN_SEARCH_CHARACTERS = 2;
 
 const SearchGlyph = memo(function SearchGlyph() {
-  return <Search className="h-4 w-4" />;
+  return <Search className="size-4" />;
 });
+
+const TABLE_SEARCH_CONTAINER_CLASS_NAME = 'w-full min-w-0 sm:w-[18rem] lg:w-[20rem] xl:w-[22rem]';
+const TABLE_SEARCH_ICON_CLASS_NAME = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
+const TABLE_SEARCH_INPUT_CLASS_NAME = 'h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-16 text-sm shadow-sm focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0';
 
 interface SearchToggleButtonProps {
   isExpanded: boolean;
@@ -43,7 +47,7 @@ const SearchToggleButton = memo(function SearchToggleButton({
       variant="ghost"
       size="icon"
       onClick={onToggle}
-      className="h-8 w-8 rounded-[calc(var(--radius)-0.125rem)] text-muted-foreground hover:text-foreground"
+      className="h-10 w-10 rounded-md text-muted-foreground transition-colors hover:text-foreground"
       aria-label={isExpanded ? 'Collapse search' : 'Expand search'}
     >
       <SearchGlyph />
@@ -129,7 +133,7 @@ function VirtualTableSearchInput({
   onTabToResults,
   onValueChange,
   autoFocus = false,
-  containerClassName = 'w-52 sm:w-64',
+  containerClassName = TABLE_SEARCH_CONTAINER_CLASS_NAME,
   inputClassName,
 }: VirtualTableSearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -164,18 +168,21 @@ function VirtualTableSearchInput({
 
   return (
     <div className={containerClassName}>
-      <Input
-        ref={inputRef}
-        autoFocus={autoFocus}
-        name="virtual-table-search"
-        type="search"
-        placeholder={placeholder}
-        value={value}
-        onFocus={onFocus}
-        onKeyDown={handleKeyDown}
-        onChange={(event) => onValueChange(event.target.value)}
-        className={cn('h-8 w-full', inputClassName)}
-      />
+      <div className="relative">
+        <Search className={TABLE_SEARCH_ICON_CLASS_NAME} />
+        <Input
+          ref={inputRef}
+          autoFocus={autoFocus}
+          name="virtual-table-search"
+          type="search"
+          placeholder={placeholder}
+          value={value}
+          onFocus={onFocus}
+          onKeyDown={handleKeyDown}
+          onChange={(event) => onValueChange(event.target.value)}
+          className={cn(TABLE_SEARCH_INPUT_CLASS_NAME, inputClassName)}
+        />
+      </div>
     </div>
   );
 }

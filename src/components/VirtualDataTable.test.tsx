@@ -39,6 +39,21 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("const SortIndicator = memo(function SortIndicator");
   });
 
+  test("matches the global search field chrome for table search inputs", async () => {
+    const source = await Bun.file(new URL("./VirtualDataTable.tsx", import.meta.url)).text();
+    const globalSearchSource = await Bun.file(new URL("./UFuzzyGlobalSearch.tsx", import.meta.url)).text();
+
+    expect(source).toContain("const TABLE_SEARCH_CONTAINER_CLASS_NAME = 'w-full min-w-0 sm:w-[18rem] lg:w-[20rem] xl:w-[22rem]';");
+    expect(source).toContain("const TABLE_SEARCH_ICON_CLASS_NAME = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';");
+    expect(source).toContain("const TABLE_SEARCH_INPUT_CLASS_NAME = 'h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-16 text-sm shadow-sm focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0';");
+    expect(source).toContain("focus-visible:ring-transparent");
+    expect(source).toContain("focus-visible:ring-offset-0");
+    expect(source).toContain("<Search className={TABLE_SEARCH_ICON_CLASS_NAME} />");
+    expect(source).toContain("className={cn(TABLE_SEARCH_INPUT_CLASS_NAME, inputClassName)}");
+    expect(globalSearchSource).toContain("pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground");
+    expect(globalSearchSource).toContain("h-10 rounded-md border-border/80 bg-background/90 text-sm shadow-sm");
+  });
+
   test("supports explicit row click handlers in addition to anchor activation", async () => {
     const source = await Bun.file(new URL("./VirtualDataTable.tsx", import.meta.url)).text();
 
