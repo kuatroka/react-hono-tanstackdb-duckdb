@@ -39,15 +39,14 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("const SortIndicator = memo(function SortIndicator");
   });
 
-  test("uses global search chrome for expanded table search inputs without a second adjacent icon", async () => {
+  test("keeps expanded table search compact so header height stays stable", async () => {
     const source = await Bun.file(new URL("./VirtualDataTable.tsx", import.meta.url)).text();
 
-    expect(source).toContain("const SEARCH_FIELD_CONTAINER_CLASS_NAME = 'w-full min-w-0 sm:w-[18rem] lg:w-[20rem] xl:w-[22rem]';");
-    expect(source).toContain("const SEARCH_FIELD_ICON_CLASS_NAME = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';");
-    expect(source).toContain("const SEARCH_FIELD_INPUT_CLASS_NAME = 'h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-4 text-sm shadow-sm';");
-    expect(source).toContain("<Search className={SEARCH_FIELD_ICON_CLASS_NAME} />");
-    expect(source).toContain("className={cn(SEARCH_FIELD_INPUT_CLASS_NAME, inputClassName)}");
-    expect(source).toContain(") : (\n          <SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />");
+    expect(source).toContain("containerClassName = 'w-52 sm:w-64'");
+    expect(source).toContain("const TABLE_SEARCH_INPUT_CLASS_NAME = 'h-8 w-full appearance-none focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0");
+    expect(source).toContain("className={cn(TABLE_SEARCH_INPUT_CLASS_NAME, inputClassName)}");
+    expect(source).toContain("<SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />");
+    expect(source).not.toContain("SEARCH_FIELD_ICON_CLASS_NAME");
   });
 
   test("supports explicit row click handlers in addition to anchor activation", async () => {

@@ -23,9 +23,7 @@ const DEFAULT_VISIBLE_ROW_COUNT = 10;
 const DEFAULT_ROW_HEIGHT = 52;
 const DEFAULT_CLIENT_PAGE_SIZE = 100;
 const DEFAULT_MIN_SEARCH_CHARACTERS = 2;
-const SEARCH_FIELD_CONTAINER_CLASS_NAME = 'w-full min-w-0 sm:w-[18rem] lg:w-[20rem] xl:w-[22rem]';
-const SEARCH_FIELD_ICON_CLASS_NAME = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
-const SEARCH_FIELD_INPUT_CLASS_NAME = 'h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-4 text-sm shadow-sm';
+const TABLE_SEARCH_INPUT_CLASS_NAME = 'h-8 w-full appearance-none focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none';
 
 const SearchGlyph = memo(function SearchGlyph() {
   return <Search className="h-4 w-4" />;
@@ -132,7 +130,7 @@ function VirtualTableSearchInput({
   onTabToResults,
   onValueChange,
   autoFocus = false,
-  containerClassName = SEARCH_FIELD_CONTAINER_CLASS_NAME,
+  containerClassName = 'w-52 sm:w-64',
   inputClassName,
 }: VirtualTableSearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -167,21 +165,18 @@ function VirtualTableSearchInput({
 
   return (
     <div className={containerClassName}>
-      <div className="relative">
-        <Search className={SEARCH_FIELD_ICON_CLASS_NAME} />
-        <Input
-          ref={inputRef}
-          autoFocus={autoFocus}
-          name="virtual-table-search"
-          type="search"
-          placeholder={placeholder}
-          value={value}
-          onFocus={onFocus}
-          onKeyDown={handleKeyDown}
-          onChange={(event) => onValueChange(event.target.value)}
-          className={cn(SEARCH_FIELD_INPUT_CLASS_NAME, inputClassName)}
-        />
-      </div>
+      <Input
+        ref={inputRef}
+        autoFocus={autoFocus}
+        name="virtual-table-search"
+        type="search"
+        placeholder={placeholder}
+        value={value}
+        onFocus={onFocus}
+        onKeyDown={handleKeyDown}
+        onChange={(event) => onValueChange(event.target.value)}
+        className={cn(TABLE_SEARCH_INPUT_CLASS_NAME, inputClassName)}
+      />
     </div>
   );
 }
@@ -259,6 +254,7 @@ const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-[var(--surface-padding)] py-2">
       <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-hidden">
+        <SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />
         {isExpanded ? (
           <VirtualTableSearchInput
             autoFocus
@@ -271,9 +267,7 @@ const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
             onTabToResults={onTabToResults}
             onValueChange={onSearchValueChange}
           />
-        ) : (
-          <SearchToggleButton isExpanded={isExpanded} onToggle={handleToggle} />
-        )}
+        ) : null}
       </div>
       <div className="flex min-h-8 min-w-0 items-center justify-end overflow-hidden max-sm:w-full max-sm:justify-start">
         {searchTelemetry ? <LatencyBadge telemetry={searchTelemetry} className="min-w-0 max-w-full justify-center" /> : null}

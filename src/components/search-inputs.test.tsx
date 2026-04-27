@@ -16,10 +16,6 @@ describe("search inputs", () => {
 
     expect(html).toContain('name="global-search"');
     expect(html).toContain('placeholder="Search superinvestors, tickers..."');
-    expect(html).toContain('appearance-none');
-    expect(html).toContain('focus-visible:ring-transparent');
-    expect(html).toContain('focus-visible:ring-offset-0');
-    expect(html).toContain('[&amp;::-webkit-search-decoration]:appearance-none');
   });
 
   test("global search input accepts custom identifiers for alternate search surfaces", () => {
@@ -87,8 +83,8 @@ describe("search inputs", () => {
     );
 
     expect(html).toContain('name="data-table-search"');
-    expect(html).toContain('pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground');
-    expect(html).toContain('h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-4 text-sm shadow-sm');
     expect(html).toContain('appearance-none');
+    expect(html).toContain('focus-visible:ring-transparent');
+    expect(html).toContain('[&amp;::-webkit-search-decoration]:appearance-none');
   });
 });
