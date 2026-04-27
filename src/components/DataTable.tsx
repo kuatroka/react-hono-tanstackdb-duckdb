@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Search } from 'lucide-react';
 
 export interface ColumnDef<T> {
   key: keyof T;
@@ -92,7 +92,7 @@ export function DataTable<T extends { id: number | string }>({
         return String(value).toLowerCase().includes(query);
       })
     );
-  }, [data, searchQuery, searchableColumns]);
+  }, [data, searchDisabled, searchQuery, searchableColumns]);
 
   const sortedData = useMemo(() => {
     if (!sortColumn) return filteredData;
@@ -216,15 +216,18 @@ export function DataTable<T extends { id: number | string }>({
 
   return (
     <div className="space-y-4" onKeyDown={handleKeyDown}>
-      <div className="w-full sm:w-96">
-        <Input
-          name="data-table-search"
-          type="search"
-          placeholder={searchPlaceholder}
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-          className="w-full"
-        />
+      <div className="w-full min-w-0 sm:w-[18rem] lg:w-[20rem] xl:w-[22rem]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            name="data-table-search"
+            type="search"
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="h-10 w-full rounded-md border-border/80 bg-background/90 pl-10 pr-4 text-sm shadow-sm"
+          />
+        </div>
       </div>
 
       <div className="border border-border rounded-lg overflow-x-auto">
