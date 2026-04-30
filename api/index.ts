@@ -14,6 +14,8 @@ import investorFlowRoutes from "./routes/investor-flow";
 import cikQuarterlyRoutes from "./routes/cik-quarterly";
 import superinvestorAssetHistoryRoutes from "./routes/superinvestor-asset-history";
 import dataFreshnessRoutes from "./routes/data-freshness";
+import clientErrorRoutes from "./routes/client-errors";
+import { notifyWebAppIncident } from "./telegram-alerts";
 
 export const config = {
   runtime: "edge",
@@ -36,6 +38,23 @@ app.route("/cik-quarterly", cikQuarterlyRoutes);
 app.route("/superinvestor-asset-history", superinvestorAssetHistoryRoutes);
 app.route("/data-freshness", dataFreshnessRoutes);
 app.route("/db-status", dbStatusRoutes);
+app.route("/client-errors", clientErrorRoutes);
+
+app.onError(async (error, c) => {
+  await notifyWebAppIncident({
+    category: "runtime",
+    severity: "error",
+    source: "hono",
+    title: "Web API runtime error",
+    message: error instanceof Error ? error.message : String(error),
+    method: c.req.method,
+    path: c.req.path,
+  }).catch((alertError) => {
+    console.warn("[Alerts] failed to send API runtime alert", alertError);
+  });
+
+  return c.json({ error: "Internal Server Error" }, 500);
+});
 
 // See seed.sql
 // In real life you would of course authenticate the user however you like.

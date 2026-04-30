@@ -20,17 +20,38 @@ function loadScript(src: string) {
   document.head.appendChild(script)
 }
 
+function notifyClientRuntimeError(source: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const release = import.meta.env?.VITE_APP_VERSION ?? undefined
+  void fetch('/api/client-errors', {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      source,
+      message,
+      location: globalThis.location?.href,
+      release,
+    }),
+  }).catch(() => undefined)
+}
+
 export function initializeErrorTracking() {
   const dsn = import.meta.env?.VITE_SENTRY_DSN
-  if (!dsn || !isFeatureEnabled('sentryErrorTracking')) return
+  if (!isFeatureEnabled('sentryErrorTracking')) return
 
-  loadScript('https://browser.sentry-cdn.com/8.55.0/bundle.tracing.min.js')
   window.addEventListener('error', (event) => {
     window.Sentry?.captureException(event.error, { tags: { source: 'window.error' } })
+    notifyClientRuntimeError('window.error', event.error ?? event.message)
   })
   window.addEventListener('unhandledrejection', (event) => {
     window.Sentry?.captureException(event.reason, { tags: { source: 'unhandledrejection' } })
+    notifyClientRuntimeError('unhandledrejection', event.reason)
   })
+
+  if (!dsn) return
+
+  loadScript('https://browser.sentry-cdn.com/8.55.0/bundle.tracing.min.js')
 
   const init = () => {
     if (!window.Sentry) return
