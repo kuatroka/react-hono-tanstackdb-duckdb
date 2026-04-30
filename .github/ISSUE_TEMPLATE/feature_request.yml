@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a scoped product or platform improvement
+labels: ['type: feature']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or agent workflow is blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ['P0', 'P1', 'P2', 'P3']
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: frontend, backend, infra, data
+    validations:
+      required: true

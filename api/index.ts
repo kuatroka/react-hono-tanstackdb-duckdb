@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { SignJWT } from "jose";
 import { duckDbLeaseMiddleware } from "./db/hono-db-middleware";
+import { requestTracingMiddleware } from "./middleware-request-tracing";
 import dbStatusRoutes from "./routes/db-status";
 import drilldownRoutes from "./routes/drilldown";
 import searchDuckdbRoutes from "./routes/search-duckdb";
@@ -20,6 +21,7 @@ export const config = {
 
 export const app = new Hono().basePath("/api");
 
+app.use("*", requestTracingMiddleware);
 app.use("*", duckDbLeaseMiddleware);
 
 // Data routes now all come from DuckDB/REST-backed handlers.

@@ -1,0 +1,7 @@
+# Default ownership for autonomous-agent changes and production deploy paths.
+* @kuatroka
+/.github/ @kuatroka
+/api/ @kuatroka
+/src/ @kuatroka
+/infra/ @kuatroka
+/scripts/ @kuatroka

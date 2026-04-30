@@ -3,6 +3,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "../app/router";
+import { initializeProductAnalytics } from "./lib/analytics";
+import { initializeErrorTracking } from "./lib/error-tracking";
 import { shouldEnableReactScan } from "./lib/runtime-env";
 import "uplot/dist/uPlot.min.css";
 
@@ -14,6 +16,9 @@ if (
 ) {
   scan({ enabled: true });
 }
+
+initializeProductAnalytics();
+initializeErrorTracking();
 
 const container = document.getElementById("root");
 

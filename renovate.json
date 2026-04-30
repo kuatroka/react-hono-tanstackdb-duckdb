@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "minimumReleaseAge": "3 days",
+  "dependencyDashboard": true,
+  "labels": ["type: chore", "area: infra"],
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["^@tanstack/"],
+      "groupName": "tanstack packages",
+      "minimumReleaseAge": "5 days"
+    }
+  ]
+}

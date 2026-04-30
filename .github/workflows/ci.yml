@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Format check
+        run: bun run format:check
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Agent readiness quality checks
+        run: bun run readiness:quality
+      - name: Validate AGENTS.md commands
+        run: bun run readiness:agents-md
+      - name: Timed test report
+        run: |
+          start=$(date +%s)
+          bun run test:ci:report
+          end=$(date +%s)
+          echo "test_duration_seconds=$((end-start))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test timing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-test-results
+          path: .artifacts/test-results.xml
+      - name: Timed build
+        run: |
+          start=$(date +%s)
+          bun run build
+          end=$(date +%s)
+          echo "build_duration_seconds=$((end-start))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Coverage smoke gate
+        run: bun run test:coverage
+      - name: Upload coverage metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: .artifacts/coverage
+
+  flaky-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Randomized retry flake probe
+        run: bun run test:flake-check

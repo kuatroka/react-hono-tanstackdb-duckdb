@@ -27,7 +27,19 @@
     "start": "NODE_ENV=production bun api/server.ts",
     "lint": "bunx eslint .",
     "test": "bun test",
-    "test:ci": "bun test $(rg --files src api/db --glob '*.test.ts' --glob '!src/collections/instances-singleton.test.ts') api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts"
+    "test:ci": "bun test $(rg --files src api/db --glob '*.test.ts' --glob '!src/collections/instances-singleton.test.ts') api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts",
+    "format:check": "bunx prettier --check package.json eslint.config.js '.github/**/*.{yml,yaml,md}' scripts/agent-readiness/*.ts 'docs/openapi.yaml' 'docs/privacy-and-pii.md' 'docs/runbooks/**/*.md'",
+    "format:write": "bunx prettier --write package.json eslint.config.js '.github/**/*.{yml,yaml,md}' scripts/agent-readiness/*.ts 'docs/openapi.yaml' 'docs/privacy-and-pii.md' 'docs/runbooks/**/*.md'",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "dead-code": "bunx knip --config knip.json",
+    "duplicates": "bunx jscpd --config jscpd.json",
+    "readiness:quality": "bun scripts/agent-readiness/check-quality.ts",
+    "readiness:agents-md": "bun scripts/agent-readiness/check-agents-md.ts",
+    "readiness:pr-review": "bun scripts/agent-readiness/pr-review.ts",
+    "test:ci:report": "mkdir -p .artifacts && bun test $(rg --files src api/db --glob '*.test.ts' --glob '!src/collections/instances-singleton.test.ts') api/server.test.ts api/repository-prepared-statements.test.ts api/duckdb-rollover.integration.test.ts --reporter=junit --reporter-outfile .artifacts/test-results.xml",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir .artifacts/coverage && bun scripts/agent-readiness/check-coverage-threshold.ts",
+    "test:flake-check": "bun test --rerun-each=3 --randomize $(rg --files src api/db --glob '*.test.ts' --glob '!src/collections/instances-singleton.test.ts')",
+    "bundle:budget": "bun run build && bunx @lhci/cli autorun --config=.lighthouserc.json"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.1-r.1",

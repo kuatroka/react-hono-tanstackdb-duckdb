@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: readiness-format
+        name: Readiness format check
+        entry: bun run format:check
+        language: system
+        pass_filenames: false
+      - id: readiness-lint
+        name: ESLint quality gate
+        entry: bun run lint
+        language: system
+        pass_filenames: false
+      - id: readiness-typecheck
+        name: TypeScript typecheck
+        entry: bun run typecheck
+        language: system
+        pass_filenames: false
+      - id: readiness-quality
+        name: Agent readiness static quality checks
+        entry: bun run readiness:quality
+        language: system
+        pass_filenames: false

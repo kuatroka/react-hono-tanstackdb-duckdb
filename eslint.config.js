@@ -19,9 +19,36 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
+      complexity: ['warn', { max: 20 }],
+      'max-lines': ['warn', { max: 950, skipBlankLines: true, skipComments: true }],
+      '@typescript-eslint/naming-convention': [
         'warn',
-        { allowConstantExport: true },
+        {
+          selector: 'variableLike',
+          format: ['camelCase', 'PascalCase', 'UPPER_CASE'],
+          leadingUnderscore: 'allow',
+        },
+        {
+          selector: 'typeLike',
+          format: ['PascalCase'],
+        },
+      ],
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../api/**', 'api/**', '@/../api/**'],
+              message: 'Client and route UI code must use HTTP contracts, not API internals.',
+            },
+          ],
+        },
       ],
     },
   },

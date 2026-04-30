@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible defect for agent or human triage
+labels: ['type: bug']
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include route, input data, and commands.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ['P0', 'P1', 'P2', 'P3']
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: frontend, backend, infra, data
+    validations:
+      required: true

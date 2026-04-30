@@ -1,0 +1,31 @@
+name: Incident Alerts
+
+on:
+  workflow_run:
+    workflows: ['Deploy to Production', 'Security Review', 'DAST']
+    types: [completed]
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+  SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+
+jobs:
+  create-incident-issue:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create incident issue from failed workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "P1: ${WORKFLOW_NAME} failed" \
+            --label "P1,type: bug,area: infra" \
+            --body "Automated alert: ${WORKFLOW_NAME} failed. Review run: ${RUN_URL}. If Sentry is configured, check SENTRY_ORG/SENTRY_PROJECT for correlated release errors."

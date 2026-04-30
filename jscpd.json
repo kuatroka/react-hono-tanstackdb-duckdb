@@ -1,0 +1,16 @@
+{
+  "threshold": 2,
+  "minLines": 12,
+  "minTokens": 80,
+  "reporters": ["console", "json"],
+  "output": ".artifacts/jscpd",
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "coverage/**",
+    "app/routeTree.gen.ts",
+    "index.compiled.css",
+    "docs/**",
+    "openspec/**"
+  ]
+}

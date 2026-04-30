@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: 'bun'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    groups:
+      tanstack:
+        patterns: ['@tanstack/*']
+      react:
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom']
+    labels: ['type: chore', 'area: infra', 'P2']
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    labels: ['type: chore', 'area: infra', 'P2']

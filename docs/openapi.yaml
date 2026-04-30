@@ -1,0 +1,127 @@
+openapi: 3.1.0
+info:
+  title: React Hono TanStackDB DuckDB API
+  version: 0.1.0
+  description: Read-only analytics API over DuckDB-backed SEC 13F datasets.
+servers:
+  - url: /api
+paths:
+  /assets:
+    get:
+      summary: List assets
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50000 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200':
+          description: Asset list response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetListResponse'
+  /assets/{code}:
+    get:
+      summary: Fetch one asset by ticker/code
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Asset detail response
+  /superinvestors:
+    get:
+      summary: List superinvestors
+      responses:
+        '200':
+          description: Superinvestor list response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuperinvestorListResponse'
+  /superinvestors/{cik}:
+    get:
+      summary: Fetch one superinvestor
+      parameters:
+        - in: path
+          name: cik
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Superinvestor detail response }
+  /duckdb-search:
+    get:
+      summary: Search assets and superinvestors
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200': { description: Search response }
+  /duckdb-investor-drilldown:
+    get:
+      summary: Investor drilldown rows for ticker, quarter, and action
+      parameters:
+        - in: query
+          name: ticker
+          schema: { type: string }
+        - in: query
+          name: quarter
+          schema: { type: string }
+        - in: query
+          name: action
+          schema: { type: string, enum: [open, close, both] }
+      responses:
+        '200': { description: Drilldown rows }
+  /db-status:
+    get:
+      summary: DuckDB generation and metrics status
+      responses:
+        '200': { description: Runtime health and metrics }
+  /data-freshness:
+    get:
+      summary: Current backend data freshness version
+      responses:
+        '200': { description: Data freshness marker }
+components:
+  schemas:
+    AssetListResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            required: [id, asset, assetName]
+            properties:
+              id: { type: string }
+              asset: { type: string }
+              assetName: { type: string }
+              cusip: { type: string, nullable: true }
+        totalCount: { type: integer }
+        complete: { type: boolean }
+    SuperinvestorListResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            required: [id, cik, cikName]
+            properties:
+              id: { type: string }
+              cik: { type: string }
+              cikName: { type: string }
+        totalCount: { type: integer }
+        complete: { type: boolean }
