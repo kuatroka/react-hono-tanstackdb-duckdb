@@ -6,7 +6,10 @@ import { LatencyBadge } from "@/components/LatencyBadge";
 import { GlobalSearchInput } from "@/components/global-search/GlobalSearchInput";
 import { GlobalSearchResults } from "@/components/global-search/GlobalSearchResults";
 import type { SearchResult } from "@/components/global-search/search-result";
-import { ensureSearchItemsLoaded, type SearchResult as CollectionSearchResult } from "@/collections/searches";
+import {
+  ensureSearchIndexLoaded,
+  getLoadedSearchIndex,
+} from "@/collections/searches";
 import { cn } from "@/lib/utils";
 import { runUFuzzySearch, UFUZZY_OPTIONS, type UFuzzyPreviousFilter } from "@/lib/ufuzzy-search";
 
@@ -19,10 +22,6 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
 
   return debouncedValue;
-}
-
-function toHaystackValue(item: CollectionSearchResult) {
-  return item.name ? `${item.code} ${item.name}` : item.code;
 }
 
 interface UFuzzyGlobalSearchProps {
@@ -41,7 +40,7 @@ export function UFuzzyGlobalSearch({
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [allItems, setAllItems] = useState<CollectionSearchResult[]>([]);
+  const [searchIndex, setSearchIndex] = useState(() => getLoadedSearchIndex());
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [queryTimeMs, setQueryTimeMs] = useState<number | undefined>();
@@ -58,15 +57,13 @@ export function UFuzzyGlobalSearch({
   const debouncedQuery = useDebounce(query.trim(), 50);
   const shouldSearch = debouncedQuery.length >= 2;
 
-  const haystack = useMemo(() => allItems.map(toHaystackValue), [allItems]);
-
   const loadSearchItems = useCallback(async () => {
     if (loadStartedRef.current) return;
     loadStartedRef.current = true;
     setIsLoading(true);
 
     try {
-      setAllItems(await ensureSearchItemsLoaded());
+      setSearchIndex(await ensureSearchIndexLoaded());
     } catch (error) {
       console.error("[uFuzzy Search] Failed to load search items:", error);
       loadStartedRef.current = false;
@@ -91,8 +88,8 @@ export function UFuzzyGlobalSearch({
   const searchMetrics = useMemo(() => {
     const metrics = runUFuzzySearch(
       ufuzzyRef.current,
-      haystack,
-      allItems,
+      searchIndex.haystack,
+      searchIndex.items,
       debouncedQuery,
       previousFilterRef.current,
     );
@@ -106,7 +103,7 @@ export function UFuzzyGlobalSearch({
       results: metrics.results,
       latencyMs: metrics.latencyMs,
     };
-  }, [allItems, debouncedQuery, haystack]);
+  }, [debouncedQuery, searchIndex]);
 
   useEffect(() => {
     setQueryTimeMs(searchMetrics.latencyMs);

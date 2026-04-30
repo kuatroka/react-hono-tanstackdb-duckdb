@@ -28,6 +28,7 @@ superinvestorAssetHistoryRoutes.get("/", async (c) => {
       cik: cikRaw,
       count: rows.length,
       queryTimeMs: Math.round(performance.now() - startTime),
+      complete: true,
       rows,
     });
   } catch (error) {

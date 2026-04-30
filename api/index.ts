@@ -53,8 +53,15 @@ function randomInt(max: number) {
   return Math.floor(Math.random() * max);
 }
 
-// JWT secret - falls back to a default for development
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+function requireJwtSecret() {
+  const value = process.env.JWT_SECRET?.trim();
+  if (!value) {
+    throw new Error("Missing required environment variable: JWT_SECRET");
+  }
+  return value;
+}
+
+const JWT_SECRET = requireJwtSecret();
 
 app.get("/login", async (c) => {
   const jwtPayload = {

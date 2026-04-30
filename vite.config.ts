@@ -9,6 +9,7 @@ if (process.env.NODE_ENV === "development") {
 
 export default defineConfig({
   server: {
+    host: "0.0.0.0",
     port: 3003,
     proxy: { "/api": "http://localhost:4000" },
   },

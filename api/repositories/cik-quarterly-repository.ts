@@ -1,15 +1,11 @@
 import type { DuckDbConnection } from "@duckdb/node-api";
 import { getDuckDbLease, type DuckDbLeaseContext } from "../db/lease-context";
-import { runAndGetRows } from "../db/query-runner";
-
-function escapeSqlLiteral(value: string) {
-  return value.replace(/'/g, "''");
-}
+import { runPreparedAndGetRows } from "../db/query-runner";
 
 export async function getCikQuarterly(c: DuckDbLeaseContext, cik: string) {
   const lease = getDuckDbLease(c);
   return lease.run("cikQuarterly.get", async (connection: DuckDbConnection) => {
-    const sql = `
+    const stmt = await connection.prepare(`
       SELECT
         cik,
         quarter,
@@ -18,11 +14,12 @@ export async function getCikQuarterly(c: DuckDbLeaseContext, cik: string) {
         ttl_value_per_cik_per_qtr_prc_chg,
         num_assets_per_cik_per_qtr
       FROM every_cik_qtr
-      WHERE cik = '${escapeSqlLiteral(cik)}'
-      ORDER BY quarter_end_date ASC
-    `;
+      WHERE cik = ?
+      ORDER BY quarter_end_date ASC, quarter ASC
+    `);
+    stmt.bindVarchar(1, cik);
 
-    const rows = await runAndGetRows(connection, sql);
+    const rows = await runPreparedAndGetRows(stmt);
     return rows.map((row: unknown[]) => ({
       cik: row[0] == null ? "" : String(row[0]),
       quarter: row[1] == null ? "" : String(row[1]),

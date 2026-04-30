@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchCikQuarterlyData,
   getCikQuarterlyDataFromCache,
@@ -8,7 +8,9 @@ import {
 import { clearSuperinvestorDetailRouteCaches } from "@/collections/page-cache-cleanup";
 import { type DataFlow } from "@/components/LatencyBadge";
 import { CikValueLineChart } from "@/components/charts/CikValueLineChart";
+import { RenderLatencyBadgeSlot } from "@/components/RenderLatencyBadgeSlot";
 import { Card, CardContent } from "@/components/ui/card";
+import { createNumberMetricStore } from "@/lib/perf/metric-store";
 
 interface SuperinvestorChartSectionProps {
   cik: string;
@@ -19,10 +21,20 @@ export function SuperinvestorChartSection({ cik, cikName }: SuperinvestorChartSe
   const [chartQueryTimeMs, setChartQueryTimeMs] = useState<number | null>(null);
   const [chartDataSource, setChartDataSource] = useState<DataFlow>("unknown");
   const [chartLoading, setChartLoading] = useState(() => (cik ? !hasFetchedCikData(cik) : false));
-  const [chartRenderMs, setChartRenderMs] = useState<number | null>(null);
   const [chartData, setChartData] = useState<CikQuarterlyData[]>(() =>
     cik ? (getCikQuarterlyDataFromCache(cik) ?? []) : []
   );
+  const renderMsStore = useMemo(() => createNumberMetricStore(), []);
+  const handleChartRenderComplete = useCallback((renderMs: number) => {
+    renderMsStore.set(renderMs);
+  }, [renderMsStore]);
+  const chartLatencyBadge = useMemo(() => (
+    <RenderLatencyBadgeSlot
+      dataLoadMs={chartQueryTimeMs ?? undefined}
+      renderMsStore={renderMsStore}
+      source={chartDataSource}
+    />
+  ), [chartDataSource, chartQueryTimeMs, renderMsStore]);
 
   useEffect(() => {
     if (!cik) return;
@@ -33,7 +45,7 @@ export function SuperinvestorChartSection({ cik, cikName }: SuperinvestorChartSe
     setChartData(cachedRows);
     setChartQueryTimeMs(null);
     setChartDataSource("unknown");
-    setChartRenderMs(null);
+    renderMsStore.set(null);
     setChartLoading(!hasCachedData);
 
     fetchCikQuarterlyData(cik)
@@ -60,7 +72,7 @@ export function SuperinvestorChartSection({ cik, cikName }: SuperinvestorChartSe
     return () => {
       cancelled = true;
     };
-  }, [cik]);
+  }, [cik, renderMsStore]);
 
   useEffect(() => {
     return () => {
@@ -83,9 +95,9 @@ export function SuperinvestorChartSection({ cik, cikName }: SuperinvestorChartSe
       data={chartData}
       cikName={cikName}
       dataLoadMs={chartQueryTimeMs ?? undefined}
-      renderMs={chartRenderMs ?? undefined}
       source={chartDataSource}
-      onRenderComplete={setChartRenderMs}
+      onRenderComplete={handleChartRenderComplete}
+      latencyBadge={chartLatencyBadge}
     />
   );
 }

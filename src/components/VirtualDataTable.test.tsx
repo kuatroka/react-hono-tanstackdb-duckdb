@@ -19,6 +19,7 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("searchStrategy = 'includes'");
     expect(source).toContain("const ufuzzyRef = useRef(new UFuzzy(UFUZZY_OPTIONS));");
     expect(source).toContain("const previousUFuzzyFilterRef = useRef<UFuzzyPreviousFilter>({ query: '', idxs: null, haystackSize: 0 });");
+    expect(source).toContain("if (searchStrategy !== 'ufuzzy' || !normalizedSearch) {");
     expect(source).toContain("if (searchStrategy === 'ufuzzy') {");
     expect(source).toContain("runUFuzzyIndexSearch(");
     expect(source).toContain("rerankUFuzzyTableRows(");
@@ -37,6 +38,10 @@ describe("VirtualDataTable", () => {
     expect(source).toContain("const SearchToggleButton = memo(function SearchToggleButton");
     expect(source).toContain("const SortHeaderButton = memo(function SortHeaderButton");
     expect(source).toContain("const SortIndicator = memo(function SortIndicator");
+    expect(source).toContain("function useStableEvent");
+    expect(source).toContain("const VirtualTableColumnHeaderRow = memo(VirtualTableColumnHeaderRowInner)");
+    expect(source).toContain("onArrowDown={stableFocusNextRow}");
+    expect(source).toContain("onSort={stableHandleSort}");
   });
 
   test("keeps expanded table search compact so header height stays stable", async () => {

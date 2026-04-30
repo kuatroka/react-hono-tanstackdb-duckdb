@@ -1,15 +1,17 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { VirtualDataTable, type ColumnDef } from '@/components/VirtualDataTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LatencyBadge } from '@/components/LatencyBadge';
+import { PerfTelemetryBadgeSlot } from '@/components/PerfTelemetryBadgeSlot';
 import { PageLayout } from '@/components/layout/page-layout';
 import { useMarkContentReady } from '@/hooks/useContentReady';
-import type { PerfSource, PerfTelemetry } from '@/lib/perf/telemetry';
+import type { PerfSource } from '@/lib/perf/telemetry';
+import { createPerfTelemetryStore } from '@/lib/perf/telemetry-store';
 import {
   assetsCollection,
   fetchAssetRecord,
   getAssetListLoadSource,
+  getLoadedAssetList,
   subscribeAssetListLoadSource,
   type Asset,
 } from '@/collections';
@@ -52,6 +54,12 @@ const assetsTableColumns: ColumnDef<Asset>[] = [
   },
 ];
 
+const assetsTableUFuzzyRanking = {
+  mode: 'ticker-and-name' as const,
+  getCode: (row: Asset) => row.asset,
+  getName: (row: Asset) => row.assetName,
+};
+
 const AssetsTableCard = memo(function AssetsTableCard({
   dataSource,
   rows,
@@ -59,14 +67,14 @@ const AssetsTableCard = memo(function AssetsTableCard({
   dataSource: PerfSource;
   rows: Asset[];
 }) {
-  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(null);
+  const tableTelemetryStore = useMemo(() => createPerfTelemetryStore(), []);
 
   return (
     <Card>
       <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
         <CardTitle className="text-3xl font-bold tracking-tight">Assets</CardTitle>
         <div className="flex min-w-0 w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
-          {tableTelemetry ? <LatencyBadge telemetry={tableTelemetry} className="min-w-0 max-w-full justify-end" /> : null}
+          <PerfTelemetryBadgeSlot store={tableTelemetryStore} className="min-w-0 max-w-full justify-end" />
         </div>
       </CardHeader>
       <CardContent>
@@ -79,16 +87,12 @@ const AssetsTableCard = memo(function AssetsTableCard({
           mobileGridTemplateColumns="minmax(9rem, 1fr) minmax(11rem, 1.1fr)"
           latencySource="tsdb-memory"
           dataSource={dataSource}
-          onTableTelemetryChange={setTableTelemetry}
+          onTableTelemetryChange={tableTelemetryStore.set}
           clientPageSize={100}
           searchDebounceMs={150}
           searchPlaceholder="Search assets..."
           searchStrategy="ufuzzy"
-          ufuzzyRanking={{
-            mode: 'ticker-and-name',
-            getCode: (row) => row.asset,
-            getName: (row) => row.assetName,
-          }}
+          ufuzzyRanking={assetsTableUFuzzyRanking}
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />
@@ -99,10 +103,13 @@ const AssetsTableCard = memo(function AssetsTableCard({
 
 function AssetsTableSurface() {
   const onReady = useMarkContentReady();
-  const [assetsData, setAssetsData] = useState<Asset[] | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getLoadedAssetList().length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
+    if (getLoadedAssetList().length > 0) {
+      return 'tsdb-memory';
+    }
+
     const source = getAssetListLoadSource();
     return source === 'api'
       ? 'api-duckdb'
@@ -113,13 +120,19 @@ function AssetsTableSurface() {
 
   const readyCalledRef = useRef(false);
   useEffect(() => {
+    if (getLoadedAssetList().length > 0) {
+      setDataSource('tsdb-memory');
+      setLoadError(null);
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     void (async () => {
       try {
         await assetsCollection.preload();
         if (cancelled) return;
-        setAssetsData(Array.from(assetsCollection.entries()).map(([, value]) => value));
         setLoadError(null);
       } catch (error) {
         if (cancelled) return;
@@ -149,13 +162,15 @@ function AssetsTableSurface() {
     });
   }, []);
 
+  const rows = getLoadedAssetList();
+
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (assetsData !== undefined) {
+    if (!isLoading) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [assetsData, onReady]);
+  }, [isLoading, onReady]);
 
   return (
     <PageLayout width="wide">
@@ -166,7 +181,7 @@ function AssetsTableSurface() {
       ) : (
         <AssetsTableCard
           dataSource={dataSource}
-          rows={assetsData || []}
+          rows={rows}
         />
       )}
     </PageLayout>

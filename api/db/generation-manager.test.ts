@@ -133,34 +133,17 @@ describe("DuckDbGenerationManager", () => {
     expect(retired).toEqual(["gen-1"]);
   });
 
-  test("refreshes on acquireLease when legacy single-file database is overwritten in place", async () => {
-    const snapshots = [
-      createSnapshot(1, "a", {
-        mode: "legacy-single-file",
-        manifestVersion: null,
-        manifestActive: null,
-        dbPath: "/tmp/legacy.duckdb",
-        fileMtimeMs: 1000,
-        source: "fallback-env",
-      }),
-      createSnapshot(1, "a", {
-        mode: "legacy-single-file",
-        manifestVersion: null,
-        manifestActive: null,
-        dbPath: "/tmp/legacy.duckdb",
-        fileMtimeMs: 2000,
-        source: "fallback-env",
-      }),
-    ];
+  test("does not refresh on acquireLease and relies on timer/admin refreshes", async () => {
+    const snapshots = [createSnapshot(1, "a"), createSnapshot(2, "b")];
     let snapshotIndex = 0;
     const resolver = {
       resolveSnapshot: () => snapshots[Math.min(snapshotIndex++, snapshots.length - 1)],
       getLastManifestError: () => null,
-      getRuntimeMode: () => "legacy-single-file" as const,
+      getRuntimeMode: () => "manifest" as const,
     } as unknown as ManifestResolver;
 
     const createGenerationFn = async (snapshot: ResolvedDbSnapshot): Promise<DuckDbGeneration> => ({
-      id: `gen-${snapshot.fileMtimeMs}`,
+      id: `gen-${snapshot.manifestVersion}`,
       snapshot,
       state: "warming",
       instance: {} as never,
@@ -173,7 +156,6 @@ describe("DuckDbGenerationManager", () => {
       lastWarmupError: null,
     });
 
-    const retired: string[] = [];
     const manager = new DuckDbGenerationManager(
       resolver,
       createGenerationFn,
@@ -181,27 +163,24 @@ describe("DuckDbGenerationManager", () => {
         generation.lastWarmupOkAt = Date.now();
       },
       async (generation) => {
-        retired.push(generation.id);
         generation.state = "retired";
       }
     );
 
     const firstLease = await manager.acquireLease();
-    expect(firstLease.generationId).toBe("gen-2000");
+    expect(firstLease.generationId).toBe("gen-1");
+    await firstLease.close();
 
     const secondLease = await manager.acquireLease();
-    expect(secondLease.generationId).toBe("gen-2000");
-
-    let status = await manager.getStatus();
-    expect(status.activeGenerationId).toBe("gen-2000");
-    expect(status.drainingGenerationIds).toEqual([]);
-
-    await firstLease.close();
+    expect(secondLease.generationId).toBe("gen-1");
     await secondLease.close();
 
+    let status = await manager.getStatus();
+    expect(status.activeGenerationId).toBe("gen-1");
+
+    await manager.refreshIfNeeded("admin");
     status = await manager.getStatus();
-    expect(status.drainingGenerationIds).toEqual([]);
-    expect(retired).toContain("gen-1000");
+    expect(status.activeGenerationId).toBe("gen-2");
   });
 });
 

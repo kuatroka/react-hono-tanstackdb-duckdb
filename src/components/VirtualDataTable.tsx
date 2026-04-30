@@ -25,6 +25,16 @@ const DEFAULT_CLIENT_PAGE_SIZE = 100;
 const DEFAULT_MIN_SEARCH_CHARACTERS = 2;
 const TABLE_SEARCH_INPUT_CLASS_NAME = 'h-8 w-full appearance-none focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none';
 
+function useStableEvent<T extends (...args: never[]) => unknown>(handler: T): T {
+  const handlerRef = useRef(handler);
+
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+
+  return useCallback(((...args: Parameters<T>) => handlerRef.current(...args)) as T, []);
+}
+
 const SearchGlyph = memo(function SearchGlyph() {
   return <Search className="h-4 w-4" />;
 });
@@ -276,6 +286,55 @@ const VirtualTableHeaderSearch = memo(function VirtualTableHeaderSearch({
   );
 });
 
+interface VirtualTableColumnHeaderRowProps<T extends { id: number | string }> {
+  columns: ColumnDef<T>[];
+  gridTemplateColumns: string;
+  isCompactMobileLayout: boolean;
+  sortColumn: Extract<keyof T, string>;
+  sortDirection: SortDirection;
+  onSort: (columnKey: string) => void;
+}
+
+function VirtualTableColumnHeaderRowInner<T extends { id: number | string }>({
+  columns,
+  gridTemplateColumns,
+  isCompactMobileLayout,
+  sortColumn,
+  sortDirection,
+  onSort,
+}: VirtualTableColumnHeaderRowProps<T>) {
+  return (
+    <div
+      className="grid min-w-0 items-center gap-x-3 border-b border-border bg-muted/30 px-[var(--surface-padding)] py-3 text-sm font-medium text-muted-foreground"
+      style={{ gridTemplateColumns }}
+    >
+      {columns.map((column) => {
+        const isSorted = sortColumn === column.key;
+        if (!column.sortable) {
+          return (
+            <div key={String(column.key)} className={cn('truncate', isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'text-right' : undefined, column.headerClassName)}>
+              {column.header}
+            </div>
+          );
+        }
+        return (
+          <SortHeaderButton
+            key={String(column.key)}
+            columnKey={String(column.key)}
+            header={column.header}
+            isSorted={isSorted}
+            sortDirection={sortDirection}
+            headerClassName={cn(isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'justify-end text-right' : undefined, column.headerClassName)}
+            onSort={onSort}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+const VirtualTableColumnHeaderRow = memo(VirtualTableColumnHeaderRowInner) as typeof VirtualTableColumnHeaderRowInner;
+
 interface VirtualDataTableProps<T extends { id: number | string }> {
   data: T[];
   columns: ColumnDef<T>[];
@@ -407,7 +466,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
   );
 
   const searchHaystack = useMemo(() => {
-    if (searchStrategy !== 'ufuzzy') {
+    if (searchStrategy !== 'ufuzzy' || !normalizedSearch) {
       return [] as string[];
     }
 
@@ -418,7 +477,7 @@ export function VirtualDataTable<T extends { id: number | string }>({
         .map((value) => String(value))
         .join(' | '),
     );
-  }, [data, searchStrategy, searchableColumns]);
+  }, [data, normalizedSearch, searchStrategy, searchableColumns]);
 
   const filteredSearch = useMemo(() => {
     if (!normalizedSearch) {
@@ -710,6 +769,14 @@ export function VirtualDataTable<T extends { id: number | string }>({
     }
   }, [activateFocusedRow, focusNextRow, focusPreviousRow]);
 
+  const stableFocusNextRow = useStableEvent(focusNextRow);
+  const stableFocusPreviousRow = useStableEvent(focusPreviousRow);
+  const stableFocusFirstRow = useStableEvent(focusFirstRow);
+  const stableHandleSearchEnter = useStableEvent(handleSearchEnter);
+  const stableHandleSearchFocus = useStableEvent(handleSearchFocus);
+  const stableHandleSearchValueChange = useStableEvent(handleSearchValueChange);
+  const stableHandleSort = useStableEvent(handleSort);
+
   useEffect(() => {
     const canLoadMoreRemoteRows = hasNextPage && !isFetchingNextPage && Boolean(onLoadMore);
     const hasMoreClientRows = !hasRemotePagination && revealedRowCount < orderedData.length;
@@ -729,7 +796,9 @@ export function VirtualDataTable<T extends { id: number | string }>({
         return;
       }
 
-      void onLoadMore();
+      if (onLoadMore) {
+        void onLoadMore();
+      }
     }
   }, [
     clientPageSize,
@@ -754,39 +823,21 @@ export function VirtualDataTable<T extends { id: number | string }>({
           searchValue={draftSearchValue}
           searchTelemetry={searchTelemetry}
           tableContainerRef={tableContainerRef}
-          onArrowDown={focusNextRow}
-          onArrowUp={focusPreviousRow}
-          onEnter={handleSearchEnter}
-          onSearchFocus={handleSearchFocus}
-          onSearchValueChange={handleSearchValueChange}
-          onTabToResults={focusFirstRow}
+          onArrowDown={stableFocusNextRow}
+          onArrowUp={stableFocusPreviousRow}
+          onEnter={stableHandleSearchEnter}
+          onSearchFocus={stableHandleSearchFocus}
+          onSearchValueChange={stableHandleSearchValueChange}
+          onTabToResults={stableFocusFirstRow}
         />
-        <div
-          className="grid min-w-0 items-center gap-x-3 border-b border-border bg-muted/30 px-[var(--surface-padding)] py-3 text-sm font-medium text-muted-foreground"
-          style={{ gridTemplateColumns: effectiveGridTemplateColumns }}
-        >
-          {columns.map((column) => {
-            const isSorted = sortColumn === column.key;
-            if (!column.sortable) {
-              return (
-                <div key={String(column.key)} className={cn('truncate', isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'text-right' : undefined, column.headerClassName)}>
-                  {column.header}
-                </div>
-              );
-            }
-            return (
-              <SortHeaderButton
-                key={String(column.key)}
-                columnKey={String(column.key)}
-                header={column.header}
-                isSorted={isSorted}
-                sortDirection={sortDirection}
-                headerClassName={cn(isCompactMobileLayout && String(column.key) !== String(columns[0]?.key) ? 'justify-end text-right' : undefined, column.headerClassName)}
-                onSort={handleSort}
-              />
-            );
-          })}
-        </div>
+        <VirtualTableColumnHeaderRow
+          columns={columns}
+          gridTemplateColumns={effectiveGridTemplateColumns}
+          isCompactMobileLayout={isCompactMobileLayout}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={stableHandleSort}
+        />
         <div ref={viewportRef} className="overflow-y-auto overflow-x-hidden" style={{ height: rowHeight * visibleRowCount }}>
           {visibleData.length === 0 ? (
             <div className="flex h-full items-center justify-center px-4 text-sm text-muted-foreground">

@@ -28,6 +28,7 @@ interface CikValueLineChartProps {
   renderMs?: number;
   source?: "api-duckdb" | "tsdb-indexeddb" | "tsdb-memory" | "unknown";
   onRenderComplete?: (renderMs: number) => void;
+  latencyBadge?: React.ReactNode;
 }
 
 interface LineTooltipParam {
@@ -86,6 +87,7 @@ export function CikValueLineChart({
   renderMs,
   source = "unknown",
   onRenderComplete,
+  latencyBadge,
 }: CikValueLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
@@ -293,11 +295,13 @@ export function CikValueLineChart({
       <CardHeader>
         <CardTitle className="flex flex-wrap items-start justify-between gap-2 sm:items-center">
           <span className="min-w-0 flex-1 text-balance">Portfolio Value Over Time{cikName ? ` - ${cikName}` : ""}</span>
-          <LatencyBadge
-            dataLoadMs={dataLoadMs}
-            renderMs={renderMs}
-            source={source as DataFlow}
-          />
+          {latencyBadge ?? (
+            <LatencyBadge
+              dataLoadMs={dataLoadMs}
+              renderMs={renderMs}
+              source={source as DataFlow}
+            />
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="h-[280px] w-full min-w-0 sm:h-[320px]">

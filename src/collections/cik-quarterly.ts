@@ -33,6 +33,10 @@ interface CikQuarterlyApiRow {
     numAssets?: number | null
 }
 
+interface CikQuarterlyApiResponse {
+    rows?: CikQuarterlyApiRow[]
+}
+
 export const cikQuarterlyCollection = createCollection(
     queryCollectionOptions<CikQuarterlyData>({
         queryKey: ['cik-quarterly-local'],
@@ -153,9 +157,10 @@ export async function fetchCikQuarterlyData(
         if (!res.ok) {
             throw new Error('Failed to fetch CIK quarterly data')
         }
-        const data = await res.json() as CikQuarterlyApiRow[]
+        const payload = await res.json() as CikQuarterlyApiResponse | CikQuarterlyApiRow[]
+        const apiRows = Array.isArray(payload) ? payload : Array.isArray(payload.rows) ? payload.rows : []
 
-        const rows: CikQuarterlyData[] = data.map((row) => ({
+        const rows: CikQuarterlyData[] = apiRows.map((row) => ({
             id: `${row.cik}-${row.quarter}`,
             cik: String(row.cik),
             quarter: String(row.quarter),

@@ -10,6 +10,15 @@ const projectRoot = join(import.meta.dir, "..");
 const distDir = join(projectRoot, "dist");
 const distIndexHtml = join(distDir, "index.html");
 const isProduction = process.env.NODE_ENV === "production";
+const appVariant = process.env.APP_VARIANT?.trim() || "current";
+const hostname = process.env.HOST?.trim() || process.env.API_HOST?.trim() || "0.0.0.0";
+
+function withVariantScript(html: string) {
+  return html.replace(
+    "<head>",
+    `<head><script>globalThis.__APP_VARIANT__=${JSON.stringify(appVariant)}</script>`,
+  );
+}
 
 function resolveDistPath(pathname: string) {
   const normalizedPath = normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, "");
@@ -52,10 +61,12 @@ async function handleProductionRequest(request: Request) {
     return withBuildMetadataHeaders(new Response("Not Found", { status: 404 }));
   }
 
-  return withBuildMetadataHeaders(new Response(Bun.file(distIndexHtml)));
+  return withBuildMetadataHeaders(new Response(withVariantScript(await Bun.file(distIndexHtml).text()), {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  }));
 }
 
-console.log(`API server starting on port ${port}`);
+console.log(`API server starting on ${hostname}:${port} (${appVariant})`);
 
 void duckDbGenerationManager.refreshIfNeeded("admin").catch((error) => {
   console.error("Failed to initialize DuckDB generation manager", error);
@@ -81,12 +92,18 @@ process.on("SIGTERM", () => {
 });
 
 Bun.serve({
+  hostname,
   port,
+  development: isProduction ? false : {
+    hmr: true,
+    console: true,
+  },
   ...(isProduction
     ? {
         fetch: handleProductionRequest,
       }
     : {
+        fetch: (request: Request) => app.fetch(request),
         routes: {
           "/api": (request: Request) => app.fetch(request),
           "/api/*": (request: Request) => app.fetch(request),

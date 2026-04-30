@@ -4,7 +4,7 @@ import type { RouterContext } from "../router";
 import { ContentReadyProvider } from "@/hooks/useContentReady";
 import "@/index.css";
 
-const serverURL = import.meta.env?.VITE_PUBLIC_SERVER ?? "http://localhost:4000";
+const serverURL = import.meta.env?.VITE_PUBLIC_SERVER;
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
@@ -13,9 +13,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "fintellectus (Tanstack DB)" },
     ],
-    links: [
+    links: serverURL ? [
       { rel: "preconnect", href: serverURL },
-    ],
+    ] : [],
   }),
   component: RootComponent,
 });

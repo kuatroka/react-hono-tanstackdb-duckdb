@@ -1,12 +1,36 @@
 import { createCollection } from '@tanstack/db'
 import { queryCollectionOptions } from '@tanstack/query-db-collection'
 import { queryClient } from './instances'
-import { 
-    persistDrilldownData, 
-    loadPersistedDrilldownData,
-    clearPersistedDrilldownData,
-    type PersistedDrilldownData 
+import {
+    clearPersistedDrilldownData as clearPersistedDrilldownDataDefault,
+    loadPersistedDrilldownPairData as loadPersistedDrilldownPairDataDefault,
+    loadPersistedDrilldownQuarterData as loadPersistedDrilldownQuarterDataDefault,
+    persistDrilldownPairData as persistDrilldownPairDataDefault,
+    persistDrilldownQuarterData as persistDrilldownQuarterDataDefault,
+    type PersistedDrilldownData,
 } from './query-client'
+
+type DrilldownPersistence = {
+    clearPersistedDrilldownData: typeof clearPersistedDrilldownDataDefault
+    loadPersistedDrilldownPairData: typeof loadPersistedDrilldownPairDataDefault
+    loadPersistedDrilldownQuarterData: typeof loadPersistedDrilldownQuarterDataDefault
+    persistDrilldownPairData: typeof persistDrilldownPairDataDefault
+    persistDrilldownQuarterData: typeof persistDrilldownQuarterDataDefault
+}
+
+const drilldownPersistence: DrilldownPersistence = {
+    clearPersistedDrilldownData: clearPersistedDrilldownDataDefault,
+    loadPersistedDrilldownPairData: loadPersistedDrilldownPairDataDefault,
+    loadPersistedDrilldownQuarterData: loadPersistedDrilldownQuarterDataDefault,
+    persistDrilldownPairData: persistDrilldownPairDataDefault,
+    persistDrilldownQuarterData: persistDrilldownQuarterDataDefault,
+}
+
+export function __setDrilldownPersistenceForTest(overrides: Partial<DrilldownPersistence>): () => void {
+    const previous = { ...drilldownPersistence }
+    Object.assign(drilldownPersistence, overrides)
+    return () => Object.assign(drilldownPersistence, previous)
+}
 
 export interface InvestorDetail {
     id: string  // Unique key: cusip-quarter-action-cik
@@ -67,11 +91,14 @@ function getAllDrilldownRows(): InvestorDetail[] {
 
 const fetchedCombinations = new Set<string>()
 
-const inFlightBothActionsFetches = new Map<string, Promise<{ rows: InvestorDetail[], queryTimeMs: number }>>()
+const inFlightBothActionsFetches = new Map<string, Promise<{ rows: InvestorDetail[], queryTimeMs: number, complete: boolean }>>()
 
 const inFlightBulkFetches = new Map<string, Promise<void>>()
 
 const bulkFetchedPairs = new Set<string>()
+const incompleteQuarterScopes = new Set<string>()
+const incompleteBulkPairs = new Set<string>()
+const indexedDBLoadedKeys = new Set<string>()
 const bufferedRows = new Map<string, InvestorDetail>()
 
 function isSyncNotInitializedError(error: unknown): boolean {
@@ -140,100 +167,199 @@ function safeWriteDelete(ids: string[]): void {
     }
 }
 
-// Track if we've loaded from IndexedDB
-let indexedDBLoaded = false
-let indexedDBLoadPromise: Promise<boolean> | null = null
+const inFlightIndexedDBLoads = new Map<string, Promise<boolean>>()
 
-export function isDrilldownIndexedDBLoaded(): boolean {
-    return indexedDBLoaded
+export function isDrilldownIndexedDBLoaded(ticker: string, cusip: string, quarter?: string): boolean {
+    const pairKey = makePairKey(ticker, cusip)
+    if (quarter) {
+        return indexedDBLoadedKeys.has(`quarter:${pairKey}:${quarter}`)
+    }
+
+    return indexedDBLoadedKeys.has(`pair:${pairKey}`)
+}
+
+function restorePersistedDrilldownRows(persisted: PersistedDrilldownData): boolean {
+    if (persisted.rows.length === 0) {
+        if (persisted.scope === 'quarter' && persisted.quarter) {
+            const { ticker, cusip } = parsePairKey(persisted.pairKey)
+            markQuarterScopeComplete(ticker, cusip, persisted.quarter, persisted.complete)
+            return persisted.complete
+        }
+
+        if (persisted.scope === 'pair') {
+            markPairScopeComplete(persisted.pairKey, persisted.complete)
+            return persisted.complete
+        }
+
+        return false
+    }
+
+    safeWriteUpsert(persisted.rows)
+
+    if (persisted.scope === 'quarter' && persisted.quarter) {
+        const { ticker, cusip } = parsePairKey(persisted.pairKey)
+        markQuarterScopeComplete(ticker, cusip, persisted.quarter, persisted.complete)
+    }
+
+    if (persisted.scope === 'pair') {
+        markPairScopeComplete(persisted.pairKey, persisted.complete)
+    }
+
+    return true
 }
 
 /**
  * Load drilldown data from IndexedDB into the collection.
  * Returns true if data was loaded, false otherwise.
  */
-export async function loadDrilldownFromIndexedDB(): Promise<boolean> {
-    if (indexedDBLoaded) return true
-    if (indexedDBLoadPromise) return indexedDBLoadPromise
-    
-    indexedDBLoadPromise = (async () => {
+export async function loadDrilldownFromIndexedDB(ticker: string, cusip: string, quarter?: string): Promise<boolean> {
+    const pairKey = makePairKey(ticker, cusip)
+    const scopeKey = quarter ? `quarter:${pairKey}:${quarter}` : `pair:${pairKey}`
+    if (indexedDBLoadedKeys.has(scopeKey)) {
+        return quarter
+            ? getDrilldownDataForQuarter(ticker, cusip, quarter).length > 0
+            : getPairScopeRows(pairKey).length > 0
+    }
+
+    const inFlight = inFlightIndexedDBLoads.get(scopeKey)
+    if (inFlight) {
+        return inFlight
+    }
+
+    const promise = (async () => {
+        indexedDBLoadedKeys.add(scopeKey)
         try {
-            const persisted = await loadPersistedDrilldownData()
-            if (!persisted || persisted.rows.length === 0) {
-                indexedDBLoaded = true
-                return false
+            const persistedScopes = quarter
+                ? [
+                    await drilldownPersistence.loadPersistedDrilldownQuarterData(pairKey, quarter),
+                    await drilldownPersistence.loadPersistedDrilldownPairData(pairKey),
+                ]
+                : [await drilldownPersistence.loadPersistedDrilldownPairData(pairKey)]
+
+            let restored = false
+            for (const persisted of persistedScopes) {
+                if (!persisted) {
+                    continue
+                }
+
+                restored = restorePersistedDrilldownRows(persisted) || restored
+                if (restored) {
+                    console.log(`[Drilldown] Restored ${persisted.rows.length} rows from IndexedDB for ${persisted.key}`)
+                }
             }
-            
-            // Restore rows to collection
-            safeWriteUpsert(persisted.rows)
-            
-            // Restore fetched combinations
-            for (const combo of persisted.fetchedCombinations) {
-                fetchedCombinations.add(combo)
-            }
-            
-            // Restore bulk fetched pairs
-            for (const pair of persisted.bulkFetchedPairs) {
-                bulkFetchedPairs.add(pair)
-            }
-            
-            indexedDBLoaded = true
-            console.log(`[Drilldown] Restored ${persisted.rows.length} rows from IndexedDB`)
-            return true
+
+            return restored
         } catch (error) {
             console.error('[Drilldown] Failed to load from IndexedDB:', error)
-            indexedDBLoaded = true
             return false
         }
     })()
-    
-    return indexedDBLoadPromise
+
+    inFlightIndexedDBLoads.set(scopeKey, promise)
+    try {
+        return await promise
+    } finally {
+        inFlightIndexedDBLoads.delete(scopeKey)
+    }
 }
 
-/**
- * Save current drilldown data to IndexedDB.
- * Call this after fetching new data.
- */
-export async function saveDrilldownToIndexedDB(): Promise<void> {
-    const rows = getAllDrilldownRows()
-    if (rows.length === 0) return
-    
-    const data: PersistedDrilldownData = {
-        rows,
-        fetchedCombinations: Array.from(fetchedCombinations),
-        bulkFetchedPairs: Array.from(bulkFetchedPairs),
-    }
-    
-    await persistDrilldownData(data)
+async function saveQuarterDrilldownToIndexedDB(ticker: string, cusip: string, quarter: string, complete: boolean): Promise<void> {
+    const pairKey = makePairKey(ticker, cusip)
+    const rows = getDrilldownDataForQuarter(ticker, cusip, quarter)
+    await drilldownPersistence.persistDrilldownQuarterData(pairKey, quarter, rows, complete)
+}
+
+async function savePairDrilldownToIndexedDB(ticker: string, cusip: string, complete: boolean): Promise<void> {
+    const pairKey = makePairKey(ticker, cusip)
+    await drilldownPersistence.persistDrilldownPairData(pairKey, getPairScopeRows(pairKey), complete)
+}
+
+function getDrilldownDataForQuarter(ticker: string, cusip: string, quarter: string): InvestorDetail[] {
+    return getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter)
 }
 
 /**
  * Check if data was loaded from IndexedDB (for latency badge source detection)
  */
-export function wasLoadedFromIndexedDB(): boolean {
-    return indexedDBLoaded && getAllDrilldownRows().length > 0
+export function wasLoadedFromIndexedDB(ticker: string, cusip: string, quarter?: string): boolean {
+    return isDrilldownIndexedDBLoaded(ticker, cusip, quarter)
 }
 
 function makePairKey(ticker: string, cusip: string): string {
-    return `${ticker}-${cusip}`
+    return `${ticker}::${cusip}`
 }
 
 function getRowsForPair(allRows: InvestorDetail[], ticker: string, cusip: string): InvestorDetail[] {
     return allRows.filter((r) => r.ticker === ticker && r.cusip === cusip)
 }
 
-function inferBulkFetchedFromRows(allRows: InvestorDetail[], ticker: string, cusip: string): boolean {
-    const pairRows = getRowsForPair(allRows, ticker, cusip)
-    if (pairRows.length === 0) return false
-    const distinctQuarters = new Set(pairRows.map((r) => r.quarter))
-    // If we already have multiple quarters locally, assume bulk load ran before.
-    return distinctQuarters.size >= 2
+function parsePairKey(pairKey: string): { ticker: string, cusip: string } {
+    const separator = '::'
+    const separatorIndex = pairKey.indexOf(separator)
+    if (separatorIndex === -1) {
+        return { ticker: pairKey, cusip: '' }
+    }
+
+    return {
+        ticker: pairKey.slice(0, separatorIndex),
+        cusip: pairKey.slice(separatorIndex + separator.length),
+    }
+}
+
+function getQuarterScopeKey(ticker: string, cusip: string, quarter: string): string {
+    return `${ticker}-${cusip}-${quarter}`
+}
+
+function getPairScopeRows(pairKey: string): InvestorDetail[] {
+    const { ticker, cusip } = parsePairKey(pairKey)
+    return getRowsForPair(getAllDrilldownRows(), ticker, cusip)
+}
+
+function getDrilldownRowsForAction(ticker: string, cusip: string, quarter: string, action: 'open' | 'close'): InvestorDetail[] {
+    return getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter && item.action === action)
+}
+
+function markQuarterScopeComplete(ticker: string, cusip: string, quarter: string, complete: boolean): void {
+    const scopeKey = getQuarterScopeKey(ticker, cusip, quarter)
+    const openKey = `${ticker}-${cusip}-${quarter}-open`
+    const closeKey = `${ticker}-${cusip}-${quarter}-close`
+
+    if (complete) {
+        fetchedCombinations.add(openKey)
+        fetchedCombinations.add(closeKey)
+        incompleteQuarterScopes.delete(scopeKey)
+        return
+    }
+
+    fetchedCombinations.delete(openKey)
+    fetchedCombinations.delete(closeKey)
+    incompleteQuarterScopes.add(scopeKey)
+}
+
+function markPairScopeComplete(pairKey: string, complete: boolean): void {
+    if (complete) {
+        bulkFetchedPairs.add(pairKey)
+        incompleteBulkPairs.delete(pairKey)
+        return
+    }
+
+    bulkFetchedPairs.delete(pairKey)
+    incompleteBulkPairs.add(pairKey)
 }
 
 /**
  * Check if data for a specific [ticker, cusip, quarter, action] has been fetched
  */
 export function hasFetchedDrilldownData(ticker: string, cusip: string, quarter: string, action: 'open' | 'close'): boolean {
+    const pairKey = makePairKey(ticker, cusip)
+    if (bulkFetchedPairs.has(pairKey) && !incompleteBulkPairs.has(pairKey)) {
+        return true
+    }
+
+    if (incompleteQuarterScopes.has(getQuarterScopeKey(ticker, cusip, quarter))) {
+        return false
+    }
+
     return fetchedCombinations.has(`${ticker}-${cusip}-${quarter}-${action}`)
 }
 
@@ -247,65 +373,50 @@ export async function fetchDrilldownData(
     quarter: string,
     action: 'open' | 'close'
 ): Promise<{ rows: InvestorDetail[], queryTimeMs: number, fromCache: boolean }> {
-    const cacheKey = `${ticker}-${cusip}-${quarter}-${action}`
-
-    const cachedRows = getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter && item.action === action)
-    if (cachedRows.length > 0) {
-        fetchedCombinations.add(cacheKey)
-        return { rows: cachedRows, queryTimeMs: 0, fromCache: true }
-    }
-
-    if (fetchedCombinations.has(cacheKey)) {
-        return { rows: [], queryTimeMs: 0, fromCache: true }
+    if (hasFetchedDrilldownData(ticker, cusip, quarter, action)) {
+        return {
+            rows: getDrilldownRowsForAction(ticker, cusip, quarter, action),
+            queryTimeMs: 0,
+            fromCache: true,
+        }
     }
 
     const result = await fetchDrilldownBothActions(ticker, cusip, quarter)
-    const filtered = (result.rows || []).filter((r) => r.action === action)
-    fetchedCombinations.add(cacheKey)
-    return { rows: filtered, queryTimeMs: result.queryTimeMs, fromCache: result.queryTimeMs === 0 }
+    return {
+        rows: result.rows.filter((row) => row.action === action),
+        queryTimeMs: result.queryTimeMs,
+        fromCache: result.queryTimeMs === 0,
+    }
 }
 
 /**
  * Fetch BOTH actions for a specific quarter in one round trip and upsert.
- * Returns combined rows and timing; marks both action combinations as fetched.
+ * Returns combined rows and timing; marks both action combinations as fetched only when complete.
  */
 export async function fetchDrilldownBothActions(
     ticker: string,
     cusip: string,
     quarter: string,
-): Promise<{ rows: InvestorDetail[], queryTimeMs: number }> {
+): Promise<{ rows: InvestorDetail[], queryTimeMs: number, complete: boolean }> {
     const bothKey = `${ticker}-${cusip}-${quarter}-both`
     const inFlight = inFlightBothActionsFetches.get(bothKey)
     if (inFlight) {
         return inFlight
     }
 
-    const openKey = `${ticker}-${cusip}-${quarter}-open`
-    const closeKey = `${ticker}-${cusip}-${quarter}-close`
-
-    const allRows = getAllDrilldownRows()
-    const cachedRows = allRows.filter(
-        (item) =>
-            item.ticker === ticker &&
-            item.cusip === cusip &&
-            item.quarter === quarter &&
-            (item.action === 'open' || item.action === 'close')
-    )
-
-    const openCached = cachedRows.some((r) => r.action === 'open')
-    const closeCached = cachedRows.some((r) => r.action === 'close')
-    const openFetched = openCached || fetchedCombinations.has(openKey)
-    const closeFetched = closeCached || fetchedCombinations.has(closeKey)
-
-    if (openFetched && closeFetched) {
-        fetchedCombinations.add(openKey)
-        fetchedCombinations.add(closeKey)
-        return { rows: cachedRows, queryTimeMs: 0 }
+    const getResolvedQuarterRows = () => getDrilldownDataForQuarter(ticker, cusip, quarter)
+    if (hasFetchedDrilldownData(ticker, cusip, quarter, 'open') && hasFetchedDrilldownData(ticker, cusip, quarter, 'close')) {
+        return { rows: getResolvedQuarterRows(), queryTimeMs: 0, complete: true }
     }
 
     const promise = (async () => {
-        const startTime = performance.now()
+        await loadDrilldownFromIndexedDB(ticker, cusip, quarter)
 
+        if (hasFetchedDrilldownData(ticker, cusip, quarter, 'open') && hasFetchedDrilldownData(ticker, cusip, quarter, 'close')) {
+            return { rows: getResolvedQuarterRows(), queryTimeMs: 0, complete: true }
+        }
+
+        const startTime = performance.now()
         const searchParams = new URLSearchParams()
         searchParams.set('ticker', ticker)
         searchParams.set('cusip', cusip)
@@ -315,20 +426,20 @@ export async function fetchDrilldownBothActions(
 
         const res = await fetch(`/api/duckdb-investor-drilldown?${searchParams.toString()}`)
         if (!res.ok) throw new Error('Failed to fetch investor details (both actions)')
-        const data = await res.json()
+        const data = await res.json() as { rows?: DrilldownApiRow[], complete?: boolean }
 
-        const rows: InvestorDetail[] = ((data.rows || []) as DrilldownApiRow[]).map((row) => {
-            const action: 'open' | 'close' = row.action === 'close' ? 'close' : 'open'
+        const rows: InvestorDetail[] = (Array.isArray(data.rows) ? data.rows : []).map((row) => {
+            const resolvedAction: 'open' | 'close' = row.action === 'close' ? 'close' : 'open'
             const rowCusip = row.cusip ?? cusip
             return {
-                id: `${rowCusip ?? 'nocusip'}-${row.quarter ?? quarter}-${action}-${row.cik ?? 'nocik'}`,
+                id: `${rowCusip ?? 'nocusip'}-${row.quarter ?? quarter}-${resolvedAction}-${row.cik ?? 'nocik'}`,
                 ticker,
                 cik: row.cik != null ? String(row.cik) : '',
                 cikName: row.cikName ?? '',
                 cikTicker: row.cikTicker ?? '',
                 quarter: row.quarter ?? quarter,
                 cusip: rowCusip ?? null,
-                action,
+                action: resolvedAction,
                 didOpen: row.didOpen ?? null,
                 didAdd: row.didAdd ?? null,
                 didReduce: row.didReduce ?? null,
@@ -337,21 +448,21 @@ export async function fetchDrilldownBothActions(
             }
         })
 
-        const existingIds = new Set(getAllDrilldownRows().map(r => r.id))
-        const dedupedRows = rows.filter(r => !existingIds.has(r.id))
-        if (dedupedRows.length > 0) {
-            safeWriteUpsert(dedupedRows)
-        }
+        safeWriteUpsert(rows)
 
-        fetchedCombinations.add(`${ticker}-${cusip}-${quarter}-open`)
-        fetchedCombinations.add(`${ticker}-${cusip}-${quarter}-close`)
+        const complete = Boolean(data.complete)
+        markQuarterScopeComplete(ticker, cusip, quarter, complete)
 
         const elapsedMs = Math.round(performance.now() - startTime)
-        
-        // Persist to IndexedDB after fetching
-        saveDrilldownToIndexedDB().catch(err => console.warn('[Drilldown] Failed to persist:', err))
-        
-        return { rows, queryTimeMs: elapsedMs }
+        saveQuarterDrilldownToIndexedDB(ticker, cusip, quarter, complete).catch((error) => {
+            console.warn('[Drilldown] Failed to persist quarter scope:', error)
+        })
+
+        return {
+            rows: getResolvedQuarterRows(),
+            queryTimeMs: elapsedMs,
+            complete,
+        }
     })()
 
     inFlightBothActionsFetches.set(bothKey, promise)
@@ -379,74 +490,59 @@ export async function backgroundLoadAllDrilldownData(
     }
 
     const promise = (async () => {
-
-    // Seed fetched set with existing collection rows to avoid refetching on refresh
-    const existingRows = getAllDrilldownRows()
-    for (const row of existingRows) {
-        fetchedCombinations.add(`${row.ticker}-${row.cusip}-${row.quarter}-${row.action}`)
-    }
-
-    if (bulkFetchedPairs.has(pairKey) || inferBulkFetchedFromRows(existingRows, ticker, cusip)) {
-        bulkFetchedPairs.add(pairKey)
-        onProgress?.(1, 1)
-        console.debug(`[Background Load] ${ticker}/${cusip}: skipping bulk fetch (already cached locally)`)
-        return
-    }
-
-    // Bulk load everything in one call (fastest overall; route caps rows to keep payload reasonable)
-    const startMs = performance.now()
-    const searchParams = new URLSearchParams()
-    searchParams.set('ticker', ticker)
-    searchParams.set('cusip', cusip)
-    searchParams.set('quarter', 'all')
-    searchParams.set('action', 'both')
-    searchParams.set('limit', '5000') // route caps at 5000 rows
-
-    const res = await fetch(`/api/duckdb-investor-drilldown?${searchParams.toString()}`)
-    if (!res.ok) {
-        console.warn(`[Background Load] ${ticker}/${cusip}: bulk fetch failed`, await res.text())
-        onProgress?.(1, 1)
-        return
-    }
-    const data = await res.json()
-
-    const rows: InvestorDetail[] = ((data.rows || []) as DrilldownApiRow[]).map((row) => {
-        const rowCusip = row.cusip ?? cusip
-        return {
-            id: `${rowCusip ?? 'nocusip'}-${row.quarter ?? 'unknown'}-${row.action ?? 'open'}-${row.cik ?? 'nocik'}`,
-            ticker,
-            cik: row.cik != null ? String(row.cik) : '',
-            cikName: row.cikName ?? '',
-            cikTicker: row.cikTicker ?? '',
-            quarter: row.quarter ?? 'unknown',
-            cusip: rowCusip ?? null,
-            action: (row.action === 'close' ? 'close' : 'open'),
-            didOpen: row.didOpen ?? null,
-            didAdd: row.didAdd ?? null,
-            didReduce: row.didReduce ?? null,
-            didClose: row.didClose ?? null,
-            didHold: row.didHold ?? null,
+        await loadDrilldownFromIndexedDB(ticker, cusip)
+        if (bulkFetchedPairs.has(pairKey) && !incompleteBulkPairs.has(pairKey)) {
+            onProgress?.(1, 1)
+            console.debug(`[Background Load] ${ticker}/${cusip}: skipping bulk fetch (already cached locally)`)
+            return
         }
-    })
 
-    const existingIds = new Set(getAllDrilldownRows().map(r => r.id))
-    const dedupedRows = rows.filter(r => !existingIds.has(r.id))
-    if (dedupedRows.length > 0) {
-        safeWriteUpsert(dedupedRows)
-    }
+        const startMs = performance.now()
+        const searchParams = new URLSearchParams()
+        searchParams.set('ticker', ticker)
+        searchParams.set('cusip', cusip)
+        searchParams.set('quarter', 'all')
+        searchParams.set('action', 'both')
+        searchParams.set('limit', '5000')
 
-    // Mark fetched combinations so table reads are instant
-    for (const r of rows) {
-        fetchedCombinations.add(`${r.ticker}-${r.cusip}-${r.quarter}-${r.action}`)
-    }
+        const res = await fetch(`/api/duckdb-investor-drilldown?${searchParams.toString()}`)
+        if (!res.ok) {
+            console.warn(`[Background Load] ${ticker}/${cusip}: bulk fetch failed`, await res.text())
+            onProgress?.(1, 1)
+            return
+        }
 
-    bulkFetchedPairs.add(pairKey)
-    onProgress?.(1, 1)
-    const elapsedMs = Math.round(performance.now() - startMs)
-    console.log(`[Background Load] ${ticker}/${cusip}: fetched ${rows.length} rows in one bulk call (wall=${elapsedMs}ms)`)
-    
-    // Persist to IndexedDB after bulk fetch
-    saveDrilldownToIndexedDB().catch(err => console.warn('[Drilldown] Failed to persist:', err))
+        const data = await res.json() as { rows?: DrilldownApiRow[], complete?: boolean }
+        const rows: InvestorDetail[] = (Array.isArray(data.rows) ? data.rows : []).map((row) => {
+            const rowCusip = row.cusip ?? cusip
+            return {
+                id: `${rowCusip ?? 'nocusip'}-${row.quarter ?? 'unknown'}-${row.action ?? 'open'}-${row.cik ?? 'nocik'}`,
+                ticker,
+                cik: row.cik != null ? String(row.cik) : '',
+                cikName: row.cikName ?? '',
+                cikTicker: row.cikTicker ?? '',
+                quarter: row.quarter ?? 'unknown',
+                cusip: rowCusip ?? null,
+                action: row.action === 'close' ? 'close' : 'open',
+                didOpen: row.didOpen ?? null,
+                didAdd: row.didAdd ?? null,
+                didReduce: row.didReduce ?? null,
+                didClose: row.didClose ?? null,
+                didHold: row.didHold ?? null,
+            }
+        })
+
+        safeWriteUpsert(rows)
+
+        const complete = Boolean(data.complete)
+        markPairScopeComplete(pairKey, complete)
+        onProgress?.(1, 1)
+        const elapsedMs = Math.round(performance.now() - startMs)
+        console.log(`[Background Load] ${ticker}/${cusip}: fetched ${rows.length} rows in one bulk call (wall=${elapsedMs}ms, complete=${complete})`)
+
+        savePairDrilldownToIndexedDB(ticker, cusip, complete).catch((error) => {
+            console.warn('[Drilldown] Failed to persist pair scope:', error)
+        })
     })()
 
     inFlightBulkFetches.set(pairKey, promise)
@@ -470,7 +566,7 @@ export function getDrilldownDataFromCollection(
         return null
     }
 
-    return getAllDrilldownRows().filter((item) => item.ticker === ticker && item.cusip === cusip && item.quarter === quarter && item.action === action)
+    return getDrilldownRowsForAction(ticker, cusip, quarter, action)
 }
 
 function resetDrilldownState(clearPersistedCache: boolean): void {
@@ -484,11 +580,13 @@ function resetDrilldownState(clearPersistedCache: boolean): void {
     inFlightBothActionsFetches.clear()
     inFlightBulkFetches.clear()
     bulkFetchedPairs.clear()
-    indexedDBLoaded = false
-    indexedDBLoadPromise = null
+    incompleteQuarterScopes.clear()
+    incompleteBulkPairs.clear()
+    indexedDBLoadedKeys.clear()
+    inFlightIndexedDBLoads.clear()
 
     if (clearPersistedCache) {
-        clearPersistedDrilldownData().catch((error) => {
+        drilldownPersistence.clearPersistedDrilldownData().catch((error) => {
             console.warn('[Drilldown] Failed to clear persisted cache:', error)
         })
     }

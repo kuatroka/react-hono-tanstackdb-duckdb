@@ -21,10 +21,10 @@ describe("superinvestor name normalization", () => {
 
     expect(response.status).toBe(200);
 
-    const rows = await response.json();
+    const payload = await response.json();
 
-    expect(Array.isArray(rows)).toBe(true);
-    expect(rows.some((row: { cikName: string }) => row.cikName === SENTINEL)).toBe(false);
+    expect(Array.isArray(payload.rows)).toBe(true);
+    expect(payload.rows.some((row: { cikName: string }) => row.cikName === SENTINEL)).toBe(false);
   });
 
   test("does not expose DuckDB sentinel names through search results", async () => {

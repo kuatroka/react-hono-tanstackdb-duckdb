@@ -93,7 +93,11 @@ describe("pre-sync collection hydration", () => {
   test("drilldown load tolerates pre-ready collection state without warning", async () => {
     spyOn(investorDrilldownCollection, "isReady").mockReturnValue(false);
     const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
-    spyOn(queryClientModule, "loadPersistedDrilldownData").mockResolvedValue({
+    spyOn(queryClientModule, "loadPersistedDrilldownQuarterData").mockResolvedValue({
+      key: "quarter:PLTR::69608A108:2024-Q4",
+      scope: "quarter",
+      pairKey: "PLTR::69608A108",
+      quarter: "2024-Q4",
       rows: [
         {
           id: "69608A108-2024-Q4-open-1234",
@@ -111,12 +115,11 @@ describe("pre-sync collection hydration", () => {
           didHold: false,
         },
       ],
-      fetchedCombinations: ["PLTR-69608A108-2024-Q4-open"],
-      bulkFetchedPairs: [],
+      complete: false,
       metadata: { persistedAt: Date.now() },
     } as any);
 
-    const loaded = await loadDrilldownFromIndexedDB();
+    const loaded = await loadDrilldownFromIndexedDB("PLTR", "69608A108", "2024-Q4");
 
     expect(typeof loaded).toBe("boolean");
     expect(warnSpy).not.toHaveBeenCalled();

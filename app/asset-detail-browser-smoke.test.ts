@@ -191,6 +191,8 @@ describe("asset detail browser smoke test", () => {
     const page = await browser.newPage();
 
     await page.goto(`${baseUrl}/assets/BGRN/46435U440`, { waitUntil: "networkidle" });
+    await page.waitForSelector("text=Investor Activity for BGRN (ECharts)");
+    await page.waitForSelector("text=Net Investor Flow BGRN");
 
     expect(await page.getByText("Investor Activity for BGRN (ECharts)").count()).toBeGreaterThan(0);
     expect(await page.getByText("Net Investor Flow BGRN").count()).toBeGreaterThan(0);
@@ -250,7 +252,7 @@ describe("asset detail browser smoke test", () => {
     const { pageErrors, consoleErrors } = trackPageIssues(page);
 
     await page.goto(`${baseUrl}/assets`, { waitUntil: "networkidle" });
-    await page.waitForSelector("text=Assets");
+    await page.waitForSelector("text=virtual table:");
 
     const pageText = await page.locator("body").textContent();
 

@@ -87,6 +87,7 @@ export class ManifestResolver {
     const resolvedAt = Date.now();
 
     try {
+      const config = getDuckDbRuntimeConfig();
       const manifest = this.readManifest();
       if (manifest === null) {
         if (this.runtimeMode === "manifest" && this.lastKnownGoodSnapshot) {
@@ -94,7 +95,6 @@ export class ManifestResolver {
           return this.lastKnownGoodSnapshot;
         }
 
-        const config = getDuckDbRuntimeConfig();
         const fallback = resolveFallbackDuckDbPath(config.duckdbPath);
         const snapshot: ResolvedDbSnapshot = {
           mode: "legacy-single-file",
@@ -111,7 +111,6 @@ export class ManifestResolver {
         return snapshot;
       }
 
-      const config = getDuckDbRuntimeConfig();
       const dbPath = getActivePathFor(config.duckdbPath, manifest.active);
       const snapshot: ResolvedDbSnapshot = {
         mode: "manifest",

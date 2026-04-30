@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { QueryClient } from "@tanstack/query-core";
-import * as queryClientModule from "./query-client";
-import { createAssetsCollection } from "./assets";
+import { clearAssetListSessionState, createAssetsCollection, getLoadedAssetList, __setAssetListPersistenceForTest } from "./assets";
 
 describe("assets collection", () => {
   afterEach(() => {
@@ -30,6 +29,7 @@ describe("assets collection", () => {
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/assets?limit=50000&offset=0&sort=assetName&direction=asc");
     expect(Array.from(collection.entries()).map(([, value]) => value)).toMatchObject(rows);
+    expect(getLoadedAssetList()).toMatchObject(rows);
   });
 
   test("reuses persisted IndexedDB rows on repeat visits without kicking off another assets API fetch", async () => {
@@ -42,10 +42,12 @@ describe("assets collection", () => {
       },
     ];
 
-    spyOn(queryClientModule, "loadPersistedAssetListData").mockResolvedValue({
-      key: "assets-v1",
-      rows,
-      metadata: { persistedAt: Date.now() },
+    const restorePersistence = __setAssetListPersistenceForTest({
+      loadPersistedAssetListData: async () => ({
+        key: "assets-v1",
+        rows,
+        metadata: { persistedAt: Date.now() },
+      }),
     });
     const fetchSpy = spyOn(globalThis, "fetch");
 
@@ -54,5 +56,33 @@ describe("assets collection", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(Array.from(collection.entries()).map(([, value]) => value)).toMatchObject(rows);
+    expect(getLoadedAssetList()).toMatchObject(rows);
+    restorePersistence();
+  });
+
+  test("clears collection-backed list rows without retaining a duplicate module array", async () => {
+    const rows = [
+      {
+        id: "GOOG-02079K305",
+        asset: "GOOG",
+        assetName: "Alphabet Inc",
+        cusip: "02079K305",
+      },
+    ];
+
+    spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ rows, nextOffset: null, source: "api-duckdb" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const collection = createAssetsCollection(new QueryClient());
+    await collection.preload();
+    expect(getLoadedAssetList()).toHaveLength(1);
+
+    clearAssetListSessionState();
+
+    expect(getLoadedAssetList()).toEqual([]);
   });
 });

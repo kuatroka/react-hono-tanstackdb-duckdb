@@ -79,12 +79,13 @@ describe("rerender isolation architecture", () => {
     const drilldownTable = readProjectFile("src/components/InvestorActivityDrilldownTable.tsx");
     const virtualTable = readProjectFile("src/components/VirtualDataTable.tsx");
 
-    expect(assetsTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(assetsTable).toContain("createPerfTelemetryStore()");
+    expect(assetsTable).toContain("PerfTelemetryBadgeSlot");
     expect(assetsTable).toContain("await assetsCollection.preload()");
-    expect(assetsTable).toContain("Array.from(assetsCollection.entries())");
+    expect(assetsTable).toContain("getLoadedAssetList()");
     expect(assetsTable).toContain("useMarkContentReady");
     expect(assetsTable).toContain("subscribeAssetListLoadSource");
-    expect(assetsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
+    expect(assetsTable).toContain("onTableTelemetryChange={tableTelemetryStore.set}");
     expect(assetsTable).toContain("clientPageSize={100}");
     expect(assetsTable).not.toContain("onReady={onReady}");
     expect(assetsTable).not.toContain("useSearch");
@@ -94,17 +95,20 @@ describe("rerender isolation architecture", () => {
     expect(assetsTable).not.toContain("useInfiniteQuery");
     expect(assetsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
-    expect(superinvestorsTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(superinvestorsTable).toContain("createPerfTelemetryStore()");
+    expect(superinvestorsTable).toContain("PerfTelemetryBadgeSlot");
+    expect(superinvestorsTable).toContain("getLoadedSuperinvestorList()");
     expect(superinvestorsTable).toContain("useMarkContentReady");
     expect(superinvestorsTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
-    expect(superinvestorsTable).toContain("onTableTelemetryChange={setTableTelemetry}");
+    expect(superinvestorsTable).toContain("onTableTelemetryChange={tableTelemetryStore.set}");
     expect(superinvestorsTable).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");
     expect(superinvestorsTable).toContain("clientPageSize={100}");
     expect(superinvestorsTable).not.toContain("onReady={onReady}");
     expect(superinvestorsTable).not.toContain("useSearch");
     expect(superinvestorsTable).not.toContain("latencyMs={isLoading ? undefined : 0}");
 
-    expect(drilldownTable).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(drilldownTable).toContain("createPerfTelemetryStore()");
+    expect(drilldownTable).toContain("PerfTelemetryBadgeSlot");
     expect(drilldownTable).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(drilldownTable).not.toContain('data-testid="drilldown-search-telemetry-slot"');
     expect(drilldownTable).toContain('from "@/components/VirtualDataTable"');

@@ -18,6 +18,7 @@ export interface SearchIndexMetadata {
   totalItems: number;
   generatedAt?: string;
   persistedAt?: number;
+  dataVersion?: string | null;
   indexFileBytes?: number;
   compactBytes?: number;
   error?: string;

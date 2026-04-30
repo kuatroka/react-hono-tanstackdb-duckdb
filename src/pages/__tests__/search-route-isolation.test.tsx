@@ -34,7 +34,7 @@ describe("route search isolation", () => {
     const source = readProjectFile("pages/SuperinvestorsTable.tsx");
 
     expect(source).toContain("await superinvestorsCollection.preload()");
-    expect(source).toContain("Array.from(superinvestorsCollection.entries()).map(([, value]) => value)");
+    expect(source).toContain("getLoadedSuperinvestorList()");
     expect(source).toContain("clientPageSize={100}");
     expect(source).not.toContain("useSearch");
     expect(source).not.toContain("useNavigate");

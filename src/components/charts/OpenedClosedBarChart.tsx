@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import type { QuarterlyActivityPoint } from "@/types/duckdb";
 
 function cssVar(name: string) {
-  if (typeof window === "undefined") return "transparent";
+  if (typeof window === "undefined" || typeof getComputedStyle === "undefined") return "transparent";
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "transparent";
 }
 
@@ -42,8 +42,90 @@ interface OpenedClosedBarChartProps {
 }
 
 interface OpenedClosedChartEvent {
+  componentType?: string;
   name?: string;
   seriesName?: string;
+  seriesIndex?: number;
+  dataIndex?: number;
+  value?: number | string | null;
+}
+
+interface OpenedClosedChartPoint {
+  quarter: string;
+  opened: number;
+  closed: number;
+}
+
+interface OpenedClosedZrEvent {
+  offsetX?: number;
+  offsetY?: number;
+  zrX?: number;
+  zrY?: number;
+}
+
+function resolveOpenedClosedSelection(
+  params: OpenedClosedChartEvent,
+  chartData: readonly OpenedClosedChartPoint[],
+): { quarter: string; action: "open" | "close" } | null {
+  if (params.componentType && params.componentType !== "series") {
+    return null;
+  }
+
+  const quarter = typeof params.dataIndex === "number"
+    ? chartData[params.dataIndex]?.quarter
+    : params.name;
+
+  if (!quarter) {
+    return null;
+  }
+
+  if (params.seriesName === "Opened" || params.seriesIndex === 0) {
+    return { quarter, action: "open" };
+  }
+
+  if (params.seriesName === "Closed" || params.seriesIndex === 1) {
+    return { quarter, action: "close" };
+  }
+
+  const numericValue = Number(params.value);
+  if (!Number.isNaN(numericValue) && numericValue !== 0) {
+    return { quarter, action: numericValue > 0 ? "open" : "close" };
+  }
+
+  return null;
+}
+
+function resolveOpenedClosedSelectionFromPixel(
+  chart: echarts.EChartsType,
+  chartData: readonly OpenedClosedChartPoint[],
+  point: [number, number],
+): { quarter: string; action: "open" | "close" } | null {
+  if (!chart.containPixel({ gridIndex: 0 }, point)) {
+    return null;
+  }
+
+  const converted = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, point);
+  if (!Array.isArray(converted) || converted.length < 2) {
+    return null;
+  }
+
+  const dataIndex = Math.round(Number(converted[0]));
+  const yValue = Number(converted[1]);
+  const row = chartData[dataIndex];
+
+  if (!row || Number.isNaN(yValue) || yValue === 0) {
+    return null;
+  }
+
+  if (yValue > 0 && yValue <= row.opened) {
+    return { quarter: row.quarter, action: "open" };
+  }
+
+  if (yValue < 0 && Math.abs(yValue) <= Math.abs(row.closed)) {
+    return { quarter: row.quarter, action: "close" };
+  }
+
+  return null;
 }
 
 interface OpenedClosedTooltipParam {
@@ -173,6 +255,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           name: "Opened",
           type: "bar",
           stack: "activity",
+          cursor: onBarClick ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
             color: chartBarPositive,
@@ -195,6 +278,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
           name: "Closed",
           type: "bar",
           stack: "activity",
+          cursor: onBarClick ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
             color: chartBarNegative,
@@ -204,7 +288,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         },
       ],
     };
-  }, [chartData, unitLabel]);
+  }, [chartData, onBarClick, unitLabel]);
 
   useEffect(() => {
     if (chartData.length === 0) {
@@ -242,25 +326,46 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
     };
 
     const clickHandler = (params: OpenedClosedChartEvent) => {
-      if (!onBarClick || !params.name || !params.seriesName) return;
-      const quarter = params.name;
-      const action = params.seriesName === "Opened" ? "open" : "close";
-      onBarClick({ quarter, action });
+      if (!onBarClick) return;
+      const selection = resolveOpenedClosedSelection(params, chartData);
+      if (!selection) return;
+      onBarClick(selection);
+    };
+
+    const zrClickHandler = (event: OpenedClosedZrEvent) => {
+      if (!onBarClick) return;
+      const x = event.offsetX ?? event.zrX;
+      const y = event.offsetY ?? event.zrY;
+      if (typeof x !== "number" || typeof y !== "number") {
+        return;
+      }
+
+      const selection = resolveOpenedClosedSelectionFromPixel(chart, chartData, [x, y]);
+      if (!selection) {
+        return;
+      }
+
+      onBarClick(selection);
     };
 
     const hoverHandler = (params: OpenedClosedChartEvent) => {
-      if (!onBarHover || !params.name || !params.seriesName) return;
-      const quarter = params.name;
-      const action = params.seriesName === "Opened" ? "open" : "close";
-      onBarHover({ quarter, action });
+      if (!onBarHover) return;
+      const selection = resolveOpenedClosedSelection(params, chartData);
+      if (!selection) return;
+      onBarHover(selection);
     };
 
     const mouseOutHandler = () => {
       onBarLeave?.();
     };
 
+    const resolvedCursor = onBarClick ? "pointer" : "default";
+    container.style.cursor = resolvedCursor;
+    chart.getDom().style.cursor = resolvedCursor;
+
     chart.on("finished", handleChartFinished);
     chart.on("click", clickHandler);
+    chart.getZr().on("click", zrClickHandler);
     chart.on("mouseover", hoverHandler);
     chart.on("globalout", mouseOutHandler);
     chart.resize({ width, height });
@@ -274,6 +379,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         if (chart && !chart.isDisposed()) {
           chart.off("finished", handleChartFinished);
           chart.off("click", clickHandler);
+          chart.getZr().off("click", zrClickHandler);
           chart.off("mouseover", hoverHandler);
           chart.off("globalout", mouseOutHandler);
         }
@@ -281,7 +387,7 @@ export const OpenedClosedBarChart = memo(function OpenedClosedBarChart({
         // ignore
       }
     };
-  }, [onBarClick, onBarHover, onBarLeave, onRenderComplete, option]);
+  }, [chartData, onBarClick, onBarHover, onBarLeave, onRenderComplete, option]);
 
   useEffect(() => {
     const container = containerRef.current;

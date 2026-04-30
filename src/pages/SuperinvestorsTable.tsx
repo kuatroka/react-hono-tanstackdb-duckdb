@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   VirtualDataTable,
@@ -10,11 +10,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LatencyBadge } from "@/components/LatencyBadge";
+import { PerfTelemetryBadgeSlot } from "@/components/PerfTelemetryBadgeSlot";
 import { PageLayout } from "@/components/layout/page-layout";
 import { useMarkContentReady } from "@/hooks/useContentReady";
-import type { PerfSource, PerfTelemetry } from "@/lib/perf/telemetry";
+import type { PerfSource } from "@/lib/perf/telemetry";
+import { createPerfTelemetryStore } from "@/lib/perf/telemetry-store";
 import {
+  getLoadedSuperinvestorList,
   getSuperinvestorListLoadSource,
   subscribeSuperinvestorListLoadSource,
   superinvestorsCollection,
@@ -50,6 +52,11 @@ const superinvestorTableColumns: ColumnDef<Superinvestor>[] = [
   },
 ];
 
+const superinvestorTableUFuzzyRanking = {
+  mode: "name-only" as const,
+  getName: (row: Superinvestor) => row.cikName,
+};
+
 const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
   dataSource,
   rows,
@@ -57,9 +64,7 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
   dataSource: PerfSource;
   rows: Superinvestor[];
 }) {
-  const [tableTelemetry, setTableTelemetry] = useState<PerfTelemetry | null>(
-    null,
-  );
+  const tableTelemetryStore = useMemo(() => createPerfTelemetryStore(), []);
 
   return (
     <Card>
@@ -70,12 +75,10 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
           </CardTitle>
         </div>
         <div className="flex min-w-0 w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
-          {tableTelemetry ? (
-            <LatencyBadge
-              telemetry={tableTelemetry}
-              className="min-w-0 max-w-full justify-end"
-            />
-          ) : null}
+          <PerfTelemetryBadgeSlot
+            store={tableTelemetryStore}
+            className="min-w-0 max-w-full justify-end"
+          />
         </div>
       </CardHeader>
       <CardContent>
@@ -87,15 +90,12 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
           mobileGridTemplateColumns="minmax(8rem, 0.85fr) minmax(11rem, 1.15fr)"
           latencySource="tsdb-memory"
           dataSource={dataSource}
-          onTableTelemetryChange={setTableTelemetry}
+          onTableTelemetryChange={tableTelemetryStore.set}
           clientPageSize={100}
           searchDebounceMs={150}
           searchPlaceholder="Search superinvestors..."
           searchStrategy="ufuzzy"
-          ufuzzyRanking={{
-            mode: "name-only",
-            getName: (row) => row.cikName,
-          }}
+          ufuzzyRanking={superinvestorTableUFuzzyRanking}
           searchTelemetryLabel="search"
           tableTelemetryLabel="virtual table"
         />
@@ -106,9 +106,12 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
 
 function SuperinvestorsTableSurface() {
   const onReady = useMarkContentReady();
-  const [superinvestorsData, setSuperinvestorsData] = useState<Superinvestor[] | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getLoadedSuperinvestorList().length === 0);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
+    if (getLoadedSuperinvestorList().length > 0) {
+      return "tsdb-memory";
+    }
+
     const source = getSuperinvestorListLoadSource();
     return source === "api"
       ? "api-duckdb"
@@ -118,15 +121,18 @@ function SuperinvestorsTableSurface() {
   });
 
   useEffect(() => {
+    if (getLoadedSuperinvestorList().length > 0) {
+      setDataSource("tsdb-memory");
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     void (async () => {
       try {
         await superinvestorsCollection.preload();
         if (cancelled) return;
-        setSuperinvestorsData(
-          Array.from(superinvestorsCollection.entries()).map(([, value]) => value),
-        );
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -140,6 +146,8 @@ function SuperinvestorsTableSurface() {
   }, []);
 
   const readyCalledRef = useRef(false);
+  const rows = getLoadedSuperinvestorList();
+
   useEffect(() => {
     const toPerfSource = (
       source: "memory" | "indexeddb" | "api",
@@ -157,11 +165,11 @@ function SuperinvestorsTableSurface() {
 
   useEffect(() => {
     if (readyCalledRef.current) return;
-    if (superinvestorsData !== undefined) {
+    if (!isLoading) {
       readyCalledRef.current = true;
       onReady();
     }
-  }, [superinvestorsData, onReady]);
+  }, [isLoading, onReady]);
 
   return (
     <PageLayout width="wide">
@@ -172,7 +180,7 @@ function SuperinvestorsTableSurface() {
       ) : (
         <SuperinvestorsTableCard
           dataSource={dataSource}
-          rows={superinvestorsData || []}
+          rows={rows}
         />
       )}
     </PageLayout>

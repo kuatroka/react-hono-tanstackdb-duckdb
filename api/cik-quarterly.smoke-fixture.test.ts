@@ -7,9 +7,9 @@ describe("cik-quarterly smoke fixture", () => {
 
     expect(response.status).toBe(200);
 
-    const rows = await response.json();
+    const payload = await response.json();
 
-    expect(Array.isArray(rows)).toBe(true);
-    expect(rows.length).toBeGreaterThan(5);
+    expect(Array.isArray(payload.rows)).toBe(true);
+    expect(payload.rows.length).toBeGreaterThan(5);
   });
 });

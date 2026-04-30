@@ -17,7 +17,7 @@ describe("cik-quarterly route concurrency", () => {
     const quarterly = await quarterlyResponse.json();
 
     expect(record).toMatchObject({ cik });
-    expect(Array.isArray(quarterly)).toBe(true);
-    expect(quarterly.length).toBeGreaterThan(0);
+    expect(Array.isArray(quarterly.rows)).toBe(true);
+    expect(quarterly.rows.length).toBeGreaterThan(0);
   });
 });

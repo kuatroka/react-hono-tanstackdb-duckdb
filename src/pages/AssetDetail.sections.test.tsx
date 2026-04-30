@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import * as assetActivityModule from "@/collections/asset-activity";
 import * as collectionsModule from "@/collections";
 import * as investorFlowModule from "@/collections/investor-flow";
+import * as investorDetailsModule from "@/collections/investor-details";
 import * as pageCacheCleanupModule from "@/collections/page-cache-cleanup";
 
 type InvestorActivityAction = "open" | "close";
@@ -88,23 +89,19 @@ function registerModuleMocks() {
     }) => React.createElement("div", props),
   }));
 
-  mock.module("@/collections/investor-details", () => ({
-    fetchDrilldownBothActions: (code: string, cusip: string, quarter: string) => {
-      eagerLoadCalls.push({ code, cusip, quarter });
-      return currentFetchDrilldownBothActions(code, cusip, quarter);
-    },
-    backgroundLoadAllDrilldownData: (
-      code: string,
-      cusip: string,
-      excluded: string[],
-      onProgress: (loaded: number, total: number) => void,
-    ) => {
-      backgroundLoadCalls.push({ code, cusip, excluded });
-      return currentBackgroundLoadAllDrilldownData(code, cusip, excluded, onProgress);
-    },
-    clearDrilldownSessionState: () => undefined,
-    clearAllDrilldownData: () => undefined,
-  }));
+  spyOn(investorDetailsModule, "fetchDrilldownBothActions").mockImplementation(((code: string, cusip: string, quarter: string) => {
+    eagerLoadCalls.push({ code, cusip, quarter });
+    return currentFetchDrilldownBothActions(code, cusip, quarter);
+  }) as any);
+  spyOn(investorDetailsModule, "backgroundLoadAllDrilldownData").mockImplementation(((
+    code: string,
+    cusip: string,
+    excluded: string[],
+    onProgress: (loaded: number, total: number) => void,
+  ) => {
+    backgroundLoadCalls.push({ code, cusip, excluded });
+    return currentBackgroundLoadAllDrilldownData(code, cusip, excluded, onProgress);
+  }) as any);
 
   spyOn(pageCacheCleanupModule, "clearAssetDetailRouteCaches").mockImplementation(() => {
     cleanupCalls.push("cleared");
@@ -539,10 +536,29 @@ describe("asset detail section runtime behavior", () => {
     expect(activityChartSource).toContain("cardContentClassName={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
   });
 
+  test("does not key the drilldown table by selected bar because that remounts the card and search chrome", async () => {
+    const drilldownSource = await Bun.file(new URL("../components/detail/AssetDrilldownSection.tsx", import.meta.url)).text();
+
+    expect(drilldownSource).toContain("<InvestorActivityDrilldownTable");
+    expect(drilldownSource).not.toContain("key={`click-${ticker}-${cusip}-${resolvedSelection.quarter}-${resolvedSelection.action}`}");
+  });
+
   test("uses equal-width columns for the activity chart and drilldown table on wide screens", async () => {
     const drilldownSource = await Bun.file(new URL("../components/detail/AssetDrilldownSection.tsx", import.meta.url)).text();
 
     expect(drilldownSource).toContain('xl:grid-cols-2');
     expect(drilldownSource).not.toContain('xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]');
+  });
+
+  test("keeps full-width asset detail pages inside responsive gutters while using a wider max width", async () => {
+    const pageSource = await Bun.file(new URL("./AssetDetail.tsx", import.meta.url)).text();
+    const layoutSource = await Bun.file(new URL("../components/layout/page-layout.tsx", import.meta.url)).text();
+    const cssSource = await Bun.file(new URL("../index.css", import.meta.url)).text();
+
+    expect(pageSource).toContain('<PageLayout width="full" className="space-y-8">');
+    expect(layoutSource).toContain('max-w-[var(--page-max-width)]');
+    expect(layoutSource).toContain('px-[var(--page-gutter)] py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10');
+    expect(cssSource).toContain('--page-max-width: 100vw;');
+    expect(cssSource).toContain('--page-max-width-wide: 100vw;');
   });
 });

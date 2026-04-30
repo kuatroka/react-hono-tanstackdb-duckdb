@@ -15,8 +15,15 @@ superinvestorsRoutes.get("/", async (c) => {
     const offset = parseInt(c.req.query("offset") || "0", 10);
 
     try {
-        const results = await listSuperinvestors(c, { limit, offset });
-        return c.json(results);
+        const result = await listSuperinvestors(c, { limit, offset });
+        return c.json({
+            rows: result.rows,
+            totalCount: result.totalCount,
+            limitApplied: result.limitApplied,
+            offset: result.offset,
+            complete: result.complete,
+            nextOffset: result.complete ? null : result.offset + result.rows.length,
+        });
     } catch (error) {
         console.error("[DuckDB Superinvestors] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);

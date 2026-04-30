@@ -1,7 +1,13 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
 
-const DUCKDB_PATH = process.env.DUCKDB_PATH || "/Users/yo_macbook/Documents/app_data/TR_05_DB/TR_05_DUCKDB_FILE.duckdb";
+function getDuckDbPath() {
+  const value = process.env.DUCKDB_PATH?.trim();
+  if (!value) {
+    throw new Error("Missing required environment variable: DUCKDB_PATH");
+  }
+  return value;
+}
 
 export interface DbManifest {
   active: "a" | "b";
@@ -10,7 +16,7 @@ export interface DbManifest {
 }
 
 function getManifestPath(): string {
-  return join(dirname(DUCKDB_PATH), "db_manifest.json");
+  return join(dirname(getDuckDbPath()), "db_manifest.json");
 }
 
 export function readManifest(): DbManifest | null {
@@ -38,14 +44,15 @@ export function readManifest(): DbManifest | null {
 
 export function getActiveDuckDbPath(): string {
   const manifest = readManifest();
+  const duckdbPath = getDuckDbPath();
 
   if (manifest === null) {
     console.log("[DuckDB Manifest] No manifest found, using DUCKDB_PATH fallback");
-    return DUCKDB_PATH;
+    return duckdbPath;
   }
 
-  const dir = dirname(DUCKDB_PATH);
-  const base = basename(DUCKDB_PATH, ".duckdb");
+  const dir = dirname(duckdbPath);
+  const base = basename(duckdbPath, ".duckdb");
   const activePath = join(dir, `${base}_${manifest.active}.duckdb`);
 
   console.log(`[DuckDB Manifest] Active: '${manifest.active}' (version ${manifest.version})`);
@@ -54,9 +61,10 @@ export function getActiveDuckDbPath(): string {
 
 export function getInactiveDuckDbPath(): string {
   const manifest = readManifest();
+  const duckdbPath = getDuckDbPath();
 
-  const dir = dirname(DUCKDB_PATH);
-  const base = basename(DUCKDB_PATH, ".duckdb");
+  const dir = dirname(duckdbPath);
+  const base = basename(duckdbPath, ".duckdb");
 
   if (manifest === null) {
     return join(dir, `${base}_a.duckdb`);

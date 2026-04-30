@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { fullDumpSearches, searchDuckDb } from "../repositories/search-repository";
+import { fullDumpSearches, getAssetSearchNameMap, searchDuckDb } from "../repositories/search-repository";
 import { readFile, stat } from "fs/promises";
 import { join } from "path";
-import { compactSearchIndexPayload } from "../../src/lib/search-index";
+import { compactSearchIndexPayload, type CompactSearchIndexPayload, type SearchIndexItemTuple } from "../../src/lib/search-index";
 
 const searchDuckdbRoutes = new Hono();
 let cachedCompactIndex:
@@ -29,7 +29,46 @@ function resolveSearchIndexPath(): string | null {
   return join(appDataPath, "TR_05_DB", "TR_05_WEB_SEARCH_INDEX", "search_index.json");
 }
 
-async function loadCompactSearchIndexBody(indexPath: string): Promise<string> {
+async function enrichAssetSearchIndexPayload(c: Parameters<typeof getAssetSearchNameMap>[0], payload: CompactSearchIndexPayload): Promise<CompactSearchIndexPayload> {
+  const assetItemsNeedingNames = payload.items.some((item) => (
+    item[4] === "assets" &&
+    item[1] &&
+    (!item[3] || item[3] === item[2])
+  ));
+
+  if (!assetItemsNeedingNames) {
+    return payload;
+  }
+
+  const assetNameByCusip = await getAssetSearchNameMap(c);
+  if (assetNameByCusip.size === 0) {
+    return payload;
+  }
+
+  let changed = false;
+  const items = payload.items.map((item): SearchIndexItemTuple => {
+    if (item[4] !== "assets" || !item[1] || (item[3] && item[3] !== item[2])) {
+      return item;
+    }
+
+    const assetName = assetNameByCusip.get(item[1]);
+    if (!assetName || assetName === item[2]) {
+      return item;
+    }
+
+    changed = true;
+    return [item[0], item[1], item[2], assetName, item[4]];
+  });
+
+  return changed
+    ? {
+        ...payload,
+        items,
+      }
+    : payload;
+}
+
+async function loadCompactSearchIndexBody(c: Parameters<typeof getAssetSearchNameMap>[0], indexPath: string): Promise<string> {
   const fileStats = await stat(indexPath);
 
   if (
@@ -41,7 +80,7 @@ async function loadCompactSearchIndexBody(indexPath: string): Promise<string> {
   }
 
   const indexData = await readFile(indexPath, "utf-8");
-  const compactPayload = compactSearchIndexPayload(JSON.parse(indexData));
+  const compactPayload = await enrichAssetSearchIndexPayload(c, compactSearchIndexPayload(JSON.parse(indexData)));
   compactPayload.metadata = {
     ...compactPayload.metadata,
     totalItems: compactPayload.metadata?.totalItems ?? compactPayload.items.length,
@@ -66,7 +105,7 @@ searchDuckdbRoutes.get("/index", async (c) => {
       return c.json({ error: "SEARCH_INDEX_PATH or APP_DATA_PATH not configured" }, 500);
     }
 
-    const indexData = await loadCompactSearchIndexBody(indexPath);
+    const indexData = await loadCompactSearchIndexBody(c, indexPath);
 
     c.header("Cache-Control", "public, max-age=3600");
     c.header("Content-Type", "application/json");

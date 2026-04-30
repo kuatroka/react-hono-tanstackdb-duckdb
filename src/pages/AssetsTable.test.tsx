@@ -5,15 +5,17 @@ describe("AssetsTablePage", () => {
     const source = await Bun.file(new URL("./AssetsTable.tsx", import.meta.url)).text();
 
     expect(source).toContain("await assetsCollection.preload()");
-    expect(source).toContain("Array.from(assetsCollection.entries())");
+    expect(source).toContain("if (getLoadedAssetList().length > 0)");
+    expect(source).toContain("setDataSource('tsdb-memory')");
+    expect(source).toContain("getLoadedAssetList()");
     expect(source).toContain("useMarkContentReady");
     expect(source).toContain("subscribeAssetListLoadSource");
     expect(source).toContain("getAssetListLoadSource");
     expect(source).toContain("clientPageSize={100}");
     expect(source).toContain('searchStrategy="ufuzzy"');
     expect(source).toContain("mode: 'ticker-and-name'");
-    expect(source).toContain("getCode: (row) => row.asset");
-    expect(source).toContain("getName: (row) => row.assetName");
+    expect(source).toContain("getCode: (row: Asset) => row.asset");
+    expect(source).toContain("getName: (row: Asset) => row.assetName");
     expect(source).not.toContain("onReady={onReady}");
     expect(source).not.toContain("useSearch");
     expect(source).not.toContain("useNavigate");
@@ -28,7 +30,10 @@ describe("AssetsTablePage", () => {
   test("keeps search telemetry inside the table header instead of duplicating it in the page chrome", async () => {
     const source = await Bun.file(new URL("./AssetsTable.tsx", import.meta.url)).text();
 
-    expect(source).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(source).toContain("createPerfTelemetryStore()");
+    expect(source).toContain("PerfTelemetryBadgeSlot");
+    expect(source).toContain("onTableTelemetryChange={tableTelemetryStore.set}");
+    expect(source).not.toContain("const [tableTelemetry, setTableTelemetry]");
     expect(source).not.toContain("const [searchTelemetry, setSearchTelemetry]");
     expect(source).not.toContain("<LatencyBadge telemetry={searchTelemetry}");
     expect(source).not.toContain("onSearchTelemetryChange={setSearchTelemetry}");

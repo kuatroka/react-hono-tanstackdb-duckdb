@@ -4,9 +4,11 @@ import {
   getAssetActivityFromCollection,
   type AssetActivityData,
 } from "@/collections/asset-activity";
-import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
+import { type DataFlow } from "@/components/LatencyBadge";
+import { RenderLatencyBadgeSlot } from "@/components/RenderLatencyBadgeSlot";
 import { InvestorActivityEchartsChart } from "@/components/charts/InvestorActivityEchartsChart";
 import { useAssetDrilldownSection } from "@/components/detail/AssetDrilldownSection";
+import { createNumberMetricStore } from "@/lib/perf/metric-store";
 
 interface AssetActivitySectionProps {
   code: string;
@@ -46,7 +48,7 @@ export const AssetActivitySection = memo(function AssetActivitySection({
   const { setSelection } = useAssetDrilldownSection();
   const [activityStatus, setActivityStatus] = useState<AssetActivityLoadState>(() => createInitialAssetActivityState(code));
   const [activityRows, setActivityRows] = useState<AssetActivityData[]>([]);
-  const [echartsRenderMs, setEchartsRenderMs] = useState<number | null>(null);
+  const renderMsStore = useMemo(() => createNumberMetricStore(), []);
 
   const {
     queryTimeMs: activityQueryTimeMs,
@@ -55,21 +57,20 @@ export const AssetActivitySection = memo(function AssetActivitySection({
   } = activityStatus;
 
   const handleActivityRenderComplete = useCallback((renderMs: number) => {
-    setEchartsRenderMs(renderMs);
-  }, []);
+    renderMsStore.set(renderMs);
+  }, [renderMsStore]);
 
   const handleActivityBarClick = useCallback(({ quarter, action }: { quarter: string; action: "open" | "close" }) => {
     setSelection({ quarter, action });
   }, [setSelection]);
 
   const echartsLatencyBadge = useMemo(() => (
-    <LatencyBadge
+    <RenderLatencyBadgeSlot
       dataLoadMs={activityQueryTimeMs ?? undefined}
-      renderMs={echartsRenderMs ?? undefined}
+      renderMsStore={renderMsStore}
       source={activityDataSource}
-      variant="inline"
     />
-  ), [activityDataSource, activityQueryTimeMs, echartsRenderMs]);
+  ), [activityDataSource, activityQueryTimeMs, renderMsStore]);
 
   useEffect(() => {
     if (!code) return;
@@ -102,6 +103,7 @@ export const AssetActivitySection = memo(function AssetActivitySection({
       }
 
       if (!cancelled) {
+        renderMsStore.set(null);
         setActivityRows(nextRows);
         setActivityStatus(nextState);
       }
@@ -110,7 +112,7 @@ export const AssetActivitySection = memo(function AssetActivitySection({
     return () => {
       cancelled = true;
     };
-  }, [code, cusip, hasCusip]);
+  }, [code, cusip, hasCusip, renderMsStore]);
 
   if (isActivityLoading) {
     return (

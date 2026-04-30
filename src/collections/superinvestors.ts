@@ -30,12 +30,24 @@ export interface Superinvestor {
     cikName: string
 }
 
+export function getLoadedSuperinvestorList(): Superinvestor[] {
+    return superinvestorsCollection ? Array.from(superinvestorsCollection.entries()).map(([, value]) => value as Superinvestor) : []
+}
+
+export function clearSuperinvestorListSessionState(): void {
+    const ids = getLoadedSuperinvestorList().map((row) => row.cik)
+    if (ids.length > 0 && superinvestorsCollection?.isReady()) {
+        superinvestorsCollection.utils.writeDelete(ids)
+    }
+    currentSuperinvestorListLoadSource = 'memory'
+}
+
 export async function fetchSuperinvestorRecordWithSource(cik: string): Promise<{
     record: Superinvestor | null
     source: SuperinvestorListLoadSource | 'unknown'
 }> {
     const normalizedCik = cik.trim()
-    const cachedRecord = Array.from(superinvestorsCollection.entries()).find(([, value]) => value.cik === normalizedCik)?.[1] ?? null
+    const cachedRecord = getLoadedSuperinvestorList().find((value) => value.cik === normalizedCik) ?? null
     if (cachedRecord) {
         return { record: cachedRecord, source: 'memory' }
     }
@@ -67,8 +79,37 @@ export async function fetchSuperinvestorRecord(cik: string): Promise<Superinvest
     return result.record
 }
 
+interface SuperinvestorListResponse {
+    rows?: Superinvestor[]
+    complete?: boolean
+    nextOffset?: number | null
+}
+
+async function fetchFullSuperinvestorList(): Promise<Superinvestor[]> {
+    const allRows: Superinvestor[] = []
+    let offset = 0
+    const limit = 20000
+
+    while (true) {
+        const res = await fetch(`/api/superinvestors?limit=${limit}&offset=${offset}`)
+        if (!res.ok) throw new Error('Failed to fetch superinvestors')
+
+        const payload = await res.json() as SuperinvestorListResponse
+        const rows = Array.isArray(payload.rows) ? payload.rows : []
+        allRows.push(...rows)
+
+        if (payload.complete !== false || payload.nextOffset == null || rows.length === 0) {
+            break
+        }
+
+        offset = payload.nextOffset
+    }
+
+    return allRows
+}
+
 // Factory function to create superinvestors collection with queryClient
-// Restores from IndexedDB first, then refreshes from the DuckDB API.
+// Restores from IndexedDB first; freshness/version checks invalidate stale Dexie data.
 const inFlightSuperinvestorListLoads = new Map<string, Promise<Superinvestor[]>>()
 
 export function createSuperinvestorsCollection(queryClient: QueryClient) {
@@ -86,23 +127,11 @@ export function createSuperinvestorsCollection(queryClient: QueryClient) {
                     const persisted = await loadPersistedSuperinvestorListData()
                     if (persisted && persisted.rows.length > 0) {
                         setSuperinvestorListLoadSource('indexeddb')
-                        void fetch('/api/superinvestors')
-                            .then(async (res) => {
-                                if (!res.ok) throw new Error('Failed to refresh superinvestors')
-                                const superinvestors = await res.json() as Superinvestor[]
-                                await persistSuperinvestorListData(superinvestors)
-                            })
-                            .catch((error) => {
-                                console.warn('[Superinvestors] Background refresh failed:', error)
-                            })
-
                         return persisted.rows as Superinvestor[]
                     }
 
                     const startTime = performance.now()
-                    const res = await fetch('/api/superinvestors')
-                    if (!res.ok) throw new Error('Failed to fetch superinvestors')
-                    const superinvestors = await res.json() as Superinvestor[]
+                    const superinvestors = await fetchFullSuperinvestorList()
                     setSuperinvestorListLoadSource('api')
                     console.log(`[Superinvestors] Fetched ${superinvestors.length} superinvestors in ${Math.round(performance.now() - startTime)}ms`)
                     void persistSuperinvestorListData(superinvestors)

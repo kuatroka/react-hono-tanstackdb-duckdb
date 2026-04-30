@@ -43,6 +43,7 @@ duckdbInvestorDrilldownRoutes.get("/", async (c) => {
     });
 
     const queryTimeMs = Math.round((performance.now() - startTime) * 100) / 100;
+    const complete = rows.length < limit;
 
     return c.json({
       ticker,
@@ -50,6 +51,8 @@ duckdbInvestorDrilldownRoutes.get("/", async (c) => {
       action: actionRaw,
       count: rows.length,
       queryTimeMs,
+      limitApplied: limit,
+      complete,
       rows,
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { renderToString } from "react-dom/server";
+import * as investorDetailsModule from "@/collections/investor-details";
 
 type InvestorDetailRow = {
   id: string;
@@ -67,21 +68,16 @@ function registerModuleMocks() {
       React.createElement("div", { "data-testid": "inline-history", "data-cik": investor?.cik ?? "" }),
   }));
 
-  mock.module("@/collections/investor-details", () => ({
-    fetchDrilldownBothActions: async () => ({ rows: [], queryTimeMs: 0 }),
-    backgroundLoadAllDrilldownData: async () => undefined,
-    getDrilldownDataFromCollection: (
-      ticker: string,
-      cusip: string,
-      quarter: string,
-      action: "open" | "close",
-    ) => cachedRowsByKey.get(makeCacheKey(ticker, cusip, quarter, action)) ?? null,
-    investorDrilldownCollection: { entries: () => [] },
-    loadDrilldownFromIndexedDB: async () => false,
-    isDrilldownIndexedDBLoaded: () => false,
-    clearDrilldownSessionState: () => undefined,
-    clearAllDrilldownData: () => undefined,
-  }));
+  spyOn(investorDetailsModule, "fetchDrilldownBothActions").mockImplementation(async () => ({ rows: [], queryTimeMs: 0, complete: true }));
+  spyOn(investorDetailsModule, "backgroundLoadAllDrilldownData").mockImplementation(async () => undefined);
+  spyOn(investorDetailsModule, "getDrilldownDataFromCollection").mockImplementation((
+    ticker: string,
+    cusip: string,
+    quarter: string,
+    action: "open" | "close",
+  ) => cachedRowsByKey.get(makeCacheKey(ticker, cusip, quarter, action)) ?? null);
+  spyOn(investorDetailsModule, "loadDrilldownFromIndexedDB").mockImplementation(async () => false);
+  spyOn(investorDetailsModule, "isDrilldownIndexedDBLoaded").mockImplementation(() => false);
 }
 
 describe("InvestorActivityDrilldownTable", () => {
@@ -184,7 +180,10 @@ describe("InvestorActivityDrilldownTable", () => {
   test("keeps search telemetry inside the table header instead of duplicating it in the card title", async () => {
     const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
 
-    expect(source).toContain("const [tableTelemetry, setTableTelemetry]");
+    expect(source).toContain("createPerfTelemetryStore()");
+    expect(source).toContain("PerfTelemetryBadgeSlot");
+    expect(source).toContain("onTableTelemetryChange={tableTelemetryStore.set}");
+    expect(source).not.toContain("const [tableTelemetry, setTableTelemetry]");
     expect(source).toContain('searchStrategy="ufuzzy"');
     expect(source).toContain('mode: "name-only"');
     expect(source).toContain("getName: (row) => row.cikName");
@@ -203,8 +202,8 @@ describe("InvestorActivityDrilldownTable", () => {
   test("configures inline expanded rows for investor history drilldown", async () => {
     const source = await Bun.file(new URL("./InvestorActivityDrilldownTable.tsx", import.meta.url)).text();
 
-    expect(source).toContain("expandedRowKey={expandedInvestorCik}");
-    expect(source).toContain("getRowKey={(row) => row.cik}");
+    expect(source).toContain("expandedRowKey={expandedInvestorRowKey}");
+    expect(source).toContain("getRowKey={(row) => row.id}");
     expect(source).toContain("renderExpandedRow={(row) => (");
     expect(source).toContain("SuperinvestorAssetHistorySection");
   });
@@ -214,7 +213,8 @@ describe("InvestorActivityDrilldownTable", () => {
 
     expect(source).toContain("const resolvedHeaderLatencyBadge = queryTimeMs != null || renderMs != null");
     expect(source).toContain("? latencyDisplay");
-    expect(source).toContain(": tableTelemetry ? (");
+    expect(source).toContain(": (");
+    expect(source).toContain("store={tableTelemetryStore}");
   });
 
   test("shows six visible rows with placeholder pnl, value, and weight columns plus trailing chevron", async () => {
@@ -245,7 +245,7 @@ describe("InvestorActivityDrilldownTable", () => {
     const columns = virtualTableProps[0]?.columns as Array<{ key: string; header: string }> | undefined;
 
     expect(virtualTableProps[0]?.visibleRowCount).toBe(6);
-    expect(virtualTableProps[0]?.gridTemplateColumns).toBe("minmax(0, 1.6fr) minmax(6rem, 0.55fr) minmax(6rem, 0.6fr) minmax(6rem, 0.55fr) 3rem");
+    expect(virtualTableProps[0]?.gridTemplateColumns).toBe("minmax(0, 1.4fr) minmax(5.5rem, 0.55fr) minmax(5.5rem, 0.6fr) minmax(5.5rem, 0.55fr) 3rem");
     expect(columns?.map((column) => column.key)).toEqual(["cikName", "quarter", "cusip", "cikTicker", "action"]);
     expect(columns?.map((column) => column.header)).toEqual(["Superinvestor", "VII P&L%", "Value", "Weight%", ""]);
     expect(source).not.toContain('header: "CIK"');
@@ -254,6 +254,8 @@ describe("InvestorActivityDrilldownTable", () => {
     expect(source).toContain("className={ASSET_DETAIL_CARD_CLASS_NAME}");
     expect(source).toContain("className={ASSET_DETAIL_CARD_CONTENT_CLASS_NAME}");
     expect(source).toContain('className="relative flex-1 h-full w-full min-w-0"');
+    expect(source).toContain("ChevronRight");
+    expect(source).not.toContain("ChevronLeft");
   });
 
   test("uses the virtualized table instead of the paginated DataTable", async () => {
