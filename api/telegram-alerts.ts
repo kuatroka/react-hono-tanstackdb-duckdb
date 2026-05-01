@@ -12,9 +12,6 @@ type IncidentEnv = Partial<
     | 'WEB_APP_APPRISE_URLS'
     | 'WEB_APP_APPRISE_DEV_URLS'
     | 'WEB_APP_APPRISE_PROD_URLS'
-    | 'SEC_APP_APPRISE_URLS'
-    | 'SEC_APP_APPRISE_DEV_URLS'
-    | 'SEC_APP_APPRISE_PROD_URLS'
     | 'WEB_APP_ALERT_ENV'
     | 'WEB_APP_TELEGRAM_ALERTS_ENABLED'
     | 'WEB_APP_TELEGRAM_RUNTIME_ALERTS_ENABLED'
@@ -88,14 +85,8 @@ export function resolveTelegramDestinations(
   env: IncidentEnv = process.env,
 ): TelegramDestination[] {
   const environmentSpecific =
-    environment === 'prod'
-      ? [env.WEB_APP_APPRISE_PROD_URLS, env.SEC_APP_APPRISE_PROD_URLS]
-      : [env.WEB_APP_APPRISE_DEV_URLS, env.SEC_APP_APPRISE_DEV_URLS]
-  return [
-    ...environmentSpecific.flatMap(splitAlertUrls),
-    ...splitAlertUrls(env.WEB_APP_APPRISE_URLS),
-    ...splitAlertUrls(env.SEC_APP_APPRISE_URLS),
-  ]
+    environment === 'prod' ? env.WEB_APP_APPRISE_PROD_URLS : env.WEB_APP_APPRISE_DEV_URLS
+  return [...splitAlertUrls(environmentSpecific), ...splitAlertUrls(env.WEB_APP_APPRISE_URLS)]
     .map(parseTelegramAppriseUrl)
     .filter((destination): destination is TelegramDestination => destination !== null)
 }
