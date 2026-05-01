@@ -1,5 +1,5 @@
 type AlertEnvironment = 'dev' | 'prod'
-type AlertCategory = 'runtime' | 'deploy'
+type AlertCategory = 'runtime' | 'deploy' | 'ci' | 'security'
 type AlertSeverity = 'info' | 'warning' | 'error'
 
 type TelegramDestination = {
@@ -16,6 +16,8 @@ type IncidentEnv = Partial<
     | 'WEB_APP_TELEGRAM_ALERTS_ENABLED'
     | 'WEB_APP_TELEGRAM_RUNTIME_ALERTS_ENABLED'
     | 'WEB_APP_TELEGRAM_DEPLOY_ALERTS_ENABLED'
+    | 'WEB_APP_TELEGRAM_CI_ALERTS_ENABLED'
+    | 'WEB_APP_TELEGRAM_SECURITY_ALERTS_ENABLED'
     | 'NODE_ENV'
     | 'APP_ENV'
     | 'APP_GIT_COMMIT'
@@ -98,7 +100,9 @@ function isEnabled(value: string | undefined) {
 function isAlertEnabled(category: AlertCategory, env: IncidentEnv) {
   if (!isEnabled(env.WEB_APP_TELEGRAM_ALERTS_ENABLED)) return false
   if (category === 'runtime') return isEnabled(env.WEB_APP_TELEGRAM_RUNTIME_ALERTS_ENABLED)
-  return isEnabled(env.WEB_APP_TELEGRAM_DEPLOY_ALERTS_ENABLED)
+  if (category === 'deploy') return isEnabled(env.WEB_APP_TELEGRAM_DEPLOY_ALERTS_ENABLED)
+  if (category === 'security') return isEnabled(env.WEB_APP_TELEGRAM_SECURITY_ALERTS_ENABLED)
+  return isEnabled(env.WEB_APP_TELEGRAM_CI_ALERTS_ENABLED)
 }
 
 function scrubText(text: string) {

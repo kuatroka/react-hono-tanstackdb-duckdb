@@ -67,6 +67,13 @@ Keep runtime marker contracts stable and non-destructive when overlays are appli
 - Run lint, typecheck, tests, and static analysis after changes.
 - Final reports must include changed files, simplifications made, and remaining risks.
 
+## Production deployment completion gate
+- When asked to deploy to production, do not report completion until the PR is merged to `main`, the exact `main` merge SHA is recorded, and the `Deploy to Production` workflow for that SHA completes successfully via `gh run watch --exit-status`.
+- Also verify required same-SHA main-branch CI/security/deploy workflows complete successfully before finalizing. If unrelated workflows fail on another branch or SHA, report them separately as unrelated noise, not as a deployment failure.
+- After deployment succeeds, verify production `/healthz`, `/__build`, and `/api/db-status`; `/__build.gitCommit` must match the recorded merge SHA.
+- After deployment verification, inspect all GitHub workflow runs created since the merge and group any failures as `deployment-blocking` when they match the deployed branch/SHA or `unrelated` when they belong to other branches/SHAs, such as Dependabot PRs.
+- If a Telegram/GitHub alert appears during deployment, inspect the referenced run before finalizing and classify it by branch, SHA, workflow, and whether it blocks the requested production deploy.
+
 <lore_commit_protocol>
 ## Lore Commit Protocol
 
