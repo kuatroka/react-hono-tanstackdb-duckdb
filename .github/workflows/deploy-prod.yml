@@ -287,7 +287,7 @@ jobs:
           git -C repo-wiki push origin HEAD:master
 
       - name: Upload prod history artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prod-history
           path: .artifacts/prod-history.md

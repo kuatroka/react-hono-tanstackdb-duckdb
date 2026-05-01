@@ -37,7 +37,7 @@ jobs:
           echo "test_duration_seconds=$((end-start))" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload test timing report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: junit-test-results
           path: .artifacts/test-results.xml
@@ -54,7 +54,7 @@ jobs:
         run: bun run test:coverage:ci
       - name: Upload coverage metrics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: .artifacts/coverage
