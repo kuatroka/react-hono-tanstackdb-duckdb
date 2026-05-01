@@ -74,12 +74,15 @@ describe('superinvestors collection', () => {
       }),
     )
 
-    const collection = createSuperinvestorsCollection(new QueryClient())
+    const queryClient = new QueryClient()
+    const collection = createSuperinvestorsCollection(queryClient)
     await collection.preload()
+    expect(queryClient.getQueryCache().find({ queryKey: ['superinvestors'] })).toBeDefined()
     expect(getLoadedSuperinvestorList()).toHaveLength(1)
 
     clearSuperinvestorListSessionState()
 
     expect(getLoadedSuperinvestorList()).toEqual([])
+    expect(queryClient.getQueryCache().find({ queryKey: ['superinvestors'] })).toBeUndefined()
   })
 })

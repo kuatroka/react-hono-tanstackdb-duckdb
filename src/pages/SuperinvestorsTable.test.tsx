@@ -6,9 +6,12 @@ describe("SuperinvestorsTablePage", () => {
 
     expect(source).not.toContain("useLiveQuery");
     expect(source).toContain("await superinvestorsCollection.preload()");
-    expect(source).toContain('if (getLoadedSuperinvestorList().length > 0)');
+    expect(source).toContain("await superinvestorsCollection.utils.refetch()");
+    expect(source).toContain("useState<Superinvestor[]>(() => getLoadedSuperinvestorList())");
+    expect(source).toContain("if (rows.length > 0)");
     expect(source).toContain('setDataSource("tsdb-memory")');
     expect(source).toContain("getLoadedSuperinvestorList()");
+    expect(source).not.toContain("clearSuperinvestorListSessionState");
     expect(source).toContain("useMarkContentReady");
     expect(source).toContain("clientPageSize={100}");
     expect(source).toContain('searchStrategy="ufuzzy"');

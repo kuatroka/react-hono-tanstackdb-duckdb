@@ -7,6 +7,7 @@ export type SuperinvestorListLoadSource = 'memory' | 'indexeddb' | 'api'
 
 const superinvestorListSourceListeners = new Set<(source: SuperinvestorListLoadSource) => void>()
 let currentSuperinvestorListLoadSource: SuperinvestorListLoadSource = 'memory'
+let superinvestorListQueryClient: QueryClient | null = null
 
 function setSuperinvestorListLoadSource(source: SuperinvestorListLoadSource) {
     currentSuperinvestorListLoadSource = source
@@ -39,6 +40,8 @@ export function clearSuperinvestorListSessionState(): void {
     if (ids.length > 0 && superinvestorsCollection?.isReady()) {
         superinvestorsCollection.utils.writeDelete(ids)
     }
+    superinvestorListQueryClient?.removeQueries({ queryKey: ['superinvestors'] })
+    inFlightSuperinvestorListLoads.clear()
     currentSuperinvestorListLoadSource = 'memory'
 }
 
@@ -113,6 +116,8 @@ async function fetchFullSuperinvestorList(): Promise<Superinvestor[]> {
 const inFlightSuperinvestorListLoads = new Map<string, Promise<Superinvestor[]>>()
 
 export function createSuperinvestorsCollection(queryClient: QueryClient) {
+    superinvestorListQueryClient = queryClient
+
     const collection = createCollection(
         queryCollectionOptions({
             queryKey: ['superinvestors'],

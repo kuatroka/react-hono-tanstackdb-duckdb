@@ -77,12 +77,15 @@ describe("assets collection", () => {
       }),
     );
 
-    const collection = createAssetsCollection(new QueryClient());
+    const queryClient = new QueryClient();
+    const collection = createAssetsCollection(queryClient);
     await collection.preload();
+    expect(queryClient.getQueryCache().find({ queryKey: ["assets"] })).toBeDefined();
     expect(getLoadedAssetList()).toHaveLength(1);
 
     clearAssetListSessionState();
 
     expect(getLoadedAssetList()).toEqual([]);
+    expect(queryClient.getQueryCache().find({ queryKey: ["assets"] })).toBeUndefined();
   });
 });

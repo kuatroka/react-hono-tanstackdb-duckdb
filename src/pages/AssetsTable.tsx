@@ -103,10 +103,11 @@ const AssetsTableCard = memo(function AssetsTableCard({
 
 function AssetsTableSurface() {
   const onReady = useMarkContentReady();
-  const [isLoading, setIsLoading] = useState(() => getLoadedAssetList().length === 0);
+  const [rows, setRows] = useState<Asset[]>(() => getLoadedAssetList());
+  const [isLoading, setIsLoading] = useState(() => rows.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
-    if (getLoadedAssetList().length > 0) {
+    if (rows.length > 0) {
       return 'tsdb-memory';
     }
 
@@ -119,8 +120,9 @@ function AssetsTableSurface() {
   });
 
   const readyCalledRef = useRef(false);
+  const hadInitialRowsRef = useRef(rows.length > 0);
   useEffect(() => {
-    if (getLoadedAssetList().length > 0) {
+    if (hadInitialRowsRef.current) {
       setDataSource('tsdb-memory');
       setLoadError(null);
       setIsLoading(false);
@@ -131,8 +133,13 @@ function AssetsTableSurface() {
 
     void (async () => {
       try {
-        await assetsCollection.preload();
+        if (assetsCollection.isReady()) {
+          await assetsCollection.utils.refetch();
+        } else {
+          await assetsCollection.preload();
+        }
         if (cancelled) return;
+        setRows(getLoadedAssetList());
         setLoadError(null);
       } catch (error) {
         if (cancelled) return;
@@ -161,8 +168,6 @@ function AssetsTableSurface() {
       setDataSource(toPerfSource(source));
     });
   }, []);
-
-  const rows = getLoadedAssetList();
 
   useEffect(() => {
     if (readyCalledRef.current) return;

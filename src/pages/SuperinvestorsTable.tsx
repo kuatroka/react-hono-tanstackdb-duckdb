@@ -106,9 +106,10 @@ const SuperinvestorsTableCard = memo(function SuperinvestorsTableCard({
 
 function SuperinvestorsTableSurface() {
   const onReady = useMarkContentReady();
-  const [isLoading, setIsLoading] = useState(() => getLoadedSuperinvestorList().length === 0);
+  const [rows, setRows] = useState<Superinvestor[]>(() => getLoadedSuperinvestorList());
+  const [isLoading, setIsLoading] = useState(() => rows.length === 0);
   const [dataSource, setDataSource] = useState<PerfSource>(() => {
-    if (getLoadedSuperinvestorList().length > 0) {
+    if (rows.length > 0) {
       return "tsdb-memory";
     }
 
@@ -119,9 +120,11 @@ function SuperinvestorsTableSurface() {
         ? "tsdb-indexeddb"
         : "tsdb-memory";
   });
+  const readyCalledRef = useRef(false);
+  const hadInitialRowsRef = useRef(rows.length > 0);
 
   useEffect(() => {
-    if (getLoadedSuperinvestorList().length > 0) {
+    if (hadInitialRowsRef.current) {
       setDataSource("tsdb-memory");
       setIsLoading(false);
       return;
@@ -131,8 +134,13 @@ function SuperinvestorsTableSurface() {
 
     void (async () => {
       try {
-        await superinvestorsCollection.preload();
+        if (superinvestorsCollection.isReady()) {
+          await superinvestorsCollection.utils.refetch();
+        } else {
+          await superinvestorsCollection.preload();
+        }
         if (cancelled) return;
+        setRows(getLoadedSuperinvestorList());
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -144,9 +152,6 @@ function SuperinvestorsTableSurface() {
       cancelled = true;
     };
   }, []);
-
-  const readyCalledRef = useRef(false);
-  const rows = getLoadedSuperinvestorList();
 
   useEffect(() => {
     const toPerfSource = (

@@ -84,6 +84,7 @@ interface BenchmarkConfig {
   outDir: string;
   headed: boolean;
   forceGc: boolean;
+  disableReactScan: boolean;
 }
 
 function readOption(argv: string[], index: number, option: string) {
@@ -103,6 +104,7 @@ function parseArgs(argv: string[]): BenchmarkConfig {
     outDir: process.env.MEMORY_BENCHMARK_OUT_DIR || DEFAULT_OUT_DIR,
     headed: process.env.HEADED === "1" || process.env.HEADED === "true",
     forceGc: process.env.FORCE_GC === "1" || process.env.FORCE_GC === "true",
+    disableReactScan: process.env.DISABLE_REACT_SCAN === "1" || process.env.DISABLE_REACT_SCAN === "true",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -115,6 +117,11 @@ function parseArgs(argv: string[]): BenchmarkConfig {
 
     if (arg === "--force-gc") {
       config.forceGc = true;
+      continue;
+    }
+
+    if (arg === "--disable-react-scan") {
+      config.disableReactScan = true;
       continue;
     }
 
@@ -159,9 +166,13 @@ Options:
   --headed          Run visible Chromium, closer to manual Chrome checks
   --force-gc        Collect garbage before each sample. Useful for retained-memory checks,
                     but do not use when trying to mirror Chrome tab hover memory.
+  --disable-react-scan
+                    Set localStorage react-scan=0 before app code runs, removing dev
+                    render-profiler overhead from benchmark measurements.
 
 Environment aliases:
-  BASE_URL, ROUTE, HEADED=1, FORCE_GC=1, MEMORY_BENCHMARK_DELAY_MS
+  BASE_URL, ROUTE, HEADED=1, FORCE_GC=1, DISABLE_REACT_SCAN=1,
+  MEMORY_BENCHMARK_DELAY_MS
 `);
 }
 
@@ -435,32 +446,32 @@ async function runScenario(
   await fillGlobalSearch(page, "berkshire");
   await sample(1, "01 global search berkshire");
 
-  await fillGlobalSearch(page, "apple");
-  await sample(2, "02 global search apple");
+  await clickFirstGlobalSearchResult(page);
+  await sample(2, "02 click berkshire first result");
 
-  await fillGlobalSearch(page, "microsoft");
-  await sample(3, "03 global search microsoft");
+  await fillGlobalSearch(page, "apple");
+  await sample(3, "03 global search apple");
 
   await clickFirstGlobalSearchResult(page);
-  await sample(4, "04 click first global result");
+  await sample(4, "04 click apple first result");
+
+  await fillGlobalSearch(page, "microsoft");
+  await sample(5, "05 global search microsoft");
+
+  await clickFirstGlobalSearchResult(page);
+  await sample(6, "06 click microsoft first result");
 
   await navigateToRoute(page, config.baseUrl, "/assets");
-  await sample(5, "05 navigate assets");
+  await sample(7, "07 navigate assets");
 
   await fillTableSearch(page, "Search assets...", "apple");
-  await sample(6, "06 assets search apple");
-
-  await fillTableSearch(page, "Search assets...", "microsoft");
-  await sample(7, "07 assets search microsoft");
+  await sample(8, "08 assets search apple");
 
   await navigateToRoute(page, config.baseUrl, "/superinvestors");
-  await sample(8, "08 navigate superinvestors");
+  await sample(9, "09 navigate superinvestors");
 
   await fillTableSearch(page, "Search superinvestors...", "berkshire");
-  await sample(9, "09 superinvestors search berkshire");
-
-  await fillTableSearch(page, "Search superinvestors...", "capital");
-  await sample(10, "10 superinvestors search capital");
+  await sample(10, "10 superinvestors search berkshire");
 
   return samples;
 }
@@ -485,6 +496,7 @@ async function main() {
   console.log(`Route: ${config.route}`);
   console.log(`Mode: ${config.headed ? "headed" : "headless"}`);
   console.log(`Force GC: ${config.forceGc ? "yes" : "no"}`);
+  console.log(`Disable react-scan: ${config.disableReactScan ? "yes" : "no"}`);
   console.log("Metric note: totalChromiumRssDeltaMb is the closest automated proxy for Chrome tab-hover memory.");
   console.log("");
 
@@ -505,6 +517,11 @@ async function main() {
     const context = await browser.newContext({
       viewport: { width: 1728, height: 1117 },
     });
+    if (config.disableReactScan) {
+      await context.addInitScript(() => {
+        window.localStorage.setItem("react-scan", "0");
+      });
+    }
     const page = await context.newPage();
     const pageClient = await context.newCDPSession(page);
     const browserClient = await browser.newBrowserCDPSession();

@@ -27,6 +27,7 @@ export function __setAssetListPersistenceForTest(overrides: Partial<AssetListPer
 
 const assetListSourceListeners = new Set<(source: AssetListLoadSource) => void>()
 let currentAssetListLoadSource: AssetListLoadSource = 'memory'
+let assetListQueryClient: QueryClient | null = null
 
 function setAssetListLoadSource(source: AssetListLoadSource) {
     currentAssetListLoadSource = source
@@ -60,6 +61,8 @@ export function clearAssetListSessionState(): void {
     if (ids.length > 0 && assetsCollection?.isReady()) {
         assetsCollection.utils.writeDelete(ids)
     }
+    assetListQueryClient?.removeQueries({ queryKey: ['assets'] })
+    inFlightAssetListLoads.clear()
     currentAssetListLoadSource = 'memory'
 }
 
@@ -98,6 +101,8 @@ async function fetchFullAssetList(): Promise<Asset[]> {
 const inFlightAssetListLoads = new Map<string, Promise<Asset[]>>()
 
 export function createAssetsCollection(queryClient: QueryClient) {
+    assetListQueryClient = queryClient
+
     const collection = createCollection(
         queryCollectionOptions({
             queryKey: ['assets'],

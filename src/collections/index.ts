@@ -14,6 +14,7 @@ export {
 // Types
 export type { Asset, Superinvestor, SearchResult } from './instances'
 export {
+    clearAssetListSessionState,
     fetchAssetRecord,
     getAssetListLoadSource,
     getLoadedAssetList,
@@ -21,6 +22,7 @@ export {
     type AssetListLoadSource,
 } from './assets'
 export {
+    clearSuperinvestorListSessionState,
     fetchSuperinvestorRecord,
     fetchSuperinvestorRecordWithSource,
     getLoadedSuperinvestorList,

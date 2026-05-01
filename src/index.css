@@ -242,13 +242,14 @@
   }
   html {
     overflow-x: clip;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
     letter-spacing: var(--tracking-normal);
     min-height: 100vh;
-    overflow-y: scroll;
     overflow-x: clip;
   }
   #root {

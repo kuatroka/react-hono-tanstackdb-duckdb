@@ -77,6 +77,8 @@ describe("global navigation layout", () => {
     expect(pageLayout).toContain("max-w-[var(--page-max-width)]");
     expect(indexCss).toContain("--page-max-width: 100vw;");
     expect(indexCss).toContain("--page-max-width-wide: 100vw;");
+    expect(indexCss).toContain("scrollbar-gutter: stable;");
+    expect(indexCss).not.toContain("overflow-y: scroll;");
     expect(assetsPage).toContain("PageLayout");
     expect(assetDetail).toContain("PageLayout");
   });

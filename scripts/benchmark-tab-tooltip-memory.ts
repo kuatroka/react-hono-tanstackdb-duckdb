@@ -87,6 +87,7 @@ interface BenchmarkConfig {
   browserChannel: string;
   browserAppName: string;
   executablePath: string | null;
+  disableReactScan: boolean;
 }
 
 interface RunPaths {
@@ -116,6 +117,7 @@ function parseArgs(argv: string[]): BenchmarkConfig {
     browserChannel: process.env.BROWSER_CHANNEL || "chrome",
     browserAppName: process.env.BROWSER_APP_NAME || "Google Chrome",
     executablePath: process.env.BROWSER_EXECUTABLE_PATH || null,
+    disableReactScan: process.env.DISABLE_REACT_SCAN === "1" || process.env.DISABLE_REACT_SCAN === "true",
   };
   const optionHandlers: Record<string, (value: string) => void> = {
     "--base-url": (value) => { config.baseUrl = value; },
@@ -137,6 +139,11 @@ function parseArgs(argv: string[]): BenchmarkConfig {
     if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
+    }
+
+    if (arg === "--disable-react-scan") {
+      config.disableReactScan = true;
+      continue;
     }
 
     const handleOption = optionHandlers[arg];
@@ -182,6 +189,7 @@ Options:
   --browser-channel <name>  Playwright browser channel. Default: chrome
   --browser-app-name <name> macOS app name to activate before OCR. Default: Google Chrome
   --executable-path <path>  Chromium-family browser executable, e.g. Brave Browser
+  --disable-react-scan      Disable react-scan dev profiler via localStorage before app code runs
   --out-dir <path>          Artifact directory. Default: ${DEFAULT_OUT_DIR}
 
 Requirements:
@@ -524,32 +532,32 @@ async function runScenario(
   await fillGlobalSearch(page, "berkshire");
   await sample(1, "01 global search berkshire");
 
-  await fillGlobalSearch(page, "apple");
-  await sample(2, "02 global search apple");
+  await clickFirstGlobalSearchResult(page);
+  await sample(2, "02 click berkshire first result");
 
-  await fillGlobalSearch(page, "microsoft");
-  await sample(3, "03 global search microsoft");
+  await fillGlobalSearch(page, "apple");
+  await sample(3, "03 global search apple");
 
   await clickFirstGlobalSearchResult(page);
-  await sample(4, "04 click first global result");
+  await sample(4, "04 click apple first result");
+
+  await fillGlobalSearch(page, "microsoft");
+  await sample(5, "05 global search microsoft");
+
+  await clickFirstGlobalSearchResult(page);
+  await sample(6, "06 click microsoft first result");
 
   await navigateToRoute(page, config.baseUrl, "/assets");
-  await sample(5, "05 navigate assets");
+  await sample(7, "07 navigate assets");
 
   await fillTableSearch(page, "Search assets...", "apple");
-  await sample(6, "06 assets search apple");
-
-  await fillTableSearch(page, "Search assets...", "microsoft");
-  await sample(7, "07 assets search microsoft");
+  await sample(8, "08 assets search apple");
 
   await navigateToRoute(page, config.baseUrl, "/superinvestors");
-  await sample(8, "08 navigate superinvestors");
+  await sample(9, "09 navigate superinvestors");
 
   await fillTableSearch(page, "Search superinvestors...", "berkshire");
-  await sample(9, "09 superinvestors search berkshire");
-
-  await fillTableSearch(page, "Search superinvestors...", "capital");
-  await sample(10, "10 superinvestors search capital");
+  await sample(10, "10 superinvestors search berkshire");
 
   return samples;
 }
@@ -623,6 +631,7 @@ async function main() {
   console.log(`Browser app name: ${config.browserAppName}`);
   console.log(`Tab hover: (${config.hoverX}, ${config.hoverY})`);
   console.log(`Capture rect: ${config.captureRect}`);
+  console.log(`Disable react-scan: ${config.disableReactScan ? "yes" : "no"}`);
   console.log("Metric note: tooltipMemoryMb is OCR-extracted from the browser tab-hover tooltip.");
   console.log("");
 
@@ -645,6 +654,11 @@ async function main() {
     const context = await browser.newContext({
       viewport: { width: 1728, height: 980 },
     });
+    if (config.disableReactScan) {
+      await context.addInitScript(() => {
+        window.localStorage.setItem("react-scan", "0");
+      });
+    }
     const page = await context.newPage();
     const pageClient = await context.newCDPSession(page);
     const browserClient = await browser.newBrowserCDPSession();

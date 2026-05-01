@@ -5,9 +5,12 @@ describe("AssetsTablePage", () => {
     const source = await Bun.file(new URL("./AssetsTable.tsx", import.meta.url)).text();
 
     expect(source).toContain("await assetsCollection.preload()");
-    expect(source).toContain("if (getLoadedAssetList().length > 0)");
+    expect(source).toContain("await assetsCollection.utils.refetch()");
+    expect(source).toContain("useState<Asset[]>(() => getLoadedAssetList())");
+    expect(source).toContain("if (rows.length > 0)");
     expect(source).toContain("setDataSource('tsdb-memory')");
     expect(source).toContain("getLoadedAssetList()");
+    expect(source).not.toContain("clearAssetListSessionState");
     expect(source).toContain("useMarkContentReady");
     expect(source).toContain("subscribeAssetListLoadSource");
     expect(source).toContain("getAssetListLoadSource");

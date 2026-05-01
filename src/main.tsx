@@ -8,10 +8,19 @@ import { initializeErrorTracking } from "./lib/error-tracking";
 import { shouldEnableReactScan } from "./lib/runtime-env";
 import "uplot/dist/uPlot.min.css";
 
+function isReactScanDisabled() {
+  try {
+    return globalThis.localStorage?.getItem("react-scan") === "0";
+  } catch {
+    return false;
+  }
+}
+
 if (
   shouldEnableReactScan({
     hostname: globalThis.location?.hostname,
     importMetaEnvDev: import.meta.env?.DEV,
+    reactScanDisabled: isReactScanDisabled(),
   })
 ) {
   scan({ enabled: true });
