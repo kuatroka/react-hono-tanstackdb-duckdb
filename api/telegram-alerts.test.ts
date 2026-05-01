@@ -89,4 +89,38 @@ describe('telegram alert helpers', () => {
     expect(requests[0]?.body).toMatchObject({ chat_id: 'prod-chat' })
     expect(JSON.stringify(requests[0]?.body)).not.toContain('bot-token')
   })
+
+  test('classifies CI alerts separately from deploy alerts', async () => {
+    const requests: Array<{ body: unknown }> = []
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      requests.push({
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as typeof fetch
+
+    const sent = await notifyWebAppIncident(
+      {
+        category: 'ci',
+        severity: 'error',
+        source: 'github-actions:CI',
+        title: 'CI failure',
+        message: 'CI failed on dependabot/bun/eslint/js-10.0.1',
+        environment: 'dev',
+      },
+      {
+        fetchImpl,
+        skipRateLimit: true,
+        env: {
+          WEB_APP_APPRISE_DEV_URLS: 'tgram://bot-token/dev-chat',
+          WEB_APP_TELEGRAM_DEPLOY_ALERTS_ENABLED: 'false',
+        },
+      },
+    )
+
+    expect(sent).toBe(true)
+    expect(requests[0]?.body).toMatchObject({
+      text: expect.stringContaining('Category: ci'),
+    })
+  })
 })

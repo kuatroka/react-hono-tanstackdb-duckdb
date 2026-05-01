@@ -5,10 +5,17 @@ const workflowName = process.env.WEB_APP_ALERT_WORKFLOW ?? process.env.GITHUB_WO
 const conclusion = process.env.WEB_APP_ALERT_CONCLUSION ?? 'failure'
 const runUrl = process.env.WEB_APP_ALERT_RUN_URL ?? ''
 const commit = process.env.WEB_APP_ALERT_COMMIT ?? process.env.GITHUB_SHA ?? undefined
+const category = resolveWorkflowAlertCategory(process.env.WEB_APP_ALERT_CATEGORY ?? workflowName)
+
+export function resolveWorkflowAlertCategory(workflow: string) {
+  if (workflow === 'Deploy to Production') return 'deploy'
+  if (workflow === 'Security Review' || workflow === 'DAST') return 'security'
+  return 'ci'
+}
 
 const sent = await notifyWebAppIncident(
   {
-    category: 'deploy',
+    category,
     severity: conclusion === 'success' ? 'info' : 'error',
     source: `github-actions:${workflowName}`,
     title: `${workflowName} ${conclusion}`,
