@@ -48,7 +48,10 @@ jobs:
           end=$(date +%s)
           echo "build_duration_seconds=$((end-start))" >> "$GITHUB_STEP_SUMMARY"
       - name: Coverage smoke gate
-        run: bun run test:coverage
+        env:
+          JWT_SECRET: ci-test-secret
+          DUCKDB_PATH: /tmp/test.duckdb
+        run: bun run test:coverage:ci
       - name: Upload coverage metrics
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,4 +69,7 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - name: Randomized retry flake probe
+        env:
+          JWT_SECRET: ci-test-secret
+          DUCKDB_PATH: /tmp/test.duckdb
         run: bun run test:flake-check
