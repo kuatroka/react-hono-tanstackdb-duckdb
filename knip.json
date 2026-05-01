@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main.tsx",
+    "api/server.ts",
+    "app/router.tsx",
+    "scripts/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "api/**/*.ts",
+    "app/**/*.tsx",
+    "scripts/**/*.ts"
+  ],
+  "ignore": [
+    "app/routeTree.gen.ts",
+    "dist/**",
+    "node_modules/**"
+  ],
+  "ignoreDependencies": [
+    "@types/*",
+    "baseline-browser-mapping",
+    "caniuse-lite"
+  ]
+}

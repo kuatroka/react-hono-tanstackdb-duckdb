@@ -22,9 +22,13 @@ cikQuarterlyRoutes.get("/:cik", async (c) => {
     const cik = c.req.param("cik");
 
     try {
-        const results = await getCikQuarterly(c, cik);
+        const rows = await getCikQuarterly(c, cik);
 
-        return c.json(results);
+        return c.json({
+            rows,
+            count: rows.length,
+            complete: true,
+        });
     } catch (error) {
         console.error("[DuckDB CikQuarterly] Error:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);

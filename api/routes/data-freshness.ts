@@ -11,12 +11,27 @@ dataFreshnessRoutes.get("/", async (c) => {
         const dbVersion = getManifestVersion();
         const status = await duckDbGenerationManager.getStatus();
 
+        const servingManifestVersion = status.activeSnapshot?.manifestVersion ?? null;
+        const servingManifestActive = status.activeSnapshot?.manifestActive ?? null;
+        const servingFileMtimeMs = status.activeSnapshot?.fileMtimeMs ?? null;
+        const appVariant = process.env.APP_VARIANT?.trim() || "current";
+        const dataVersion = [
+            appVariant,
+            servingManifestVersion ?? 'nomv',
+            servingManifestActive ?? 'noactive',
+            servingFileMtimeMs ?? 'nomtime',
+            lastDataLoadDate ?? 'noload',
+        ].join(':');
+
         return c.json({
             lastDataLoadDate,
             dbVersion,
+            dataVersion,
+            appVariant,
             servingGenerationId: status.activeGenerationId,
-            servingManifestVersion: status.activeSnapshot?.manifestVersion ?? null,
-            servingManifestActive: status.activeSnapshot?.manifestActive ?? null,
+            servingManifestVersion,
+            servingManifestActive,
+            servingFileMtimeMs,
             timestamp: Date.now()
         });
     } catch (error) {

@@ -1,5 +1,6 @@
 import type { DuckDbConnection } from "@duckdb/node-api";
 import { getDuckDbLease, type DuckDbLeaseContext } from "../db/lease-context";
+import { runPreparedAndGetRows } from "../db/query-runner";
 
 export interface AssetRow {
   id: string;
@@ -16,27 +17,58 @@ export interface ListAssetsParams {
   direction?: "asc" | "desc";
 }
 
-export async function listAssets(c: DuckDbLeaseContext, params: ListAssetsParams) {
+export interface ListAssetsResult {
+  rows: AssetRow[];
+  totalCount: number;
+  limitApplied: number;
+  offset: number;
+  complete: boolean;
+}
+
+const ASSET_DISPLAY_NAME_SQL = "COALESCE(NULLIF(TRIM(cusip_md.cusip_ticker_name), ''), NULLIF(TRIM(assets.asset_name), ''), assets.asset)";
+
+export async function listAssets(c: DuckDbLeaseContext, params: ListAssetsParams): Promise<ListAssetsResult> {
   const lease = getDuckDbLease(c);
   return lease.run("assets.list", async (connection: DuckDbConnection) => {
-    const sortColumn = params.sort === "asset" ? "asset" : params.sort === "cusip" ? "cusip" : "asset_name";
+    const sortColumn = params.sort === "asset" ? "assets.asset" : params.sort === "cusip" ? "assets.cusip" : ASSET_DISPLAY_NAME_SQL;
     const sortDirection = params.direction === "desc" ? "DESC" : "ASC";
     const query = (params.search ?? "").trim();
     const hasSearch = query.length > 0;
+    const whereClause = hasSearch
+      ? `WHERE LOWER(assets.asset) LIKE ? OR LOWER(${ASSET_DISPLAY_NAME_SQL}) LIKE ? OR LOWER(COALESCE(assets.cusip, '')) LIKE ?`
+      : "";
 
-    const sql = `
-      SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
+    const countStmt = await connection.prepare(`
+      SELECT COUNT(*)
       FROM assets
-      ${hasSearch ? "WHERE LOWER(asset) LIKE ? OR LOWER(asset_name) LIKE ? OR LOWER(COALESCE(cusip, '')) LIKE ?" : ""}
-      ORDER BY ${sortColumn} ${sortDirection}
-      LIMIT ? OFFSET ?
-    `;
+      LEFT JOIN cusip_md ON assets.cusip = cusip_md.cusip
+      ${whereClause}
+    `);
 
-    const stmt = await connection.prepare(sql);
     let bindIndex = 1;
+    if (hasSearch) {
+      const pattern = `%${query.toLowerCase()}%`;
+      countStmt.bindVarchar(bindIndex++, pattern);
+      countStmt.bindVarchar(bindIndex++, pattern);
+      countStmt.bindVarchar(bindIndex++, pattern);
+    }
+
+    const countRows = await runPreparedAndGetRows(countStmt);
+    const totalCount = Number(countRows[0]?.[0]) || 0;
+
+    const stmt = await connection.prepare(`
+      SELECT
+        assets.asset,
+        ${ASSET_DISPLAY_NAME_SQL} as "assetName",
+        assets.cusip
+      FROM assets
+      LEFT JOIN cusip_md ON assets.cusip = cusip_md.cusip
+      ${whereClause}
+      ORDER BY ${sortColumn} ${sortDirection}, assets.asset ASC, COALESCE(assets.cusip, '') ASC
+      LIMIT ? OFFSET ?
+    `);
+
+    bindIndex = 1;
     if (hasSearch) {
       const pattern = `%${query.toLowerCase()}%`;
       stmt.bindVarchar(bindIndex++, pattern);
@@ -46,14 +78,21 @@ export async function listAssets(c: DuckDbLeaseContext, params: ListAssetsParams
     stmt.bindInteger(bindIndex++, params.limit);
     stmt.bindInteger(bindIndex++, params.offset);
 
-    const reader = await stmt.runAndReadAll();
-    const rows = reader.getRows();
-    return rows.map((row: unknown[], index: number) => ({
-      id: `${row[0]}-${row[2] || params.offset + index}`,
+    const rows = await runPreparedAndGetRows(stmt);
+    const assetRows = rows.map((row: unknown[]) => ({
+      id: `${row[0]}-${row[2] || "none"}`,
       asset: row[0] as string,
       assetName: row[1] as string,
       cusip: row[2] as string | null,
     })) satisfies AssetRow[];
+
+    return {
+      rows: assetRows,
+      totalCount,
+      limitApplied: params.limit,
+      offset: params.offset,
+      complete: params.offset + assetRows.length >= totalCount,
+    };
   });
 }
 
@@ -63,21 +102,23 @@ export async function getAssetByCode(c: DuckDbLeaseContext, params: { code: stri
     const sql = params.cusip
       ? `
       SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
+        assets.asset,
+        ${ASSET_DISPLAY_NAME_SQL} as "assetName",
+        assets.cusip
       FROM assets
-      WHERE asset = ? AND cusip = ?
+      LEFT JOIN cusip_md ON assets.cusip = cusip_md.cusip
+      WHERE assets.asset = ? AND assets.cusip = ?
       LIMIT 1
     `
       : `
       SELECT
-        asset,
-        asset_name as "assetName",
-        cusip
+        assets.asset,
+        ${ASSET_DISPLAY_NAME_SQL} as "assetName",
+        assets.cusip
       FROM assets
-      WHERE asset = ?
-      ORDER BY asset_name ASC
+      LEFT JOIN cusip_md ON assets.cusip = cusip_md.cusip
+      WHERE assets.asset = ?
+      ORDER BY ${ASSET_DISPLAY_NAME_SQL} ASC
       LIMIT 1
     `;
 

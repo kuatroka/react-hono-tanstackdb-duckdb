@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "context7-plugin@context7": true,
-    "autoresearch@factory-plugins": true
+    "autoresearch@factory-plugins": true,
+    "visual-explainer@visual-explainer": true,
+    "context7-plugin@context7": true
   }
 }

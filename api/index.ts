@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { SignJWT } from "jose";
 import { duckDbLeaseMiddleware } from "./db/hono-db-middleware";
+import { requestTracingMiddleware } from "./middleware-request-tracing";
 import dbStatusRoutes from "./routes/db-status";
 import drilldownRoutes from "./routes/drilldown";
 import searchDuckdbRoutes from "./routes/search-duckdb";
@@ -13,6 +14,8 @@ import investorFlowRoutes from "./routes/investor-flow";
 import cikQuarterlyRoutes from "./routes/cik-quarterly";
 import superinvestorAssetHistoryRoutes from "./routes/superinvestor-asset-history";
 import dataFreshnessRoutes from "./routes/data-freshness";
+import clientErrorRoutes from "./routes/client-errors";
+import { notifyWebAppIncident } from "./telegram-alerts";
 
 export const config = {
   runtime: "edge",
@@ -20,6 +23,7 @@ export const config = {
 
 export const app = new Hono().basePath("/api");
 
+app.use("*", requestTracingMiddleware);
 app.use("*", duckDbLeaseMiddleware);
 
 // Data routes now all come from DuckDB/REST-backed handlers.
@@ -34,6 +38,23 @@ app.route("/cik-quarterly", cikQuarterlyRoutes);
 app.route("/superinvestor-asset-history", superinvestorAssetHistoryRoutes);
 app.route("/data-freshness", dataFreshnessRoutes);
 app.route("/db-status", dbStatusRoutes);
+app.route("/client-errors", clientErrorRoutes);
+
+app.onError(async (error, c) => {
+  await notifyWebAppIncident({
+    category: "runtime",
+    severity: "error",
+    source: "hono",
+    title: "Web API runtime error",
+    message: error instanceof Error ? error.message : String(error),
+    method: c.req.method,
+    path: c.req.path,
+  }).catch((alertError) => {
+    console.warn("[Alerts] failed to send API runtime alert", alertError);
+  });
+
+  return c.json({ error: "Internal Server Error" }, 500);
+});
 
 // See seed.sql
 // In real life you would of course authenticate the user however you like.
@@ -53,8 +74,15 @@ function randomInt(max: number) {
   return Math.floor(Math.random() * max);
 }
 
-// JWT secret - falls back to a default for development
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+function requireJwtSecret() {
+  const value = process.env.JWT_SECRET?.trim();
+  if (!value) {
+    throw new Error("Missing required environment variable: JWT_SECRET");
+  }
+  return value;
+}
+
+const JWT_SECRET = requireJwtSecret();
 
 app.get("/login", async (c) => {
   const jwtPayload = {

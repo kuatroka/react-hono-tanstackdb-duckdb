@@ -27,6 +27,26 @@ import {
     compactSearchIndexPayload,
     type CompactSearchIndexPayload,
 } from '@/lib/search-index'
+import { getStoredDataVersion } from '@/lib/data-version'
+
+function getCurrentDataVersion(): string | null {
+    return getStoredDataVersion()
+}
+
+function hasExpiredPersistedAt(persistedAt: number | undefined, maxAgeMs: number): boolean {
+    if (!persistedAt) {
+        return false
+    }
+    return Date.now() - persistedAt > maxAgeMs
+}
+
+function isEntryForCurrentDataVersion(entryDataVersion: string | null | undefined): boolean {
+    const currentDataVersion = getCurrentDataVersion()
+    if (!currentDataVersion) {
+        return true
+    }
+    return entryDataVersion === currentDataVersion
+}
 
 // Shared QueryClient – no per-query persister
 export const queryClient = new QueryClient({
@@ -60,7 +80,7 @@ export async function clearLegacyQueryCache(): Promise<void> {
 // SEARCH INDEX PERSISTENCE (using Dexie searchIndex table)
 // ============================================================
 
-const SEARCH_INDEX_KEY = 'search-index-v1'
+const SEARCH_INDEX_CACHE_ID = 'search-index-v2'
 
 export type PersistedSearchIndex = CompactSearchIndexPayload
 
@@ -74,12 +94,13 @@ export async function persistSearchIndex(index: PersistedSearchIndex): Promise<v
         const startTime = performance.now()
         const db = getDb()
         const entry: SearchIndexEntry = {
-            key: SEARCH_INDEX_KEY,
+            key: SEARCH_INDEX_CACHE_ID,
             items: index.items,
             metadata: {
                 totalItems: index.metadata?.totalItems ?? 0,
                 generatedAt: index.metadata?.generatedAt,
                 persistedAt: Date.now(),
+                dataVersion: index.metadata?.dataVersion ?? getCurrentDataVersion(),
                 indexFileBytes: index.metadata?.indexFileBytes,
                 compactBytes: index.metadata?.compactBytes,
             },
@@ -101,23 +122,25 @@ export async function loadPersistedSearchIndex(): Promise<PersistedSearchIndex |
     try {
         const startTime = performance.now()
         const db = getDb()
-        const entry = await db.searchIndex.get(SEARCH_INDEX_KEY)
+        const entry = await db.searchIndex.get(SEARCH_INDEX_CACHE_ID)
 
         if (!entry) {
             console.log('[SearchIndex] No persisted index found')
             return null
         }
 
-        // Check if expired (7 days)
+        if (!isEntryForCurrentDataVersion(entry.metadata?.dataVersion)) {
+            console.log('[SearchIndex] Persisted index is for an older data version, will refetch')
+            await db.searchIndex.delete(SEARCH_INDEX_CACHE_ID)
+            return null
+        }
+
         const persistedAt = entry.metadata?.persistedAt
-        if (persistedAt) {
-            const age = Date.now() - persistedAt
-            const maxAge = 1000 * 60 * 60 * 24 * 7 // 7 days
-            if (age > maxAge) {
-                console.log('[SearchIndex] Persisted index expired, will refetch')
-                await db.searchIndex.delete(SEARCH_INDEX_KEY)
-                return null
-            }
+        const maxAge = 1000 * 60 * 60 * 24 * 7 // 7 days
+        if (hasExpiredPersistedAt(persistedAt, maxAge)) {
+            console.log('[SearchIndex] Persisted index expired, will refetch')
+            await db.searchIndex.delete(SEARCH_INDEX_CACHE_ID)
+            return null
         }
 
         const index = compactSearchIndexPayload({
@@ -130,12 +153,13 @@ export async function loadPersistedSearchIndex(): Promise<PersistedSearchIndex |
 
         if (!Array.isArray(entry.items)) {
             void db.searchIndex.put({
-                key: SEARCH_INDEX_KEY,
+                key: SEARCH_INDEX_CACHE_ID,
                 items: index.items,
                 metadata: {
                     totalItems: index.metadata?.totalItems ?? index.items.length,
                     generatedAt: index.metadata?.generatedAt,
                     persistedAt: entry.metadata?.persistedAt ?? Date.now(),
+                    dataVersion: entry.metadata?.dataVersion ?? getCurrentDataVersion(),
                     indexFileBytes: index.metadata?.indexFileBytes,
                     compactBytes: index.metadata?.compactBytes,
                 },
@@ -158,7 +182,7 @@ export async function clearPersistedSearchIndex(): Promise<void> {
 
     try {
         const db = getDb()
-        await db.searchIndex.delete(SEARCH_INDEX_KEY)
+        await db.searchIndex.delete(SEARCH_INDEX_CACHE_ID)
         console.log('[SearchIndex] Cleared from IndexedDB')
     } catch (error) {
         console.error('[SearchIndex] Failed to clear:', error)
@@ -182,6 +206,7 @@ export interface PersistedCikQuarterlyData {
     }>
     metadata?: {
         persistedAt?: number
+        dataVersion?: string | null
     }
 }
 
@@ -198,6 +223,7 @@ export async function persistCikQuarterlyData(cik: string, rows: PersistedCikQua
             cik,
             rows,
             persistedAt: Date.now(),
+            dataVersion: getCurrentDataVersion(),
         }
         await db.cikQuarterly.put(entry)
         console.log(`[CikQuarterly] Persisted ${rows.length} quarters for CIK ${cik} to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
@@ -222,16 +248,18 @@ export async function loadPersistedCikQuarterlyData(cik: string): Promise<Persis
             return null
         }
 
-        // Check if expired (7 days)
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            console.log(`[CikQuarterly] Persisted data for CIK ${cik} is for an older data version, will refetch`)
+            await db.cikQuarterly.delete(cik)
+            return null
+        }
+
         const persistedAt = entry.persistedAt
-        if (persistedAt) {
-            const age = Date.now() - persistedAt
-            const maxAge = 1000 * 60 * 60 * 24 * 7 // 7 days
-            if (age > maxAge) {
-                console.log(`[CikQuarterly] Persisted data for CIK ${cik} expired, will refetch`)
-                await db.cikQuarterly.delete(cik)
-                return null
-            }
+        const maxAge = 1000 * 60 * 60 * 24 * 7 // 7 days
+        if (hasExpiredPersistedAt(persistedAt, maxAge)) {
+            console.log(`[CikQuarterly] Persisted data for CIK ${cik} expired, will refetch`)
+            await db.cikQuarterly.delete(cik)
+            return null
         }
 
         const data: PersistedCikQuarterlyData = {
@@ -239,6 +267,7 @@ export async function loadPersistedCikQuarterlyData(cik: string): Promise<Persis
             rows: entry.rows,
             metadata: {
                 persistedAt: entry.persistedAt,
+                dataVersion: entry.dataVersion ?? null,
             },
         }
 
@@ -269,9 +298,15 @@ export async function clearPersistedCikQuarterlyData(cik: string): Promise<void>
 // DRILLDOWN DATA PERSISTENCE (using Dexie drilldown table)
 // ============================================================
 
-const DRILLDOWN_KEY = 'investor-drilldown-v1'
+const DRILLDOWN_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24
+const DRILLDOWN_MAX_PERSISTED_ROWS = 2000
+const DRILLDOWN_MAX_PERSISTED_SCOPES = 12
 
 export interface PersistedDrilldownData {
+    key: string
+    scope: 'quarter' | 'pair'
+    pairKey: string
+    quarter: string | null
     rows: Array<{
         id: string
         ticker: string
@@ -287,82 +322,161 @@ export interface PersistedDrilldownData {
         didClose: boolean | null
         didHold: boolean | null
     }>
-    fetchedCombinations: string[]
-    bulkFetchedPairs: string[]
+    complete: boolean
     metadata?: {
-        totalRows: number
         persistedAt?: number
+        lastAccessedAt?: number
+        dataVersion?: string | null
+    }
+}
+
+function makePersistedDrilldownPairKey(pairKey: string): string {
+    return `pair:${pairKey}`
+}
+
+function makePersistedDrilldownQuarterKey(pairKey: string, quarter: string): string {
+    return `quarter:${pairKey}:${quarter}`
+}
+
+async function prunePersistedDrilldownData(db = getDb()): Promise<void> {
+    const entries = await db.drilldown.orderBy('lastAccessedAt').toArray()
+    const quarterEntries = entries.filter((entry) => entry.scope === 'quarter')
+    const pairEntries = entries.filter((entry) => entry.scope === 'pair')
+    const deleteKeys = [
+        ...quarterEntries.slice(0, Math.max(quarterEntries.length - DRILLDOWN_MAX_PERSISTED_SCOPES, 0)).map((entry) => entry.key),
+        ...pairEntries.slice(0, Math.max(pairEntries.length - DRILLDOWN_MAX_PERSISTED_SCOPES, 0)).map((entry) => entry.key),
+    ]
+
+    if (deleteKeys.length > 0) {
+        await db.drilldown.bulkDelete(deleteKeys)
+    }
+}
+
+function toPersistedDrilldownData(entry: DrilldownEntry): PersistedDrilldownData {
+    return {
+        key: entry.key,
+        scope: entry.scope,
+        pairKey: entry.pairKey,
+        quarter: entry.quarter,
+        rows: entry.rows,
+        complete: entry.complete,
+        metadata: {
+            persistedAt: entry.persistedAt,
+            lastAccessedAt: entry.lastAccessedAt,
+            dataVersion: entry.dataVersion ?? null,
+        },
     }
 }
 
 /**
- * Save drilldown data to IndexedDB via Dexie
+ * Save scoped drilldown data to IndexedDB via Dexie
  */
 export async function persistDrilldownData(data: PersistedDrilldownData): Promise<void> {
     if (typeof window === 'undefined') return
 
     try {
         const startTime = performance.now()
+        const now = Date.now()
         const db = getDb()
+        const rows = data.rows.length <= DRILLDOWN_MAX_PERSISTED_ROWS
+            ? data.rows
+            : data.rows.slice(0, DRILLDOWN_MAX_PERSISTED_ROWS)
         const entry: DrilldownEntry = {
-            key: DRILLDOWN_KEY,
-            rows: data.rows,
-            fetchedCombinations: data.fetchedCombinations,
-            bulkFetchedPairs: data.bulkFetchedPairs,
-            metadata: {
-                totalRows: data.rows.length,
-                persistedAt: Date.now(),
-            },
+            key: data.key,
+            scope: data.scope,
+            pairKey: data.pairKey,
+            quarter: data.quarter,
+            rows,
+            complete: data.complete && rows.length === data.rows.length,
+            persistedAt: now,
+            lastAccessedAt: now,
+            dataVersion: data.metadata?.dataVersion ?? getCurrentDataVersion(),
         }
         await db.drilldown.put(entry)
-        console.log(`[Drilldown] Persisted ${data.rows.length} rows to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        await prunePersistedDrilldownData(db)
+        console.log(`[Drilldown] Persisted ${rows.length} rows for ${data.key} in ${(performance.now() - startTime).toFixed(1)}ms`)
     } catch (error) {
         console.error('[Drilldown] Failed to persist:', error)
     }
 }
 
 /**
- * Load drilldown data from IndexedDB via Dexie
- * Returns null if not found or expired (older than 1 day)
+ * Load scoped drilldown data from IndexedDB via Dexie.
+ * Returns null if not found or expired (older than 1 day).
  */
-export async function loadPersistedDrilldownData(): Promise<PersistedDrilldownData | null> {
+export async function loadPersistedDrilldownData(key: string): Promise<PersistedDrilldownData | null> {
     if (typeof window === 'undefined') return null
 
     try {
         const startTime = performance.now()
         const db = getDb()
-        const entry = await db.drilldown.get(DRILLDOWN_KEY)
+        const entry = await db.drilldown.get(key)
 
         if (!entry) {
-            console.log('[Drilldown] No persisted data found')
             return null
         }
 
-        // Check if expired (1 day for drilldown data - it changes more frequently)
-        const persistedAt = entry.metadata?.persistedAt
-        if (persistedAt) {
-            const age = Date.now() - persistedAt
-            const maxAge = 1000 * 60 * 60 * 24 // 1 day
-            if (age > maxAge) {
-                console.log('[Drilldown] Persisted data expired, will refetch')
-                await db.drilldown.delete(DRILLDOWN_KEY)
-                return null
-            }
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            await db.drilldown.delete(key)
+            return null
         }
 
-        const data: PersistedDrilldownData = {
-            rows: entry.rows,
-            fetchedCombinations: entry.fetchedCombinations,
-            bulkFetchedPairs: entry.bulkFetchedPairs,
-            metadata: entry.metadata,
+        if (hasExpiredPersistedAt(entry.persistedAt, DRILLDOWN_CACHE_MAX_AGE_MS)) {
+            await db.drilldown.delete(key)
+            return null
         }
 
-        console.log(`[Drilldown] Loaded ${entry.rows.length} rows from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
-        return data
+        const lastAccessedAt = Date.now()
+        void db.drilldown.update(key, { lastAccessedAt })
+
+        console.log(`[Drilldown] Loaded ${entry.rows.length} rows for ${key} from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
+        return toPersistedDrilldownData({
+            ...entry,
+            lastAccessedAt,
+        })
     } catch (error) {
         console.error('[Drilldown] Failed to load from IndexedDB:', error)
         return null
     }
+}
+
+export async function loadPersistedDrilldownPairData(pairKey: string): Promise<PersistedDrilldownData | null> {
+    return loadPersistedDrilldownData(makePersistedDrilldownPairKey(pairKey))
+}
+
+export async function loadPersistedDrilldownQuarterData(pairKey: string, quarter: string): Promise<PersistedDrilldownData | null> {
+    return loadPersistedDrilldownData(makePersistedDrilldownQuarterKey(pairKey, quarter))
+}
+
+export async function persistDrilldownPairData(
+    pairKey: string,
+    rows: PersistedDrilldownData['rows'],
+    complete: boolean,
+): Promise<void> {
+    await persistDrilldownData({
+        key: makePersistedDrilldownPairKey(pairKey),
+        scope: 'pair',
+        pairKey,
+        quarter: null,
+        rows,
+        complete,
+    })
+}
+
+export async function persistDrilldownQuarterData(
+    pairKey: string,
+    quarter: string,
+    rows: PersistedDrilldownData['rows'],
+    complete: boolean,
+): Promise<void> {
+    await persistDrilldownData({
+        key: makePersistedDrilldownQuarterKey(pairKey, quarter),
+        scope: 'quarter',
+        pairKey,
+        quarter,
+        rows,
+        complete,
+    })
 }
 
 /**
@@ -373,7 +487,7 @@ export async function clearPersistedDrilldownData(): Promise<void> {
 
     try {
         const db = getDb()
-        await db.drilldown.delete(DRILLDOWN_KEY)
+        await db.drilldown.clear()
         console.log('[Drilldown] Cleared from IndexedDB')
     } catch (error) {
         console.error('[Drilldown] Failed to clear:', error)
@@ -402,6 +516,7 @@ export interface PersistedAssetActivityData {
     }>
     metadata?: {
         persistedAt?: number
+        dataVersion?: string | null
     }
 }
 
@@ -415,6 +530,7 @@ export async function persistAssetActivityData(key: string, rows: PersistedAsset
             key,
             rows,
             persistedAt: Date.now(),
+            dataVersion: getCurrentDataVersion(),
         }
         await db.assetActivity.put(entry)
         console.log(`[AssetActivity] Persisted ${rows.length} rows for ${key} to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
@@ -435,9 +551,13 @@ export async function loadPersistedAssetActivityData(key: string): Promise<Persi
             return null
         }
 
-        const age = Date.now() - entry.persistedAt
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            await db.assetActivity.delete(key)
+            return null
+        }
+
         const maxAge = 1000 * 60 * 60 * 24
-        if (age > maxAge) {
+        if (hasExpiredPersistedAt(entry.persistedAt, maxAge)) {
             await db.assetActivity.delete(key)
             return null
         }
@@ -448,6 +568,7 @@ export async function loadPersistedAssetActivityData(key: string): Promise<Persi
             rows: entry.rows,
             metadata: {
                 persistedAt: entry.persistedAt,
+                dataVersion: entry.dataVersion ?? null,
             },
         }
     } catch (error) {
@@ -482,6 +603,7 @@ export interface PersistedInvestorFlowData {
     }>
     metadata?: {
         persistedAt?: number
+        dataVersion?: string | null
     }
 }
 
@@ -495,6 +617,7 @@ export async function persistInvestorFlowData(ticker: string, rows: PersistedInv
             ticker,
             rows,
             persistedAt: Date.now(),
+            dataVersion: getCurrentDataVersion(),
         }
         await db.investorFlow.put(entry)
         console.log(`[InvestorFlow] Persisted ${rows.length} rows for ${ticker} to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
@@ -515,9 +638,13 @@ export async function loadPersistedInvestorFlowData(ticker: string): Promise<Per
             return null
         }
 
-        const age = Date.now() - entry.persistedAt
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            await db.investorFlow.delete(ticker)
+            return null
+        }
+
         const maxAge = 1000 * 60 * 60 * 24
-        if (age > maxAge) {
+        if (hasExpiredPersistedAt(entry.persistedAt, maxAge)) {
             await db.investorFlow.delete(ticker)
             return null
         }
@@ -528,6 +655,7 @@ export async function loadPersistedInvestorFlowData(ticker: string): Promise<Per
             rows: entry.rows,
             metadata: {
                 persistedAt: entry.persistedAt,
+                dataVersion: entry.dataVersion ?? null,
             },
         }
     } catch (error) {
@@ -551,8 +679,8 @@ export async function clearPersistedInvestorFlowData(ticker: string): Promise<vo
 // ASSET LIST PERSISTENCE (using Dexie assetList table)
 // ============================================================
 
-const ASSET_LIST_KEY = 'assets-v1'
-const SUPERINVESTOR_LIST_KEY = 'superinvestors-v1'
+const ASSET_LIST_KEY = 'assets-v2'
+const SUPERINVESTOR_LIST_CACHE_ID = 'superinvestors-v1'
 const LIST_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24
 
 export interface PersistedAssetListData {
@@ -565,6 +693,7 @@ export interface PersistedAssetListData {
     }>
     metadata?: {
         persistedAt?: number
+        dataVersion?: string | null
     }
 }
 
@@ -577,6 +706,7 @@ export interface PersistedSuperinvestorListData {
     }>
     metadata?: {
         persistedAt?: number
+        dataVersion?: string | null
     }
 }
 
@@ -590,6 +720,7 @@ export async function persistAssetListData(rows: PersistedAssetListData['rows'])
             key: ASSET_LIST_KEY,
             rows,
             persistedAt: Date.now(),
+            dataVersion: getCurrentDataVersion(),
         }
         await db.assetList.put(entry)
         console.log(`[Assets] Persisted ${rows.length} rows to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
@@ -610,8 +741,12 @@ export async function loadPersistedAssetListData(): Promise<PersistedAssetListDa
             return null
         }
 
-        const age = Date.now() - entry.persistedAt
-        if (age > LIST_CACHE_MAX_AGE_MS) {
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            await db.assetList.delete(ASSET_LIST_KEY)
+            return null
+        }
+
+        if (hasExpiredPersistedAt(entry.persistedAt, LIST_CACHE_MAX_AGE_MS)) {
             await db.assetList.delete(ASSET_LIST_KEY)
             return null
         }
@@ -620,7 +755,10 @@ export async function loadPersistedAssetListData(): Promise<PersistedAssetListDa
         return {
             key: entry.key,
             rows: entry.rows,
-            metadata: { persistedAt: entry.persistedAt },
+            metadata: {
+                persistedAt: entry.persistedAt,
+                dataVersion: entry.dataVersion ?? null,
+            },
         }
     } catch (error) {
         console.error('[Assets] Failed to load list from IndexedDB:', error)
@@ -635,9 +773,10 @@ export async function persistSuperinvestorListData(rows: PersistedSuperinvestorL
         const startTime = performance.now()
         const db = getDb()
         const entry: SuperinvestorListEntry = {
-            key: SUPERINVESTOR_LIST_KEY,
+            key: SUPERINVESTOR_LIST_CACHE_ID,
             rows,
             persistedAt: Date.now(),
+            dataVersion: getCurrentDataVersion(),
         }
         await db.superinvestorList.put(entry)
         console.log(`[Superinvestors] Persisted ${rows.length} rows to IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms`)
@@ -652,15 +791,19 @@ export async function loadPersistedSuperinvestorListData(): Promise<PersistedSup
     try {
         const startTime = performance.now()
         const db = getDb()
-        const entry = await db.superinvestorList.get(SUPERINVESTOR_LIST_KEY)
+        const entry = await db.superinvestorList.get(SUPERINVESTOR_LIST_CACHE_ID)
 
         if (!entry) {
             return null
         }
 
-        const age = Date.now() - entry.persistedAt
-        if (age > LIST_CACHE_MAX_AGE_MS) {
-            await db.superinvestorList.delete(SUPERINVESTOR_LIST_KEY)
+        if (!isEntryForCurrentDataVersion(entry.dataVersion)) {
+            await db.superinvestorList.delete(SUPERINVESTOR_LIST_CACHE_ID)
+            return null
+        }
+
+        if (hasExpiredPersistedAt(entry.persistedAt, LIST_CACHE_MAX_AGE_MS)) {
+            await db.superinvestorList.delete(SUPERINVESTOR_LIST_CACHE_ID)
             return null
         }
 
@@ -668,7 +811,10 @@ export async function loadPersistedSuperinvestorListData(): Promise<PersistedSup
         return {
             key: entry.key,
             rows: entry.rows,
-            metadata: { persistedAt: entry.persistedAt },
+            metadata: {
+                persistedAt: entry.persistedAt,
+                dataVersion: entry.dataVersion ?? null,
+            },
         }
     } catch (error) {
         console.error('[Superinvestors] Failed to load list from IndexedDB:', error)

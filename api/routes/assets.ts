@@ -17,10 +17,14 @@ assetsRoutes.get("/", async (c) => {
     const direction = c.req.query("direction") === "desc" ? "desc" : "asc";
 
     try {
-        const rows = await listAssets(c, { limit, offset, search, sort, direction });
-        const nextOffset = rows.length === limit ? offset + rows.length : null;
+        const result = await listAssets(c, { limit, offset, search, sort, direction });
+        const nextOffset = result.complete ? null : offset + result.rows.length;
         return c.json({
-            rows,
+            rows: result.rows,
+            totalCount: result.totalCount,
+            limitApplied: result.limitApplied,
+            offset: result.offset,
+            complete: result.complete,
             nextOffset,
             source: "api-duckdb",
         });

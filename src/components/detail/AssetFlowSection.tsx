@@ -1,11 +1,13 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchInvestorFlowData,
   getInvestorFlowFromCollection,
   type InvestorFlowData,
 } from "@/collections/investor-flow";
-import { LatencyBadge, type DataFlow } from "@/components/LatencyBadge";
+import { type DataFlow } from "@/components/LatencyBadge";
 import { InvestorFlowChart } from "@/components/charts/InvestorFlowChart";
+import { RenderLatencyBadgeSlot } from "@/components/RenderLatencyBadgeSlot";
+import { createNumberMetricStore } from "@/lib/perf/metric-store";
 
 interface AssetFlowSectionProps {
   code: string;
@@ -40,7 +42,10 @@ export const AssetFlowSection = memo(function AssetFlowSection({
 }: AssetFlowSectionProps) {
   const [flowStatus, setFlowStatus] = useState<AssetFlowLoadState>(() => createInitialAssetFlowState(code));
   const [flowRows, setFlowRows] = useState<InvestorFlowData[]>([]);
-  const [flowRenderMs, setFlowRenderMs] = useState<number | null>(null);
+  const renderMsStore = useMemo(() => createNumberMetricStore(), []);
+  const handleFlowRenderComplete = useCallback((renderMs: number) => {
+    renderMsStore.set(renderMs);
+  }, [renderMsStore]);
 
   const {
     queryTimeMs: flowQueryTimeMs,
@@ -49,13 +54,12 @@ export const AssetFlowSection = memo(function AssetFlowSection({
   } = flowStatus;
 
   const flowLatencyBadge = useMemo(() => (
-    <LatencyBadge
+    <RenderLatencyBadgeSlot
       dataLoadMs={flowQueryTimeMs ?? undefined}
-      renderMs={flowRenderMs ?? undefined}
+      renderMsStore={renderMsStore}
       source={flowDataSource}
-      variant="inline"
     />
-  ), [flowDataSource, flowQueryTimeMs, flowRenderMs]);
+  ), [flowDataSource, flowQueryTimeMs, renderMsStore]);
 
   useEffect(() => {
     if (!code) return;
@@ -86,6 +90,7 @@ export const AssetFlowSection = memo(function AssetFlowSection({
       }
 
       if (!cancelled) {
+        renderMsStore.set(null);
         setFlowRows(nextRows);
         setFlowStatus(nextState);
       }
@@ -94,7 +99,7 @@ export const AssetFlowSection = memo(function AssetFlowSection({
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, renderMsStore]);
 
   if (isFlowLoading) {
     return (
@@ -108,7 +113,7 @@ export const AssetFlowSection = memo(function AssetFlowSection({
     <InvestorFlowChart
       data={flowRows}
       ticker={ticker}
-      onRenderComplete={setFlowRenderMs}
+      onRenderComplete={handleFlowRenderComplete}
       latencyBadge={flowLatencyBadge}
     />
   );

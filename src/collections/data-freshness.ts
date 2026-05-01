@@ -13,47 +13,28 @@
  */
 
 import { invalidateDatabase } from '@/lib/dexie-db'
+import {
+    buildServerDataVersion,
+    getStoredDataVersion,
+    readStoredDataVersionState,
+    setStoredDataVersion,
+    type ServerDataVersionPayload,
+} from '@/lib/data-version'
 import { clearAllCikQuarterlyData } from './cik-quarterly'
 import { clearAllAssetActivityData } from './asset-activity'
 import { clearAllInvestorFlowData } from './investor-flow'
+import { clearAssetListSessionState } from './assets'
+import { clearAllDrilldownData, clearDrilldownSessionState } from './investor-details'
+import { clearAllSuperinvestorAssetHistoryData } from './superinvestor-asset-history'
+import { resetSearchIndexState } from './searches'
+import { clearSuperinvestorListSessionState } from './superinvestors'
 import { queryClient, clearLegacyQueryCache } from './query-client'
-
-const STORAGE_KEY = 'app-data-version'
-
-export interface FreshnessState {
-    lastDataLoadDate: string | null
-    checkedAt: number
-}
 
 export interface FreshnessCheckResult {
     isStale: boolean
     serverVersion: string | null
     localVersion: string | null
-}
-
-/**
- * Get stored data version from localStorage (sync access)
- */
-export function getStoredDataVersion(): string | null {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY)
-        if (!stored) return null
-        const state: FreshnessState = JSON.parse(stored)
-        return state.lastDataLoadDate
-    } catch {
-        return null
-    }
-}
-
-/**
- * Save data version to localStorage
- */
-export function setStoredDataVersion(lastDataLoadDate: string): void {
-    const state: FreshnessState = {
-        lastDataLoadDate,
-        checkedAt: Date.now(),
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    serverLastDataLoadDate: string | null
 }
 
 /**
@@ -69,17 +50,20 @@ export function setStoredDataVersion(lastDataLoadDate: string): void {
 export async function invalidateAllCaches(): Promise<void> {
     console.log('[DataFreshness] Invalidating all caches...')
 
-    // 1. Clear TanStack Query cache (in-memory)
     queryClient.clear()
     console.log('[DataFreshness] TanStack Query cache cleared')
 
-    // 2. Clear CIK quarterly memory cache
     clearAllCikQuarterlyData()
     clearAllAssetActivityData()
     clearAllInvestorFlowData()
+    clearAssetListSessionState()
+    clearDrilldownSessionState()
+    clearAllDrilldownData()
+    clearAllSuperinvestorAssetHistoryData()
+    clearSuperinvestorListSessionState()
+    resetSearchIndexState()
     console.log('[DataFreshness] Memory caches cleared')
 
-    // 3. Invalidate Dexie database (close → delete → reopen)
     await invalidateDatabase()
 
     console.log('[DataFreshness] All caches invalidated')
@@ -94,24 +78,41 @@ export async function checkDataFreshness(): Promise<FreshnessCheckResult> {
         const res = await fetch('/api/data-freshness')
         if (!res.ok) {
             console.warn('[DataFreshness] API request failed, continuing with cache')
-            return { isStale: false, serverVersion: null, localVersion: getStoredDataVersion() }
+            return {
+                isStale: false,
+                serverVersion: null,
+                localVersion: getStoredDataVersion(),
+                serverLastDataLoadDate: null,
+            }
         }
 
-        const { lastDataLoadDate } = await res.json()
+        const payload = await res.json() as ServerDataVersionPayload
+        const serverVersion = buildServerDataVersion(payload)
         const localVersion = getStoredDataVersion()
 
-        // First load - no local version stored
         if (localVersion === null) {
-            return { isStale: false, serverVersion: lastDataLoadDate, localVersion: null }
+            return {
+                isStale: false,
+                serverVersion,
+                localVersion: null,
+                serverLastDataLoadDate: payload.lastDataLoadDate ?? null,
+            }
         }
 
-        // Compare versions
-        const isStale = localVersion !== lastDataLoadDate
-
-        return { isStale, serverVersion: lastDataLoadDate, localVersion }
+        return {
+            isStale: Boolean(serverVersion) && localVersion !== serverVersion,
+            serverVersion,
+            localVersion,
+            serverLastDataLoadDate: payload.lastDataLoadDate ?? null,
+        }
     } catch (error) {
         console.warn('[DataFreshness] Check failed, continuing with cache:', error)
-        return { isStale: false, serverVersion: null, localVersion: getStoredDataVersion() }
+        return {
+            isStale: false,
+            serverVersion: null,
+            localVersion: getStoredDataVersion(),
+            serverLastDataLoadDate: null,
+        }
     }
 }
 
@@ -143,20 +144,22 @@ export async function initializeWithFreshnessCheck(): Promise<boolean> {
         // Drop orphaned per-query cache left by the removed persister
         clearLegacyQueryCache().catch(() => {})
 
-        const { isStale, serverVersion, localVersion } = await checkDataFreshness()
+        const { isStale, serverVersion, localVersion, serverLastDataLoadDate } = await checkDataFreshness()
 
         if (isStale && serverVersion) {
             console.log(`[DataFreshness] Data updated: ${localVersion} → ${serverVersion}, invalidating caches...`)
             await invalidateAllCaches()
-            setStoredDataVersion(serverVersion)
+            setStoredDataVersion(serverVersion, serverLastDataLoadDate)
             isInitialized = true
-            // Return true to indicate caches were invalidated - caller will preload
             return true
         } else if (serverVersion && localVersion === null) {
-            // First load - just store the version
             console.log(`[DataFreshness] First load, storing version: ${serverVersion}`)
-            setStoredDataVersion(serverVersion)
+            setStoredDataVersion(serverVersion, serverLastDataLoadDate)
         } else {
+            const storedState = readStoredDataVersionState()
+            if (storedState && storedState.dataVersion == null && storedState.lastDataLoadDate && serverVersion) {
+                setStoredDataVersion(serverVersion, serverLastDataLoadDate ?? storedState.lastDataLoadDate)
+            }
             console.log('[DataFreshness] Cache is fresh')
         }
 
@@ -182,13 +185,12 @@ export async function checkFreshnessOnFocus(): Promise<boolean> {
     }
     lastFocusCheckTime = now
 
-    const { isStale, serverVersion } = await checkDataFreshness()
+    const { isStale, serverVersion, serverLastDataLoadDate } = await checkDataFreshness()
 
     if (isStale && serverVersion) {
         console.log(`[DataFreshness] Tab focus: data updated, invalidating caches...`)
         await invalidateAllCaches()
-        setStoredDataVersion(serverVersion)
-        // Return true - caller will trigger preload
+        setStoredDataVersion(serverVersion, serverLastDataLoadDate)
         return true
     }
 

@@ -47,6 +47,8 @@ function startServer(port: number, nodeEnv: "development" | "production") {
       ...testBuildMetadata,
       API_PORT: String(port),
       NODE_ENV: nodeEnv,
+      DUCKDB_PATH: process.env.DUCKDB_PATH ?? '/tmp/test.duckdb',
+      JWT_SECRET: process.env.JWT_SECRET ?? 'test-secret',
     },
     stderr: "inherit",
     stdout: "inherit",
@@ -163,5 +165,19 @@ describe("bun native development server smoke tests", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain('<div id="root"></div>');
+  });
+
+  test("serves Bun-bundled development module scripts with JavaScript MIME types", async () => {
+    const shellResponse = await fetch(`${developmentBaseUrl}/assets`);
+    const shell = await shellResponse.text();
+    const scriptPath = shell.match(/<script type="module"[^>]+src="([^"]+)"/)?.[1];
+
+    expect(scriptPath).toStartWith("/_bun/client/");
+
+    const response = await fetch(`${developmentBaseUrl}${scriptPath}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("javascript");
+    expect(await response.text()).not.toContain("<!doctype html>");
   });
 });

@@ -13,10 +13,14 @@ export type MetricSummary = {
   samples: number;
 };
 
+const MAX_METRIC_SAMPLES = 10_000;
 const metricSink: MetricRecord[] = [];
 
 export function recordMetric(name: string, value: number, tags?: MetricRecord["tags"]) {
   metricSink.push({ name, value, tags, recordedAt: Date.now() });
+  if (metricSink.length > MAX_METRIC_SAMPLES) {
+    metricSink.splice(0, metricSink.length - MAX_METRIC_SAMPLES);
+  }
 }
 
 export function getRecordedMetrics() {

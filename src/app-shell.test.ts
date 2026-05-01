@@ -67,12 +67,18 @@ describe("global navigation layout", () => {
   test("opts into iPhone safe-area support and shared responsive page wrappers", () => {
     const rootRoute = readProjectFile("app/routes/__root.tsx");
     const pageLayout = readProjectFile("src/components/layout/page-layout.tsx");
+    const indexCss = readProjectFile("src/index.css");
     const assetsPage = readProjectFile("src/pages/AssetsTable.tsx");
     const assetDetail = readProjectFile("src/pages/AssetDetail.tsx");
 
     expect(rootRoute).toContain("viewport-fit=cover");
     expect(pageLayout).toContain("px-[var(--page-gutter)] py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10");
     expect(pageLayout).toContain("max-w-[var(--page-max-width-wide)]");
+    expect(pageLayout).toContain("max-w-[var(--page-max-width)]");
+    expect(indexCss).toContain("--page-max-width: 100vw;");
+    expect(indexCss).toContain("--page-max-width-wide: 100vw;");
+    expect(indexCss).toContain("scrollbar-gutter: stable;");
+    expect(indexCss).not.toContain("overflow-y: scroll;");
     expect(assetsPage).toContain("PageLayout");
     expect(assetDetail).toContain("PageLayout");
   });

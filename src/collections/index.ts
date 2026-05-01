@@ -14,14 +14,18 @@ export {
 // Types
 export type { Asset, Superinvestor, SearchResult } from './instances'
 export {
+    clearAssetListSessionState,
     fetchAssetRecord,
     getAssetListLoadSource,
+    getLoadedAssetList,
     subscribeAssetListLoadSource,
     type AssetListLoadSource,
 } from './assets'
 export {
+    clearSuperinvestorListSessionState,
     fetchSuperinvestorRecord,
     fetchSuperinvestorRecordWithSource,
+    getLoadedSuperinvestorList,
     getSuperinvestorListLoadSource,
     subscribeSuperinvestorListLoadSource,
     type SuperinvestorListLoadSource,
@@ -64,7 +68,15 @@ export {
 } from './cik-quarterly'
 
 // Search data loading helpers
-export { loadPrecomputedIndex, ensureSearchItemsLoaded, getSearchIndexMetadata, isSearchIndexReady } from './searches'
+export {
+    loadPrecomputedIndex,
+    ensureSearchIndexLoaded,
+    ensureSearchItemsLoaded,
+    getLoadedSearchIndex,
+    getSearchIndexMetadata,
+    isSearchIndexReady,
+    resetSearchIndexState,
+} from './searches'
 
 // Data freshness / cache invalidation
 export {
@@ -73,6 +85,9 @@ export {
     checkFreshnessOnFocus,
     invalidateAllCaches,
     clearAllIndexedDB,
+} from './data-freshness'
+
+export {
     getStoredDataVersion,
     setStoredDataVersion,
-} from './data-freshness'
+} from '@/lib/data-version'

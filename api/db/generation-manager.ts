@@ -37,6 +37,7 @@ export class DuckDbGenerationManager {
   private refreshTimer: Timer | null = null;
   private lastRefreshAt: number | null = null;
   private initialized = false;
+  private requestRefreshDisabled = true;
 
   private startRefreshLoop() {
     if (this.refreshTimer) {
@@ -153,7 +154,9 @@ export class DuckDbGenerationManager {
 
   async acquireLease(): Promise<DuckDbLease> {
     await this.ensureInitialized();
-    await this.refreshIfNeeded("request");
+    if (!this.requestRefreshDisabled) {
+      await this.refreshIfNeeded("request");
+    }
 
     const generation = this.activeGeneration;
     if (!generation) {

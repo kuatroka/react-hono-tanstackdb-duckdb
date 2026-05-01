@@ -53,6 +53,7 @@ export interface CikQuarterlyEntry {
         numAssets: number
     }>
     persistedAt: number
+    dataVersion?: string | null
 }
 
 /**
@@ -60,6 +61,9 @@ export interface CikQuarterlyEntry {
  */
 export interface DrilldownEntry {
     key: string
+    scope: 'quarter' | 'pair'
+    pairKey: string
+    quarter: string | null
     rows: Array<{
         id: string
         ticker: string
@@ -75,12 +79,10 @@ export interface DrilldownEntry {
         didClose: boolean | null
         didHold: boolean | null
     }>
-    fetchedCombinations: string[]
-    bulkFetchedPairs: string[]
-    metadata?: {
-        totalRows: number
-        persistedAt?: number
-    }
+    complete: boolean
+    persistedAt: number
+    lastAccessedAt: number
+    dataVersion?: string | null
 }
 
 export interface AssetActivityEntry {
@@ -100,6 +102,7 @@ export interface AssetActivityEntry {
         closed: number
     }>
     persistedAt: number
+    dataVersion?: string | null
 }
 
 export interface InvestorFlowEntry {
@@ -112,6 +115,7 @@ export interface InvestorFlowEntry {
         outflow: number
     }>
     persistedAt: number
+    dataVersion?: string | null
 }
 
 export interface AssetListEntry {
@@ -123,6 +127,7 @@ export interface AssetListEntry {
         cusip: string | null
     }>
     persistedAt: number
+    dataVersion?: string | null
 }
 
 export interface SuperinvestorListEntry {
@@ -133,6 +138,7 @@ export interface SuperinvestorListEntry {
         cikName: string
     }>
     persistedAt: number
+    dataVersion?: string | null
 }
 
 /**
@@ -149,7 +155,12 @@ export class AppCacheDB extends Dexie {
     superinvestorList!: Table<SuperinvestorListEntry, string>
 
     constructor() {
-        super('app-cache')
+        const variant =
+            typeof globalThis !== 'undefined'
+                ? (globalThis as { __APP_VARIANT__?: string }).__APP_VARIANT__
+                : undefined
+        const dbName = variant && variant !== 'current' ? `app-cache-${variant}` : 'app-cache'
+        super(dbName)
         this.version(1).stores({
             queryCache: 'key',
             searchIndex: 'key',
@@ -169,6 +180,16 @@ export class AppCacheDB extends Dexie {
             searchIndex: 'key',
             cikQuarterly: 'cik',
             drilldown: 'key',
+            assetActivity: 'key',
+            investorFlow: 'ticker',
+            assetList: 'key',
+            superinvestorList: 'key',
+        })
+        this.version(4).stores({
+            queryCache: 'key',
+            searchIndex: 'key',
+            cikQuarterly: 'cik',
+            drilldown: 'key, pairKey, scope, persistedAt, lastAccessedAt',
             assetActivity: 'key',
             investorFlow: 'ticker',
             assetList: 'key',
@@ -197,14 +218,15 @@ export async function invalidateDatabase(): Promise<void> {
     db.close()
     console.log('[Dexie] Database closed')
 
+    const dbName = db.name
     console.log('[Dexie] Deleting database...')
-    await Dexie.delete('app-cache')
-    console.log('[Dexie] Database deleted')
+    await Dexie.delete(dbName)
+    console.log(`[Dexie] Database deleted: ${dbName}`)
 
     // Create fresh instance
     db = new AppCacheDB()
     await db.open()
-    console.log('[Dexie] Database reopened: app-cache')
+    console.log(`[Dexie] Database reopened: ${db.name}`)
 }
 
 /**
@@ -213,7 +235,7 @@ export async function invalidateDatabase(): Promise<void> {
 export async function openDatabase(): Promise<void> {
     if (!db.isOpen()) {
         await db.open()
-        console.log('[Dexie] Database opened: app-cache')
+        console.log(`[Dexie] Database opened: ${db.name}`)
     }
 }
 

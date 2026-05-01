@@ -21,6 +21,15 @@ export interface SearchResult {
     category: string
 }
 
+function toSearchHaystackValue(item: SearchResult): string {
+    return item.name ? `${item.code} ${item.name}` : item.code
+}
+
+function setLoadedSearchItems(items: SearchResult[]): void {
+    loadedSearchItems = items
+    loadedSearchHaystack = items.map(toSearchHaystackValue)
+}
+
 // Sync state tracking
 export interface SyncState {
     status: 'idle' | 'syncing' | 'complete'
@@ -128,14 +137,36 @@ export async function preloadSearches(): Promise<void> {
     await searchesCollection.preload()
 }
 
+export interface LoadedSearchIndex {
+    items: SearchResult[]
+    haystack: string[]
+}
+
 export async function ensureSearchItemsLoaded(): Promise<SearchResult[]> {
+    return (await ensureSearchIndexLoaded()).items
+}
+
+export function getLoadedSearchIndex(): LoadedSearchIndex {
+    return {
+        items: loadedSearchItems,
+        haystack: loadedSearchHaystack,
+    }
+}
+
+export async function ensureSearchIndexLoaded(): Promise<LoadedSearchIndex> {
     if (loadedSearchItems.length > 0) {
-        return loadedSearchItems
+        return {
+            items: loadedSearchItems,
+            haystack: loadedSearchHaystack,
+        }
     }
 
     await loadPrecomputedIndex()
     if (loadedSearchItems.length > 0) {
-        return loadedSearchItems
+        return {
+            items: loadedSearchItems,
+            haystack: loadedSearchHaystack,
+        }
     }
 
     const state = getSyncState()
@@ -143,12 +174,25 @@ export async function ensureSearchItemsLoaded(): Promise<SearchResult[]> {
         await preloadSearches()
     }
 
-    loadedSearchItems = Array.from(searchesCollection.entries()).map(([, value]) => value as unknown as SearchResult)
-    return loadedSearchItems
+    setLoadedSearchItems(Array.from(searchesCollection.entries()).map(([, value]) => value as unknown as SearchResult))
+    return {
+        items: loadedSearchItems,
+        haystack: loadedSearchHaystack,
+    }
 }
 let indexLoadPromise: Promise<void> | null = null
 let loadedSearchItems: SearchResult[] = []
+let loadedSearchHaystack: string[] = []
 let searchIndexMetadata: CompactSearchIndexPayload['metadata'] | undefined
+
+export function resetSearchIndexState(): void {
+    indexLoadPromise = null
+    setLoadedSearchItems([])
+    searchIndexMetadata = undefined
+    syncState = { status: 'idle' }
+    fullDumpSyncEnabled = false
+    sharedQueryClient.removeQueries({ queryKey: ['searches'] })
+}
 
 export function decodeSearchIndexItems(payload: CompactSearchIndexPayload): SearchResult[] {
     return payload.items.map(tupleToSearchIndexRecord)
@@ -174,7 +218,7 @@ export async function loadPrecomputedIndex(): Promise<void> {
             const persisted = await loadPersistedSearchIndex()
             if (persisted && persisted.items.length > 0) {
                 searchIndexMetadata = persisted.metadata
-                loadedSearchItems = decodeSearchIndexItems(persisted)
+                setLoadedSearchItems(decodeSearchIndexItems(persisted))
                 console.log(`[SearchIndex] Restored from IndexedDB in ${(performance.now() - startTime).toFixed(1)}ms (${persisted.metadata?.totalItems || 0} items)`)
                 return
             }
@@ -203,7 +247,7 @@ export async function loadPrecomputedIndex(): Promise<void> {
             }
             
             searchIndexMetadata = payload.metadata
-            loadedSearchItems = decodeSearchIndexItems(payload)
+            setLoadedSearchItems(decodeSearchIndexItems(payload))
             
             // Persist to IndexedDB for next time
             await persistSearchIndex(payload as PersistedSearchIndex)
@@ -231,6 +275,10 @@ export async function loadPrecomputedIndex(): Promise<void> {
 
 export function getLoadedSearchItems(): SearchResult[] {
     return loadedSearchItems
+}
+
+export function getLoadedSearchHaystack(): string[] {
+    return loadedSearchHaystack
 }
 
 export function getSearchIndexMetadata(): CompactSearchIndexPayload['metadata'] | undefined {

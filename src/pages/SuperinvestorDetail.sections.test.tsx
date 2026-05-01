@@ -211,7 +211,7 @@ describe("superinvestor detail route split", () => {
     registerModuleMocks();
     fetchCikQuarterlyDataCalls.length = 0;
     cleanupCalls.length = 0;
-    currentFetchCikQuarterlyData = async () => ({ queryTimeMs: 0, source: "memory" });
+    currentFetchCikQuarterlyData = async () => ({ rows: currentLiveQueryRows as any, queryTimeMs: 0, source: "memory" });
     currentLiveQueryRows = [];
   });
 
@@ -229,7 +229,7 @@ describe("superinvestor detail route split", () => {
       { cik: "1001", quarter: "2024-Q4", totalValue: 200 },
       { cik: "2002", quarter: "2024-Q3", totalValue: 300 },
     ];
-    currentFetchCikQuarterlyData = async () => ({ queryTimeMs: 0, source: "memory" });
+    currentFetchCikQuarterlyData = async () => ({ rows: currentLiveQueryRows as any, queryTimeMs: 0, source: "memory" });
 
     const { SuperinvestorChartSection } = await import("@/components/detail/SuperinvestorChartSection");
     const tree = createHookHarness(SuperinvestorChartSection, { cik: "1001", cikName: "Fund 1001" }).settle() as any;
@@ -275,7 +275,7 @@ describe("superinvestor detail route split", () => {
       { cik: "1001", quarter: "2024-Q4", totalValue: 200 },
       { cik: "2002", quarter: "2024-Q3", totalValue: 300 },
     ];
-    currentFetchCikQuarterlyData = async () => ({ queryTimeMs: 14, source: "api" });
+    currentFetchCikQuarterlyData = async () => ({ rows: currentLiveQueryRows as any, queryTimeMs: 14, source: "api" });
 
     const { SuperinvestorChartSection } = await import("@/components/detail/SuperinvestorChartSection");
     const harness = createHookHarness(SuperinvestorChartSection, { cik: "1001", cikName: "Fund 1001" });
@@ -292,8 +292,8 @@ describe("superinvestor detail route split", () => {
     // The chart component receives additional props for functionality
     expect(tree.props).toHaveProperty("data");
     expect(tree.props).toHaveProperty("onRenderComplete");
-    expect(tree.props).toHaveProperty("renderMs");
-    expect(tree.props).not.toHaveProperty("latencyBadge");
+    expect(tree.props).toHaveProperty("latencyBadge");
+    expect(tree.props).not.toHaveProperty("renderMs");
 
     harness.updateProps({ cik: "2002", cikName: "Fund 2002" });
     harness.settle();

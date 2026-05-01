@@ -20,6 +20,16 @@ describe("runtime env helpers", () => {
     ).toBe(true);
   });
 
+  test("allows benchmark and profiling runs to disable react-scan explicitly", () => {
+    expect(
+      shouldEnableReactScan({
+        hostname: "127.0.0.1",
+        importMetaEnvDev: true,
+        reactScanDisabled: true,
+      })
+    ).toBe(false);
+  });
+
   test("disables react-scan for non-local production hosts", () => {
     expect(
       shouldEnableReactScan({

@@ -1,10 +1,6 @@
 import type { DuckDbConnection } from "@duckdb/node-api";
 import { getDuckDbLease, type DuckDbLeaseContext } from "../db/lease-context";
-import { runAndGetRows } from "../db/query-runner";
-
-function escapeSqlLiteral(value: string) {
-  return value.replace(/'/g, "''");
-}
+import { runPreparedAndGetRows } from "../db/query-runner";
 
 export async function getSuperinvestorAssetHistory(
   c: DuckDbLeaseContext,
@@ -12,11 +8,7 @@ export async function getSuperinvestorAssetHistory(
 ) {
   const lease = getDuckDbLease(c);
   return lease.run("superinvestorAssetHistory.get", async (connection: DuckDbConnection) => {
-    const cik = escapeSqlLiteral(params.cik);
-    const ticker = escapeSqlLiteral(params.ticker);
-    const cusip = escapeSqlLiteral(params.cusip);
-
-    const rows = await runAndGetRows(connection, `
+    const stmt = await connection.prepare(`
       SELECT
         quarter,
         report_window_complete,
@@ -37,12 +29,17 @@ export async function getSuperinvestorAssetHistory(
         source_tr_value,
         source_tr_duration_qtr
       FROM cusip_quarter_investor_activity_detail
-      WHERE ticker = '${ticker}'
-        AND cusip = '${cusip}'
-        AND CAST(cik AS VARCHAR) = '${cik}'
+      WHERE ticker = ?
+        AND cusip = ?
+        AND CAST(cik AS VARCHAR) = ?
         AND COALESCE(report_window_complete, false)
-      ORDER BY quarter ASC
+      ORDER BY quarter ASC, source_accession_number ASC
     `);
+    stmt.bindVarchar(1, params.ticker);
+    stmt.bindVarchar(2, params.cusip);
+    stmt.bindVarchar(3, params.cik);
+
+    const rows = await runPreparedAndGetRows(stmt);
 
     return rows.map((row: unknown[]) => ({
       quarter: String(row[0] ?? ""),

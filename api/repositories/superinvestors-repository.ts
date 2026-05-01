@@ -1,6 +1,6 @@
 import type { DuckDbConnection } from "@duckdb/node-api";
 import { getDuckDbLease, type DuckDbLeaseContext } from "../db/lease-context";
-import { runAndGetRows } from "../db/query-runner";
+import { runPreparedAndGetRows } from "../db/query-runner";
 
 const MISSING_CIK_NAME_SENTINEL = "!!! no cik_name found !!!";
 
@@ -12,20 +12,44 @@ function normalizeSuperinvestorName(name: string | null | undefined, cik: string
   return trimmed;
 }
 
-export async function listSuperinvestors(c: DuckDbLeaseContext, params: { limit: number; offset: number }) {
+export interface ListSuperinvestorsResult {
+  rows: Array<{
+    id: string;
+    cik: string;
+    cikName: string;
+  }>;
+  totalCount: number;
+  limitApplied: number;
+  offset: number;
+  complete: boolean;
+}
+
+export async function listSuperinvestors(
+  c: DuckDbLeaseContext,
+  params: { limit: number; offset: number },
+): Promise<ListSuperinvestorsResult> {
   const lease = getDuckDbLease(c);
   return lease.run("superinvestors.list", async (connection: DuckDbConnection) => {
-    const sql = `
+    const countStmt = await connection.prepare(`
+      SELECT COUNT(*)
+      FROM superinvestors
+    `);
+    const countRows = await runPreparedAndGetRows(countStmt);
+    const totalCount = Number(countRows[0]?.[0]) || 0;
+
+    const stmt = await connection.prepare(`
       SELECT
         cik,
         cik_name as "cikName"
       FROM superinvestors
-      ORDER BY cik_name ASC
-      LIMIT ${params.limit} OFFSET ${params.offset}
-    `;
+      ORDER BY cik_name ASC, cik ASC
+      LIMIT ? OFFSET ?
+    `);
+    stmt.bindInteger(1, params.limit);
+    stmt.bindInteger(2, params.offset);
 
-    const rows = await runAndGetRows(connection, sql);
-    return rows.map((row: unknown[]) => {
+    const rows = await runPreparedAndGetRows(stmt);
+    const resultRows = rows.map((row: unknown[]) => {
       const cik = String(row[0]);
       return {
         id: cik,
@@ -33,6 +57,14 @@ export async function listSuperinvestors(c: DuckDbLeaseContext, params: { limit:
         cikName: normalizeSuperinvestorName(row[1] as string | null, cik),
       };
     });
+
+    return {
+      rows: resultRows,
+      totalCount,
+      limitApplied: params.limit,
+      offset: params.offset,
+      complete: params.offset + resultRows.length >= totalCount,
+    };
   });
 }
 

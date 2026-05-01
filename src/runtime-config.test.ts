@@ -42,7 +42,13 @@ describe("bun native runtime config", () => {
 
     expect(server).toContain('import spa from "../index.html";');
     expect(server).toContain("routes:");
+    expect(server).toContain("development:");
+    expect(server).toContain('hostname,');
+    expect(server).toContain('"0.0.0.0"');
+    expect(readProjectFile("vite.config.ts")).toContain('host: "0.0.0.0"');
     expect(html).toContain('href="./index.compiled.css"');
+    expect(html).toContain("!globalThis.crypto.randomUUID");
+    expect(html).toContain("globalThis.crypto.getRandomValues(bytes)");
     expect(mainEntrypoint).not.toContain('import "./index.css";');
     expect(appCss).toContain("font-family: var(--font-sans);");
   });
@@ -53,7 +59,8 @@ describe("bun native runtime config", () => {
     const runtimeEnv = readProjectFile("src/lib/runtime-env.ts");
 
     expect(rootRoute).toContain("import.meta.env?.VITE_PUBLIC_SERVER");
-    expect(rootRoute).toContain("http://localhost:4000");
+    expect(rootRoute).not.toContain("http://localhost:4000");
+    expect(rootRoute).toContain("links: serverURL ?");
     expect(mainEntrypoint).toContain("shouldEnableReactScan");
     expect(mainEntrypoint).toContain("globalThis.location?.hostname");
     expect(runtimeEnv).toContain('new Set(["localhost", "127.0.0.1", "::1", "[::1]"])');

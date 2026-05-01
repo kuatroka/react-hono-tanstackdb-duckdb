@@ -1,0 +1,54 @@
+name: Incident Alerts
+
+on:
+  workflow_run:
+    workflows:
+      [
+        'CI',
+        'Deploy to Production',
+        'Security Review',
+        'DAST',
+        'Automated PR Review',
+        'Sentry Release Tracking',
+      ]
+    types: [completed]
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+  SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+
+jobs:
+  create-incident-issue:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Create incident issue from failed workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "P1: ${WORKFLOW_NAME} failed" \
+            --label "P1,type: bug,area: infra" \
+            --body "Automated alert: ${WORKFLOW_NAME} failed. Review run: ${RUN_URL}. If Sentry is configured, check SENTRY_ORG/SENTRY_PROJECT for correlated release errors."
+      - name: Send Telegram incident alert
+        env:
+          WEB_APP_ALERT_ENV: ${{ github.event.workflow_run.name == 'Deploy to Production' && 'prod' || 'dev' }}
+          WEB_APP_ALERT_WORKFLOW: ${{ github.event.workflow_run.name }}
+          WEB_APP_ALERT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WEB_APP_ALERT_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WEB_APP_ALERT_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          WEB_APP_APPRISE_DEV_URLS: ${{ secrets.WEB_APP_APPRISE_DEV_URLS }}
+          WEB_APP_APPRISE_PROD_URLS: ${{ secrets.WEB_APP_APPRISE_PROD_URLS }}
+          WEB_APP_ALERT_MESSAGE: '${{ github.event.workflow_run.name }} failed on ${{ github.event.workflow_run.head_branch }}. Review run: ${{ github.event.workflow_run.html_url }}'
+        run: bun scripts/telegram-notify.ts

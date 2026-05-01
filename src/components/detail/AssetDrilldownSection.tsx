@@ -141,7 +141,6 @@ function AssetDrilldownDetailsPanel({
 
   return (
     <InvestorActivityDrilldownTable
-      key={`click-${ticker}-${cusip}-${resolvedSelection.quarter}-${resolvedSelection.action}`}
       ticker={ticker}
       cusip={cusip}
       quarter={resolvedSelection.quarter}

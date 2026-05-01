@@ -1,0 +1,32 @@
+name: Sentry Release Tracking
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+  SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+jobs:
+  sentry-release:
+    if: ${{ vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Upload sourcemaps and associate commits
+        run: |
+          VERSION="${GITHUB_SHA}"
+          bunx @sentry/cli releases new "$VERSION"
+          bunx @sentry/cli releases set-commits "$VERSION" --auto
+          bunx @sentry/cli sourcemaps upload ./dist --release "$VERSION"
+          bunx @sentry/cli releases finalize "$VERSION"

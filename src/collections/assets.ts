@@ -1,12 +1,33 @@
 import { createCollection } from '@tanstack/db'
 import { queryCollectionOptions } from '@tanstack/query-db-collection'
 import type { QueryClient } from '@tanstack/query-core'
-import { loadPersistedAssetListData, persistAssetListData } from './query-client'
+import {
+    loadPersistedAssetListData as loadPersistedAssetListDataDefault,
+    persistAssetListData as persistAssetListDataDefault,
+    type PersistedAssetListData,
+} from './query-client'
 
 export type AssetListLoadSource = 'memory' | 'indexeddb' | 'api'
 
+type AssetListPersistence = {
+    loadPersistedAssetListData: typeof loadPersistedAssetListDataDefault
+    persistAssetListData: (rows: PersistedAssetListData['rows']) => Promise<void>
+}
+
+const assetListPersistence: AssetListPersistence = {
+    loadPersistedAssetListData: loadPersistedAssetListDataDefault,
+    persistAssetListData: persistAssetListDataDefault,
+}
+
+export function __setAssetListPersistenceForTest(overrides: Partial<AssetListPersistence>): () => void {
+    const previous = { ...assetListPersistence }
+    Object.assign(assetListPersistence, overrides)
+    return () => Object.assign(assetListPersistence, previous)
+}
+
 const assetListSourceListeners = new Set<(source: AssetListLoadSource) => void>()
 let currentAssetListLoadSource: AssetListLoadSource = 'memory'
+let assetListQueryClient: QueryClient | null = null
 
 function setAssetListLoadSource(source: AssetListLoadSource) {
     currentAssetListLoadSource = source
@@ -29,6 +50,20 @@ export interface Asset {
     asset: string
     assetName: string
     cusip: string | null
+}
+
+export function getLoadedAssetList(): Asset[] {
+    return assetsCollection ? Array.from(assetsCollection.entries()).map(([, value]) => value as Asset) : []
+}
+
+export function clearAssetListSessionState(): void {
+    const ids = getLoadedAssetList().map((row) => row.id)
+    if (ids.length > 0 && assetsCollection?.isReady()) {
+        assetsCollection.utils.writeDelete(ids)
+    }
+    assetListQueryClient?.removeQueries({ queryKey: ['assets'] })
+    inFlightAssetListLoads.clear()
+    currentAssetListLoadSource = 'memory'
 }
 
 export async function fetchAssetRecord(code: string, cusip?: string | null): Promise<Asset | null> {
@@ -66,6 +101,8 @@ async function fetchFullAssetList(): Promise<Asset[]> {
 const inFlightAssetListLoads = new Map<string, Promise<Asset[]>>()
 
 export function createAssetsCollection(queryClient: QueryClient) {
+    assetListQueryClient = queryClient
+
     const collection = createCollection(
         queryCollectionOptions({
             queryKey: ['assets'],
@@ -77,7 +114,7 @@ export function createAssetsCollection(queryClient: QueryClient) {
                 }
 
                 const loadPromise = (async () => {
-                    const persisted = await loadPersistedAssetListData()
+                    const persisted = await assetListPersistence.loadPersistedAssetListData()
                     if (persisted && persisted.rows.length > 0) {
                         setAssetListLoadSource('indexeddb')
                         return persisted.rows as Asset[]
@@ -87,7 +124,7 @@ export function createAssetsCollection(queryClient: QueryClient) {
                     const assets = await fetchFullAssetList()
                     setAssetListLoadSource('api')
                     console.log(`[Assets] Fetched ${assets.length} assets in ${Math.round(performance.now() - startTime)}ms`)
-                    void persistAssetListData(assets)
+                    void assetListPersistence.persistAssetListData(assets)
                     return assets
                 })()
 

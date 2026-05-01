@@ -5,12 +5,21 @@ import { fullDumpSearches, searchDuckDb } from "./repositories/search-repository
 import { getAllAssetsActivity } from "./repositories/all-assets-activity-repository";
 import { getInvestorFlow } from "./repositories/investor-flow-repository";
 import { getInvestorDrilldown } from "./repositories/investor-drilldown-repository";
+import { getCikQuarterly } from "./repositories/cik-quarterly-repository";
+import { listAssets } from "./repositories/assets-repository";
+import { listSuperinvestors } from "./repositories/superinvestors-repository";
+import { getSuperinvestorAssetHistory } from "./repositories/superinvestor-asset-history-repository";
 
 type MockPreparedStatement = {
   bindInteger: (index: number, value: number) => void;
   bindVarchar: (index: number, value: string) => void;
   bindNull: (index: number) => void;
   runAndReadAll: () => Promise<{ getRows: () => unknown[][] }>;
+};
+
+type MockConnection = {
+  prepare?: (sql: string) => Promise<MockPreparedStatement>;
+  runAndReadAll?: (sql: string) => Promise<{ getRows: () => unknown[][] }>;
 };
 
 function createMockStatement(rows: unknown[][], binds: Array<{ index: number; value: unknown }>): MockPreparedStatement {
@@ -32,10 +41,7 @@ function createMockStatement(rows: unknown[][], binds: Array<{ index: number; va
   };
 }
 
-function createContext(connectionFactory: () => {
-  prepare?: (sql: string) => Promise<MockPreparedStatement>;
-  runAndReadAll?: (sql: string) => Promise<{ getRows: () => unknown[][] }>;
-}) {
+function createContext(connectionFactory: () => MockConnection) {
   const lease: DuckDbLease = {
     generationId: "test-generation",
     snapshot: {
@@ -79,7 +85,8 @@ describe("prepared statement repository regressions", () => {
 
     const result = await fullDumpSearches(c, { cursor: "10", pageSize: 1 });
 
-    expect(preparedSql).toContain("WHERE id > ?");
+    expect(preparedSql).toContain("WHERE searches.id > ?");
+    expect(preparedSql).toContain("LEFT JOIN cusip_md");
     expect(preparedSql).toContain("LIMIT ?");
     expect(binds).toEqual([
       { index: 1, value: 10 },
@@ -108,17 +115,26 @@ describe("prepared statement repository regressions", () => {
 
     const result = await searchDuckDb(c, { query: "ABCD", limit: 5 });
 
+    expect(preparedSql).toContain("WITH candidate_ids AS");
     expect(preparedSql).toContain("WHEN LOWER(code) = LOWER(?) THEN 100");
+    expect(preparedSql).toContain("cusip_ticker_name");
     expect(preparedSql).toContain("LIMIT ?");
     expect(binds).toEqual([
       { index: 1, value: "ABCD" },
       { index: 2, value: "ABCD%" },
       { index: 3, value: "%ABCD%" },
-      { index: 4, value: "ABCD%" },
+      { index: 4, value: "%ABCD%" },
       { index: 5, value: "%ABCD%" },
-      { index: 6, value: "%ABCD%" },
+      { index: 6, value: "ABCD%" },
       { index: 7, value: "%ABCD%" },
-      { index: 8, value: 5 },
+      { index: 8, value: "ABCD" },
+      { index: 9, value: "ABCD%" },
+      { index: 10, value: "%ABCD%" },
+      { index: 11, value: "ABCD%" },
+      { index: 12, value: "%ABCD%" },
+      { index: 13, value: "%ABCD%" },
+      { index: 14, value: "%ABCD%" },
+      { index: 15, value: 5 },
     ]);
     expect(result[0]).toMatchObject({ code: "ABCD", score: 100 });
   });
@@ -211,5 +227,115 @@ describe("prepared statement repository regressions", () => {
       didClose: false,
       didHold: false,
     });
+  });
+
+  test("cik quarterly uses prepared CIK binding", async () => {
+    const binds: Array<{ index: number; value: unknown }> = [];
+    let preparedSql = "";
+    const c = createContext(() => ({
+      prepare: async (sql: string) => {
+        preparedSql = sql;
+        return createMockStatement([[898371, "2024Q1", "2024-03-31", 1000, 0.1, 12]], binds);
+      },
+    }));
+
+    const result = await getCikQuarterly(c, "898371");
+
+    expect(preparedSql).toContain("WHERE cik = ?");
+    expect(binds).toEqual([{ index: 1, value: "898371" }]);
+    expect(result[0]).toMatchObject({ cik: "898371", quarter: "2024Q1", numAssets: 12 });
+  });
+
+  test("assets list uses prepared search/count bindings and returns totals", async () => {
+    const countBinds: Array<{ index: number; value: unknown }> = [];
+    const listBinds: Array<{ index: number; value: unknown }> = [];
+    const preparedSqls: string[] = [];
+    const c = createContext(() => ({
+      prepare: async (sql: string) => {
+        preparedSqls.push(sql);
+        if (sql.includes("SELECT COUNT(*)")) {
+          return createMockStatement([[2]], countBinds);
+        }
+        return createMockStatement([["AAPL", "Apple Inc", "037833100"]], listBinds);
+      },
+    }));
+
+    const result = await listAssets(c, {
+      limit: 1,
+      offset: 0,
+      search: "apple",
+      sort: "assetName",
+      direction: "asc",
+    });
+
+    expect(preparedSqls[0]).toContain("SELECT COUNT(*)");
+    expect(preparedSqls[1]).toContain("LIMIT ? OFFSET ?");
+    expect(countBinds).toEqual([
+      { index: 1, value: "%apple%" },
+      { index: 2, value: "%apple%" },
+      { index: 3, value: "%apple%" },
+    ]);
+    expect(listBinds).toEqual([
+      { index: 1, value: "%apple%" },
+      { index: 2, value: "%apple%" },
+      { index: 3, value: "%apple%" },
+      { index: 4, value: 1 },
+      { index: 5, value: 0 },
+    ]);
+    expect(result.totalCount).toBe(2);
+    expect(result.complete).toBe(false);
+    expect(result.rows[0]).toMatchObject({ id: "AAPL-037833100" });
+  });
+
+  test("superinvestors list uses prepared limit/offset bindings and returns totals", async () => {
+    const binds: Array<{ index: number; value: unknown }> = [];
+    const preparedSqls: string[] = [];
+    const c = createContext(() => ({
+      prepare: async (sql: string) => {
+        preparedSqls.push(sql);
+        if (sql.includes("SELECT COUNT(*)")) {
+          return createMockStatement([[5]], []);
+        }
+        return createMockStatement([["898371", "Citadel Advisors"]], binds);
+      },
+    }));
+
+    const result = await listSuperinvestors(c, { limit: 1, offset: 2 });
+
+    expect(preparedSqls[1]).toContain("LIMIT ? OFFSET ?");
+    expect(binds).toEqual([
+      { index: 1, value: 1 },
+      { index: 2, value: 2 },
+    ]);
+    expect(result.totalCount).toBe(5);
+    expect(result.complete).toBe(false);
+    expect(result.rows[0]).toMatchObject({ cik: "898371" });
+  });
+
+  test("superinvestor asset history uses prepared ticker/cusip/cik bindings", async () => {
+    const binds: Array<{ index: number; value: unknown }> = [];
+    let preparedSql = "";
+    const c = createContext(() => ({
+      prepare: async (sql: string) => {
+        preparedSql = sql;
+        return createMockStatement([["2024Q1", true, "open", 10, 100, 5, 50, 1]], binds);
+      },
+    }));
+
+    const result = await getSuperinvestorAssetHistory(c, {
+      ticker: "AAPL",
+      cusip: "037833100",
+      cik: "898371",
+    });
+
+    expect(preparedSql).toContain("WHERE ticker = ?");
+    expect(preparedSql).toContain("AND cusip = ?");
+    expect(preparedSql).toContain("CAST(cik AS VARCHAR) = ?");
+    expect(binds).toEqual([
+      { index: 1, value: "AAPL" },
+      { index: 2, value: "037833100" },
+      { index: 3, value: "898371" },
+    ]);
+    expect(result[0]).toMatchObject({ quarter: "2024Q1", reportWindowComplete: true, action: "open" });
   });
 });
