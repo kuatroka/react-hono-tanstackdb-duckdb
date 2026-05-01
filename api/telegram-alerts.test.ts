@@ -28,14 +28,17 @@ describe('telegram alert helpers', () => {
     const env = {
       WEB_APP_APPRISE_DEV_URLS: 'tgram://dev-token/dev-chat',
       WEB_APP_APPRISE_PROD_URLS: 'tgram://prod-token/prod-chat',
+      SEC_APP_APPRISE_URLS: 'tgram://shared-token/shared-chat',
     }
 
     expect(resolveAlertEnvironment({ WEB_APP_ALERT_ENV: 'production' })).toBe('prod')
     expect(resolveTelegramDestinations('dev', env)).toEqual([
       { token: 'dev-token', chatId: 'dev-chat' },
+      { token: 'shared-token', chatId: 'shared-chat' },
     ])
     expect(resolveTelegramDestinations('prod', env)).toEqual([
       { token: 'prod-token', chatId: 'prod-chat' },
+      { token: 'shared-token', chatId: 'shared-chat' },
     ])
   })
 
